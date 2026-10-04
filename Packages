@@ -1,0 +1,22 @@
+Package: com.xu.screentimelocker16
+Name: ScreenTimeLocker16
+Version: 5.2.0
+Architecture: iphoneos-arm64e
+Description: 把「屏幕使用时间」的 App 限额变成一把真正的锁。
+ 完整还原原版 DisableOneMoreMinute 的四层实现：
+ ① 数据层 — 禁止「再使用一分钟」；
+ ② 设置页 — 允许设定 0 小时 0 分钟的限额；
+ ③ 拦截页 — 认证优先走 Face ID，用不了时回落屏幕使用时间密码；
+ ④ 菜单弹窗 — 保持原样，不注入任何额外选项。
+ 不隐藏任何原生按钮（「请求更多使用时间」照常保留）。
+ 适用 iOS 16.x / RootHide (arm64e)，宿主进程 SpringBoard。
+Maintainer: g459416925
+Author: g459416925 (iOS 16.5.1 / RootHide 重写版)
+Section: Tweaks
+Depends: mobilesubstrate
+Installed-Size: 94
+Tag: purpose::extension
+Filename: ./debs/ScreenTimeLocker16_5.2.0_iphoneos-arm64e.deb
+Size: 19506
+MD5sum: 2cd312981023753806ead7914715b187
+SHA256: fe3ffb054169151c6aaaf4122c70a81d05fba38cf9a0f32ca4b9dce7978abe97

@@ -1,0 +1,18 @@
+# macOS
+.DS_Store
+._*
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# 编译中间产物（只保留最终 .deb）
+src/**/build/
+src/**/*.dylib
+src/**/*.plist.bak
+src/**/*.broken*
+*.ips
+
+# 日志
+*.log

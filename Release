@@ -1,0 +1,14 @@
+Origin: g459416925
+Label: g459416925's iOS Tweaks
+Suite: stable
+Version: 1.0
+Codename: ios
+Architectures: iphoneos-arm64e iphoneos-arm64 iphoneos-arm
+Components: main
+Description: Personal iOS tweak repository (RootHide / arm64e)
+MD5Sum:
+ c5cde8710041319d69b50664ca84ab88 1016 Packages
+ 4b50d7070356d1ba61944bbb3ca6086a 817 Packages.bz2
+SHA256:
+ d98870f9b998c37f5a1329b18dd3b96177d960e2f0b57dd4f4c48e15a67c42be 1016 Packages
+ a7dcbf8426ccd975323baa61d0fd509acbc1c9f7e6a25697f1dbbd8d1c0e1023 817 Packages.bz2
