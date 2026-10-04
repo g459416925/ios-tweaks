@@ -17,7 +17,7 @@ gen_repo.py —— 扫描 debs/ 生成 APT 源索引（Packages / Packages.bz2 /
       `Packages`（索引文件）和一个 `packages/`（目录），否则互相覆盖。
       因此源码目录已命名为 `src/`。
 """
-import os, io, gzip, tarfile, hashlib, bz2, lzma
+import os, io, gzip, tarfile, hashlib, bz2, lzma, email.utils
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -94,6 +94,7 @@ def main():
         "Suite: stable",
         "Version: 1.0",
         "Codename: ios",
+        "Date: %s" % email.utils.formatdate(usegmt=True),
         "Architectures: iphoneos-arm64e iphoneos-arm64 iphoneos-arm",
         "Components: main",
         "Description: %s" % DESC,
