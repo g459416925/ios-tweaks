@@ -241,3 +241,31 @@ Filename: ./debs/StatusBarScale_1.4.5_iphoneos-arm64e.deb
 Size: 25252
 MD5sum: ed0ed4847d40fd4b2267f8a7708b973d
 SHA256: 66bc8b02d7cd79a03c8127fc0262b23abcbc2726d12c2d824bf747dbdfead116
+
+Package: com.xu.statusbarscale
+Name: StatusBarScale
+Version: 1.4.6
+Architecture: iphoneos-arm64e
+Description: 状态栏右侧图标缩放对齐：iPhone 灵动岛机型上右侧
+ 信号/WiFi/电池 图标比左侧时间略大且重心偏高（实测 14 Pro Max
+ iOS 16.5.1：图标高 13-14px vs 时间 12px，重心偏高 1.66px），
+ 本插件 hook _UIStatusBarForegroundView -layoutSubviews，在每次布局后
+ 对灵动岛右侧(x>=280)的图标视图施加 绕中心缩放(默认0.92)+下移(默认1.7pt)，
+ 使其与时间高度/重心对齐，观感更接近 iPad 的简洁状态栏。
+ transform 不参与布局计算，不影响间距与点击区域判定。
+ 配置 /var/mobile/Library/Preferences/com.xu.statusbarscale.plist：
+ enabled(bool)=YES / scale(float)=0.92 / dy(float)=1.7 /
+ threshold(float)=280 / verbose(bool)=NO，改后 respring 生效。
+ 注入到全部 UIKit App + SpringBoard（Filter.Classes = UIApplication），
+ 主屏与 App 内状态栏观感一致。
+ 适用 iOS 16.x / RootHide (arm64e)。
+Maintainer: g459416925
+Author: g459416925 (iOS 16.5.1 / RootHide)
+Section: Tweaks
+Depends: mobilesubstrate
+Installed-Size: 114
+Tag: purpose::extension
+Filename: ./debs/StatusBarScale_1.4.6_iphoneos-arm64e.deb
+Size: 29768
+MD5sum: 3018aea98fb0a95ff3a3941743dc5aef
+SHA256: a66d4047a5b7ad6379eaaa0705ccf6b6e76ceb81b4412e7bd701ab16300af846

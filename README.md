@@ -16,7 +16,7 @@ https://g459416925.github.io/ios-tweaks/
 |---|---|---|
 | `com.xu.compactorfix` | 1.0.0 | **CompactorFix** — 把系统 UI 字体整体换成 Apple Watch 的 SF Compact |
 | `com.xu.screentimelocker16` | 5.2.0 | **ScreenTimeLocker16** — 让「屏幕使用时间」的 App 限额真正锁得住 |
-| `com.xu.statusbarscale` | 1.4.5 | **StatusBarScale** — 状态栏右侧图标缩放对齐 + 系统辅助图标条（灵动岛正下方居中） |
+| `com.xu.statusbarscale` | 1.4.6 | **StatusBarScale** — 状态栏右侧图标缩放对齐 + 系统辅助图标条（灵动岛正下方居中） |
 
 ### CompactorFix
 
@@ -154,3 +154,17 @@ git add -A && git commit -m "release: <包名> <版本>" && git push
   "没丢"）。修：门禁加拒绝 `ControlCenter` 窗口（与 ReusePool 同待遇）；自愈判据改
   硬编码合法窗口（`UIStatusBarWindow`）+ fg 合法性检查。实测 CC 开合全程
   `stripWin=UIStatusBarWindow` 纹丝不动，收回 0.6s 内条已在位
+
+- **v1.4.6**：三项修复（许总反馈：主屏显示 / **App 内也要显示** / **锁屏不显示**）：
+  1. **App 内显示**：实测铁证 —— App 进程 windows=1 且**无 fg 实例**（App 内状态栏由
+     SpringBoard 经 `SBMainSwitcherWindow` 远程渲染，fg 首挂窗早于 dylib ctor，hook 装好
+     后再无触发）。修：SB 门禁**放行 MainSwitcher**（App 前台的正宿主，v1.2–1.4.5
+     时代 App 内条可见的真正机制）；App 进程加 3 轮主动扫描（0.5/2/5s，App 进程视图
+     树可遍历）兜底；
+  2. **锁屏不显示**：`SBLockScreenManager.uiIsLocked` 判定（StringView.y 判据不可用 ——
+     实测主屏与锁屏的 fg 内部坐标系相同 y=18.67）；解锁后布局触发自动恢复；
+  3. **快速开关 App 条消失**（上一轮遗留）：条被搬进 MainSwitcher 后主屏 fg 零布局
+     没人搬回 —— 1s 自愈 + 见过表 + didMoveToSuperview 多档重试兜底（实测搬回成功）。
+  另修两个工程坑：日志多进程互踩（限流统计 atomically 覆盖写 → 改 append）；
+  ctor 内 [hook] 日志被限流吞（install 改 sbs_logNow 直写）。实测：主屏/App 内/
+  锁屏不显示/解锁恢复/快速切换自愈 1s 内全链路通过

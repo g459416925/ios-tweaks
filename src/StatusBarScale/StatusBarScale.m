@@ -21,7 +21,7 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 
-#define SBS_VERSION @"1.4.5"
+#define SBS_VERSION @"1.4.6"
 #define SBS_LOG_PATH @"/var/mobile/Documents/sbs_log.txt"
 
 static BOOL    gEnabled = YES;
@@ -48,7 +48,14 @@ static CGAffineTransform sbs_targetTransform(void) {
 }
 
 static void sbs_log(NSString *fmt, ...) NS_FORMAT_FUNCTION(1, 2);
+static void sbs_logNow(NSString *fmt, ...) NS_FORMAT_FUNCTION(1, 2);   // v1.4.6 前向声明
 static void sbs_log(NSString *fmt, ...) {
+    static NSDateFormatter *df = nil;
+    static dispatch_once_t dfOnce;
+    dispatch_once(&dfOnce, ^{
+        df = [[NSDateFormatter alloc] init];
+        df.dateFormat = @"HH:mm:ss.SSS";
+    });
     // ⭐ 限流（v1.4.0 血泪教训：探针每秒几千次写日志 → 日志 150MB +
     //    SpringBoard 内存 5.5GB → Jetsam 循环杀进程 = 许总看到的"下拉就 respring"）
     static NSTimeInterval windowStart = 0, lastWrite = 0;
@@ -57,8 +64,19 @@ static void sbs_log(NSString *fmt, ...) {
     if (windowStart == 0) windowStart = now;
     if (now - windowStart >= 5.0) {
         if (dropped > 0) {
-            NSString *s = [NSString stringWithFormat:@"[限流] 5s 丢弃 %d 条日志\n", dropped];
-            [s writeToFile:SBS_LOG_PATH atomically:YES encoding:NSUTF8StringEncoding error:nil];
+            // ⭐ v1.4.6 改 append 写：atomically=YES 是整文件覆盖 —— SB 与 App 多进程
+            //    共写同一日志文件时互删对方全部行（19:34 Preferences 日志蒸发实锤）
+            NSString *s = [NSString stringWithFormat:@"%@ [%@/%d] [限流] 5s 丢弃 %d 条日志\n",
+                           [df stringFromDate:[NSDate date]],
+                           [[NSProcessInfo processInfo] processName], getpid(), dropped];
+            NSFileHandle *fh0 = [NSFileHandle fileHandleForWritingAtPath:SBS_LOG_PATH];
+            if (!fh0) {
+                [s writeToFile:SBS_LOG_PATH atomically:YES encoding:NSUTF8StringEncoding error:nil];
+            } else {
+                [fh0 seekToEndOfFile];
+                [fh0 writeData:[s dataUsingEncoding:NSUTF8StringEncoding]];
+                [fh0 closeFile];
+            }
         }
         windowStart = now; dropped = 0;
     }
@@ -67,12 +85,6 @@ static void sbs_log(NSString *fmt, ...) {
     va_list ap; va_start(ap, fmt);
     NSString *body = [[NSString alloc] initWithFormat:fmt arguments:ap];
     va_end(ap);
-    static NSDateFormatter *df = nil;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        df = [[NSDateFormatter alloc] init];
-        df.dateFormat = @"HH:mm:ss.SSS";
-    });
     NSString *line = [NSString stringWithFormat:@"%@ [%@/%d] %@\n",
                       [df stringFromDate:[NSDate date]],
                       [[NSProcessInfo processInfo] processName], getpid(), body];
@@ -85,6 +97,33 @@ static void sbs_log(NSString *fmt, ...) {
             [NSFileManager.defaultManager removeItemAtPath:SBS_LOG_PATH error:nil];
         }
     }
+    NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:SBS_LOG_PATH];
+    if (!fh) {
+        [line writeToFile:SBS_LOG_PATH atomically:YES encoding:NSUTF8StringEncoding error:nil];
+        return;
+    }
+    [fh seekToEndOfFile];
+    [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
+    [fh closeFile];
+}
+
+// ⭐ v1.4.6 关键事件直写（不限流）：[move]/[heal]/[unhide]/[dmsup] 是定位"条消失"
+//   的决定性证据，而 App 启动时的 dump 风暴会把这些行挤进限流丢弃桶。
+//   这四类事件本身低频（每次 App 切换至多十几条），直写安全。
+static void sbs_logNow(NSString *fmt, ...) NS_FORMAT_FUNCTION(1, 2);
+static void sbs_logNow(NSString *fmt, ...) {
+    va_list ap; va_start(ap, fmt);
+    NSString *body = [[NSString alloc] initWithFormat:fmt arguments:ap];
+    va_end(ap);
+    static NSDateFormatter *df = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        df = [[NSDateFormatter alloc] init];
+        df.dateFormat = @"HH:mm:ss.SSS";
+    });
+    NSString *line = [NSString stringWithFormat:@"%@ [%@/%d] %@\n",
+                      [df stringFromDate:[NSDate date]],
+                      [[NSProcessInfo processInfo] processName], getpid(), body];
     NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:SBS_LOG_PATH];
     if (!fh) {
         [line writeToFile:SBS_LOG_PATH atomically:YES encoding:NSUTF8StringEncoding error:nil];
@@ -171,8 +210,27 @@ static void sbs_auxRelayoutFromData(void);    // ⭐ v1.4.4 data 驱动重排（
 static UIView *gActiveFG = nil;                          // 当前活动 fg（强引用，CC 动画期间不失效）
 static BOOL gAuxForceRelayout = NO;                      // data/自愈驱动时跳过节流
 static dispatch_source_t gHealTimer = nil;               // v1.4.5 定时自愈
+// ⭐ v1.4.6 见过的合法 fg 表（弱引用）：快速切换后 gActiveFG 可能是已进池的
+//   App fg（fgLegal=NO → 自愈失效），从表里找回仍在 UIStatusBarWindow 的 fg
+static NSHashTable *gSeenFGs = nil;
+static NSHashTable *sbs_seenFGs(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ gSeenFGs = [NSHashTable weakObjectsHashTable]; });
+    return gSeenFGs;
+}
 
 static void sbs_apply(UIView *fg) {
+    // ⭐ v1.4.6 上游探针：确认 fg layoutSubviews hook 真的触发（App 内诊断）
+    if (gVerbose) {
+        static NSTimeInterval lastApply = 0;
+        NSTimeInterval nowA = [NSDate date].timeIntervalSince1970;
+        if (nowA - lastApply > 0.3) {
+            lastApply = nowA;
+            sbs_logNow(@"[apply] fg=%p win=%@ sub=%lu",
+                    fg, fg.window ? NSStringFromClass(fg.window.class) : @"nil",
+                    (unsigned long)fg.subviews.count);
+        }
+    }
     if (!gEnabled) return;
     CGAffineTransform t = sbs_targetTransform();
     if (!gManaged) gManaged = [NSHashTable weakObjectsHashTable];
@@ -301,6 +359,58 @@ static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
                     sbs_auxLayoutInFG((UIView *)self);
                 } @catch (NSException *e) { sbs_log(@"[exc-auxDM] %@", e); }
             });
+        }
+    } @catch (NSException *e) {
+        sbs_log(@"[exc] %@", e);
+    }
+}
+
+// ⭐ v1.4.6 快速切换补漏（三）：fg 的 didMoveToSuperview。
+//    快速开关 App 时系统在 UIStatusBarWindow 与备用池间搬 fg，但快速序列下
+//    window 可能不变（同窗复用）→ didMoveToWindow 不触发、layoutSubviews 不触发
+//    → 主屏 fg 上场后没人把条搬回（自愈 1s 也嫌慢）。superview 变化是fg 进出场
+//    必然事件，比 window 更灵敏。
+- (void)sbs_fgDidMoveToSuperview {
+    [self sbs_fgDidMoveToSuperview];      // 原实现
+    @try {
+        if (gVerbose) sbs_logNow(@"[dmsup] fg=%p super=%@",
+            self, ((UIView *)self).superview ?
+            NSStringFromClass(((UIView *)self).superview.class) : @"nil");
+        for (int i = 0; i < 4; i++) {
+            NSTimeInterval delay = (i == 0 ? 0.0 : (i == 1 ? 0.3 : (i == 2 ? 0.8 : 1.5)));
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{
+                @try {
+                    gAuxForceRelayout = YES;
+                    sbs_auxLayoutInFG((UIView *)self);
+                } @catch (NSException *e) { sbs_log(@"[exc-auxDS] %@", e); }
+            });
+        }
+    } @catch (NSException *e) {
+        sbs_log(@"[exc] %@", e);
+    }
+}
+
+// ⭐ v1.4.6 快速切换补漏（四）：fg 的 setHidden:。
+//    单实例复用路径：fg 上场 = hidden YES→NO（window/superview 都不变），
+//    此时 layoutSubviews/didMove* 都可能不触发。只在变可见时排定重试
+//    （YES→NO 不处理，避免 CC/锁屏过渡的高频隐藏写放大）。
+- (void)sbs_fgSetHidden:(BOOL)h {
+    BOOL wasHidden = ((UIView *)self).hidden;
+    [self sbs_fgSetHidden:h];             // 原实现
+    @try {
+        if (wasHidden && !h) {            // YES→NO = 上场
+            if (gVerbose) sbs_logNow(@"[unhide] fg=%p", self);
+            for (int i = 0; i < 4; i++) {
+                NSTimeInterval delay = (i == 0 ? 0.0 : (i == 1 ? 0.3 : (i == 2 ? 0.8 : 1.5)));
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)),
+                               dispatch_get_main_queue(), ^{
+                    @try {
+                        gAuxForceRelayout = YES;
+                        sbs_auxLayoutInFG((UIView *)self);
+                    } @catch (NSException *e) { sbs_log(@"[exc-auxUH] %@", e); }
+                });
+            }
         }
     } @catch (NSException *e) {
         sbs_log(@"[exc] %@", e);
@@ -477,9 +587,11 @@ static void sbs_auxSelfHealStart(void) {
     dispatch_once(&once, ^{
         gHealTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0,
                                             dispatch_get_main_queue());
+        // ⭐ v1.4.6 间隔 2s→1s：快速 App 切换场景下 2s 兜底太慢（许总实测
+        //    "多次快速开关 App 后条要等几秒"），1s 纯状态比较开销可忽略
         dispatch_source_set_timer(gHealTimer,
-                                  dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)),
-                                  2 * NSEC_PER_SEC, (int64_t)(0.5 * NSEC_PER_SEC));
+                                  dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)),
+                                  1 * NSEC_PER_SEC, (int64_t)(0.25 * NSEC_PER_SEC));
         dispatch_source_set_event_handler(gHealTimer, ^{
             @try {
                 if (!gAuxEnabled || !gAuxStrip || !gStrip || !gActiveFG) return;
@@ -489,15 +601,42 @@ static void sbs_auxSelfHealStart(void) {
                 //   CC 窗口，旧判据在 CC 期间恒为"没丢"，CC 收起时条跟着宿主销毁。
                 NSString *swCls = gStrip.window ? NSStringFromClass(gStrip.window.class) : @"";
                 NSString *fwCls = fg.window ? NSStringFromClass(fg.window.class) : @"";
-                BOOL stripLost = (!gStrip.superview || gStrip.hidden ||
-                                  [swCls containsString:@"ControlCenter"] ||
-                                  [swCls containsString:@"ReusePool"] ||
-                                  (![swCls containsString:@"UIStatusBarWindow"] &&
-                                   gStrip.superview));
+                BOOL noSuper = !gStrip.superview;
+                BOOL inBadWin = [swCls containsString:@"ControlCenter"] ||
+                                [swCls containsString:@"ReusePool"] ||
+                                (![swCls containsString:@"UIStatusBarWindow"] &&
+                                 gStrip.superview);
+                BOOL stripLost = noSuper || gStrip.hidden || inBadWin;
                 // 只在 fg 自己在合法窗口时才重排（fg 被借进 CC 时重排会被门禁拒绝）
                 BOOL fgLegal = [fwCls containsString:@"UIStatusBarWindow"] &&
-                               !fg.window.isHidden;
+                               !fg.window.isHidden && !fg.isHidden;
+                // ⭐ v1.4.6 治本：gActiveFG 陈旧（快速切换后已在池窗口）时，
+                //   从见过表里找回仍在 UIStatusBarWindow 的可见 fg 作为重排目标
+                if (!fgLegal) {
+                    for (UIView *c in sbs_seenFGs()) {
+                        if (!c.window || c.isHidden) continue;
+                        NSString *cw = NSStringFromClass(c.window.class);
+                        if ([cw containsString:@"UIStatusBarWindow"]) {
+                            fg = c;
+                            gActiveFG = c;
+                            fwCls = cw;
+                            fgLegal = YES;
+                            if (gVerbose)
+                                sbs_logNow(@"[heal] gActiveFG 陈旧，从见过表找回 fg=%p", c);
+                            break;
+                        }
+                    }
+                }
                 if (stripLost && fgLegal) {
+                    if (gVerbose) {
+                        static NSTimeInterval lastHeal = 0;
+                        NSTimeInterval now = [NSDate date].timeIntervalSince1970;
+                        if (now - lastHeal > 0.5) {
+                            lastHeal = now;
+                            sbs_logNow(@"[heal] 触发 noSuper=%d inBadWin=%d(%@) stripHidden=%d fgWin=%@",
+                                    noSuper, inBadWin, swCls, gStrip.hidden, fwCls);
+                        }
+                    }
                     gAuxForceRelayout = YES;         // 强制跳过节流
                     sbs_auxLayoutInFG(fg);
                 }
@@ -754,20 +893,85 @@ static void sbs_auxRefresh(void) {
 // ⭐⭐ 全被动写：所有 frame/hidden/host 写入前先比对缓存，无变化不写。
 //    血泪教训：拉控制中心时布局回调每帧狂调，任何"写即失效"都会造成
 //    同步布局死循环 → autorelease 池不排空 → SB 内存 10 秒涨 4GB → Jetsam。
+// ⭐ v1.4.6 进程判定：SpringBoard 与普通 App 的状态栏窗口架构完全不同
+static BOOL sbs_isSpringBoard(void) {
+    static BOOL v = NO;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        v = [[[NSProcessInfo processInfo] processName]
+             isEqualToString:@"SpringBoard"];
+    });
+    return v;
+}
+
+// ⭐ v1.4.6 锁屏判定（许总要求锁屏不显示条）：用系统锁屏状态 API。
+//    【实测教训】StringView.y 判据不可用 —— 19:28 dump 实锤主屏 fg 的
+//    StringView.y=18.67 与锁屏完全相同（fg 内部坐标系非屏幕坐标）。
+//    SBLockScreenManager.uiIsLocked 是 iOS 老牌锁屏状态（16.5.1 实测存在）。
+#import <objc/message.h>
+static BOOL sbs_sbLocked(void) {
+    if (!sbs_isSpringBoard()) return NO;
+    Class m = objc_getClass("SBLockScreenManager");
+    if (!m) return NO;
+    id inst = ((id (*)(id, SEL))objc_msgSend)((id)m, @selector(sharedInstance));
+    if (!inst) return NO;
+    @try {
+        return ((BOOL (*)(id, SEL))objc_msgSend)(inst, @selector(uiIsLocked));
+    } @catch (__unused NSException *e) { return NO; }
+}
+
 static void sbs_auxLayoutInFG(UIView *fg) {
     if (!gAuxEnabled || !gAuxStrip) { if (gStrip && !gStrip.hidden) gStrip.hidden = YES; return; }
-    // ⭐⭐ v1.4.5 前台门禁（第一优先）：备用 fg 池/隐藏窗口/CC 窗口的 fg 一律不托管。
-    //    实测架构（窗口诊断）：
-    //    - UIStatusBarWindow(level 999) = 常驻状态栏总窗口（主屏/App 的 fg 复用）
-    //    - SBStatusBarReusePoolWindow(hidden=1) = 备用 fg 池（切 App 时旧 fg 被放回）
-    //    - SBControlCenterWindow = CC 窗口 —— CC 打开时主屏 fg 会被"借"进 CC 窗口，
-    //      若不拒绝，条被搬进 CC 窗口 → CC 收起时宿主销毁 → 条消失等恢复
-    //      （"下拉 CC 再收起后条消失几秒"的真正根因，[heal] 日志实证）
+    // ⭐⭐ v1.4.6 门禁按进程分流（第一优先）：
+    //    【实测架构（19:40 铁证）】SBMainSwitcherWindow 不是敌人而是【App 前台的正宿主】——
+    //    iOS App 内状态栏由 SB 经 MainSwitcher 窗口远程渲染（App 进程 windows=1 且无 fg
+    //    实例，App 内状态栏根本不在 App 进程）。v1.4.2–1.4.5 黑名单不拒它 → App 内条
+    //    正常；白名单一刀切把它拒了 → App 内条消失（许总 19:28 反馈）。
+    //    ∴ SB 内放行 UIStatusBarWindow（主屏/锁屏）+ MainSwitcher（App 前台），
+    //      继续拒 ReusePool（备用池）/ControlCenter（CC 迷你 fg 361 宽假岛）/hidden 窗口。
+    //    快速 Home 回主屏条不回来 = 主屏 fg 零布局没人搬回 —— 由 1s 自愈 + 见过表
+    //    + didMoveToSuperview 多档重试兜底（v1.4.6 已建）。
     UIWindow *sbWin = fg.window;
     NSString *winCls = sbWin ? NSStringFromClass(sbWin.class) : @"";
-    if (!sbWin || sbWin.isHidden ||
-        [winCls containsString:@"ReusePool"] ||
-        [winCls containsString:@"ControlCenter"]) return;
+    BOOL legal;
+    if (sbs_isSpringBoard()) {
+        legal = sbWin && !sbWin.isHidden && !fg.isHidden &&
+                ([winCls containsString:@"UIStatusBarWindow"] ||
+                 [winCls containsString:@"MainSwitcher"]);
+    } else {
+        legal = sbWin && !sbWin.isHidden && !fg.isHidden;
+    }
+    if (!legal) {
+        // ⭐ v1.4.6 门禁诊断（verbose）：直写不限流（App 内 fg 布局低频，
+        //    限流会把启动窗口内的关键证据全部吞掉 —— 19:30 Preferences 零 [pass] 教训）
+        if (gVerbose) {
+            static NSTimeInterval lastDeny = 0;
+            NSTimeInterval now = [NSDate date].timeIntervalSince1970;
+            if (now - lastDeny > 0.15) {
+                lastDeny = now;
+                sbs_logNow(@"[deny] fg=%p win=%@ winHidden=%d fgHidden=%d fgW=%.0f",
+                        fg, winCls, sbWin ? sbWin.isHidden : -1, fg.isHidden,
+                        fg.bounds.size.width);
+            }
+        }
+        return;
+    }
+    // ⭐ v1.4.6 锁屏不显示（许总要求）：SB 进程内读系统锁屏状态，锁屏时条隐藏。
+    //    解锁后主屏布局触发 → locked=NO → 条恢复。
+    if (sbs_sbLocked()) {
+        if (gStrip && !gStrip.hidden) gStrip.hidden = YES;
+        return;
+    }
+    // ⭐ v1.4.6 放行快照（verbose）：直写不限流，与 [deny] 配对重建门禁序列
+    if (gVerbose) {
+        static NSTimeInterval lastPass = 0;
+        NSTimeInterval now2 = [NSDate date].timeIntervalSince1970;
+        if (now2 - lastPass > 0.15) {
+            lastPass = now2;
+            sbs_logNow(@"[pass] fg=%p win=%@ fgW=%.0f live=%d",
+                    fg, winCls, fg.bounds.size.width, sbs_fgIsLive(fg) ? 1 : 0);
+        }
+    }
     // ⭐⭐ v1.4.2 关键修复：只托管【全屏宽度】的 fg。
     //    实测假岛根因：CC/Spotlight 窗口的迷你状态栏 fg 宽 361（≠屏宽 430），
     //    其内部有类名含 Pill 且尺寸恰好 126×37 的居中视图 → 岛检测误命中。
@@ -777,6 +981,7 @@ static void sbs_auxLayoutInFG(UIView *fg) {
     //    即使下面 fgIsLive 暂时失败（CC 动画期间 StringView 被移除），
     //    多档重试也能在动画结束后把它劫持回来。
     gActiveFG = fg;
+    [sbs_seenFGs() addObject:fg];          // ⭐ v1.4.6 记入见过表（弱引用）
     if (!sbs_fgIsLive(fg)) return;
     // ⭐ 节流 33ms（CC 动画每帧都调 layoutSubviews，封顶 30fps 防止任何残余循环）
     //    data 驱动（sbs_auxRelayoutFromData）会先置 gAuxForceRelayout 跳过节流。
@@ -830,8 +1035,35 @@ static void sbs_auxLayoutInFG(UIView *fg) {
     // ⭐ 宿主恒定 = fg.superview（v1.4.1 二分定位：clipsToBounds 条件换宿主会在
     //    CC 动画中抖动 → 每帧 add/remove → 同步布局死循环 → 内存 4GB → Jetsam）。
     UIView *host = fg.superview ?: fg;
+    // ⭐ v1.4.6 同窗防护：host 必须与 fg 同窗口。快速 Home 时系统会把 UIStatusBarWindow
+    //    里的宿主容器整体借进 SBMainSwitcherWindow（App 切换器动画），过渡瞬间存在
+    //    fg.window 仍读旧值而 host 已在切换器的窗口期 —— 此时绝不搬家，等下一次布局。
+    if (host.window && fg.window && host.window != fg.window) {
+        if (gVerbose) {
+            static NSTimeInterval lastSkip = 0;
+            NSTimeInterval now3 = [NSDate date].timeIntervalSince1970;
+            if (now3 - lastSkip > 0.5) {
+                lastSkip = now3;
+                sbs_logNow(@"[skipHost] fg=%p fgWin=%@ hostWin=%@",
+                        fg, NSStringFromClass(fg.window.class),
+                        NSStringFromClass(host.window.class));
+            }
+        }
+        return;
+    }
     // —— 被动写：宿主变化才搬家；条 frame = 所有目标的最小包围盒；图标逐个比对 ——
     if (gStrip.superview != host) {
+        // ⭐ v1.4.6 搬家取证（verbose）：条宿主变化是"条消失"的直接现场
+        if (gVerbose) {
+            NSString *fromWin = gStrip.superview.window ?
+                NSStringFromClass(gStrip.superview.window.class) : @"nil";
+            NSString *toWin = host.window ?
+                NSStringFromClass(host.window.class) : @"nil";
+            sbs_logNow(@"[move] fg=%p fgWin=%@ | %@(%@) → %@(%@)",
+                    fg, NSStringFromClass(fg.window.class),
+                    NSStringFromClass(gStrip.superview.class) ?: @"nil", fromWin,
+                    NSStringFromClass(host.class), toWin);
+        }
         [gStrip removeFromSuperview];
         [host addSubview:gStrip];
     }
@@ -849,23 +1081,81 @@ static void sbs_auxLayoutInFG(UIView *fg) {
     }
 }
 
+// ⭐ v1.4.6 App 进程 fg 主动扫描：递归遍历 App 窗口树找 _UIStatusBarForegroundView。
+//   App 内 fg 首布局早于 ctor（hook 错过，见 sbs_installAux 注释），hook 永不再触发。
+//   App 进程视图树可遍历（SB 里 [UIApplication windows] subviews 全空的教训不适用）。
+static void sbs_appScanFG(int round) {
+    if (!gEnabled && !gAuxEnabled) return;
+    if (gStrip && gStrip.superview) return;      // 条已挂好 → 扫描完成
+    Class FGC = objc_getClass("_UIStatusBarForegroundView");
+    if (!FGC) return;
+    @try {
+        NSArray *wins = [[UIApplication sharedApplication] windows];
+        __block UIView *found = nil;
+        NSMutableArray *stack = [NSMutableArray array];
+        for (UIWindow *w in wins) [stack addObject:w];
+        while (stack.count && !found) {
+            UIView *v = stack.lastObject;
+            [stack removeLastObject];
+            if ([v isKindOfClass:FGC]) { found = v; break; }
+            for (UIView *c in v.subviews) [stack addObject:c];
+        }
+        if (found) {
+            if (gVerbose)
+                sbs_logNow(@"[scan#%d] 找到 fg=%p win=%@ fgW=%.0f",
+                        round, found,
+                        found.window ? NSStringFromClass(found.window.class) : @"nil",
+                        found.bounds.size.width);
+            gAuxForceRelayout = YES;
+            sbs_auxLayoutInFG(found);
+            // 跟进多档重试（fg 内容稳定后 frame 可能才定）
+            for (int k = 0; k < 3; k++) {
+                NSTimeInterval d = (k == 0 ? 0.3 : (k == 1 ? 0.8 : 1.5));
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(d * NSEC_PER_SEC)),
+                               dispatch_get_main_queue(), ^{
+                    @try {
+                        gAuxForceRelayout = YES;
+                        sbs_auxLayoutInFG(found);
+                    } @catch (NSException *e) { sbs_log(@"[exc-scanR] %@", e); }
+                });
+            }
+        } else if (gVerbose) {
+            sbs_logNow(@"[scan#%d] 未找到 fg（windows=%lu）", round,
+                    (unsigned long)wins.count);
+        }
+    } @catch (NSException *e) {
+        sbs_log(@"[exc-scan] %@", e);
+    }
+}
+
 static void sbs_installAux(void);   // 辅助模块延迟安装（见 sbs_install 内注释）
 
 static void sbs_install(void) {
     Class FG = objc_getClass("_UIStatusBarForegroundView");
-    if (!FG) { sbs_log(@"[hook] FAIL _UIStatusBarForegroundView 不存在"); return; }
+    if (!FG) { sbs_logNow(@"[hook] FAIL _UIStatusBarForegroundView 不存在"); return; }
     BOOL ok = SBSHook(FG, @selector(layoutSubviews),
                       SBSHelper.class, @selector(sbs_fgLayoutSubviews));
-    sbs_log(@"[hook] layoutSubviews → %@", ok ? @"已安装" : @"失败");
+    // ⭐ v1.4.6 直写：ctor 里 [载入] 后 50ms 内的 [hook] 行全被限流吞掉，
+    //    App 内 hook 是否装上无法从日志判断 —— install 是一次性的，直写安全
+    sbs_logNow(@"[hook] layoutSubviews → %@", ok ? @"已安装" : @"失败");
 
     // 全局 hook UIView.setTransform: 拦截受管图标被系统重置（关键修复）
     ok = SBSHook([UIView class], @selector(setTransform:),
                  SBSHelper.class, @selector(sbs_viewSetTransform:));
-    sbs_log(@"[hook] UIView.setTransform: → %@", ok ? @"已安装" : @"失败");
+    sbs_logNow(@"[hook] UIView.setTransform: → %@", ok ? @"已安装" : @"失败");
 
     ok = SBSHook(FG, @selector(didMoveToWindow),
                  SBSHelper.class, @selector(sbs_fgDidMoveToWindow));
-    sbs_log(@"[hook] didMoveToWindow → %@", ok ? @"已安装" : @"失败");
+    sbs_logNow(@"[hook] didMoveToWindow → %@", ok ? @"已安装" : @"失败");
+
+    // ⭐ v1.4.6 快速切换补漏：fg 进出场的另外两条必经路径
+    ok = SBSHook(FG, @selector(didMoveToSuperview),
+                 SBSHelper.class, @selector(sbs_fgDidMoveToSuperview));
+    sbs_logNow(@"[hook] didMoveToSuperview → %@", ok ? @"已安装" : @"失败");
+
+    ok = SBSHook(FG, @selector(setHidden:),
+                 SBSHelper.class, @selector(sbs_fgSetHidden:));
+    sbs_logNow(@"[hook] fg setHidden: → %@", ok ? @"已安装" : @"失败");
 
     // —— 辅助图标：强制启用系统原生 item ——
     // ⛔ 崩溃教训（v1.1.0，2026-10-04 16:25 SIGABRT）：构造期对任意类调
@@ -884,6 +1174,9 @@ static void sbs_install(void) {
 static void sbs_installAux(void) {
     @try {
         // —— API 面侦查：状态数据从哪来 ——
+        // ⭐ v1.4.6：侦查 dump 挂 verbose 门控（每个 App 首次启动都打 ~80 行，
+        //    会把限流窗口占满、挤掉关键时序日志；侦查结论已固化在注释里）
+        if (gVerbose) {
         for (NSString *cn in (@[@"_UIStatusBarData", @"_UIStatusBarManager",
                                 @"_UIStatusBarItem", @"_UIStatusBar"])) {
             Class c = objc_getClass(cn.UTF8String);
@@ -920,6 +1213,7 @@ static void sbs_installAux(void) {
             free(iv);
             sbs_log(@"%@", o);
         }
+        }   // ⭐ v1.4.6 end if (gVerbose) —— 侦查 dump 门控结束
         SEL ce = @selector(canEnableDisplayItem:fromData:);
         Class owner = sbs_findDefiner(ce, "B32@0:8@16@24");
         sbs_log(@"[canEnable] 实现类 = %@", owner ? NSStringFromClass(owner) : @"(未找到)");
@@ -969,6 +1263,25 @@ static void sbs_installAux(void) {
         }
         // ⭐ v1.4.5 启动定时自愈（兜底一切条丢失场景）
         sbs_auxSelfHealStart();
+
+        // ⭐⭐ v1.4.6 App 进程主动扫描 fg（App 内条显示的生命线）：
+        //    【实测 19:38 铁证】App 内 fg 的创建/挂窗/首布局全部发生在 ctor 之前
+        //    （[apply]/[pass]/[deny]/[didMove] 直写全 0，5 个 hook 却"已安装"）——
+        //    hook 装好后再无触发点，条永远没人放。App 进程的视图树【可遍历】
+        //    （v1.0 "SB 里 [UIApplication windows] subviews 全空"的教训不适用于 App 进程），
+        //    主动扫窗口找 fg 实例 → 记录 gActiveFG → 触发布局。
+        //    3 轮扫描（0.5s/2s/5s）覆盖 fg 创建时序差异。
+        if (!sbs_isSpringBoard()) {
+            for (int i = 0; i < 3; i++) {
+                NSTimeInterval d = (i == 0 ? 0.5 : (i == 1 ? 2.0 : 5.0));
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(d * NSEC_PER_SEC)),
+                               dispatch_get_main_queue(), ^{
+                    @try { sbs_appScanFG(i); } @catch (NSException *e) {
+                        sbs_log(@"[exc-scan] %@", e);
+                    }
+                });
+            }
+        }
     } @catch (NSException *e) {
         sbs_log(@"[exc-aux] %@", e);
     }

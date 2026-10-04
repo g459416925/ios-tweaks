@@ -1,6 +1,6 @@
 # StatusBarScale — 状态栏图标缩放对齐
 
-**包名** `com.xu.statusbarscale` · **版本** 1.4.5 · **宿主** 全部 UIKit App + SpringBoard
+**包名** `com.xu.statusbarscale` · **版本** 1.4.6 · **宿主** 全部 UIKit App + SpringBoard
 
 ## 解决什么问题
 
@@ -61,23 +61,38 @@ python3 build_deb.py  # 打 .deb（版本自动取自源码 #define SBS_VERSION�
 - 基线 vs 修改后 `_sb_measure.py` 对比：高度差 +1.00→−1.00、重心差 −1.66→−0.07；
 - hook 同时在 SpringBoard 与 Spotlight/各 App 内生效（Filter.Classes=UIApplication）。
 
-## 辅助条宿主架构（v1.4.x 系列实测）
+## 辅助条宿主架构（v1.4.x 系列实测终版）
 
-SpringBoard 有三个状态栏相关窗口，fg 会在其间被搬动：
+SpringBoard 的状态栏 fg 在四个窗口间被借动，App 内状态栏为 SB 远程渲染：
 
-| 窗口 | level | 可见 | 角色 |
-|---|---|---|---|
-| `UIStatusBarWindow` | 999 | ✅ | 常驻状态栏总窗口（主屏/App fg 复用） |
-| `SBStatusBarReusePoolWindow` | 0 | hidden | 备用 fg 池（切 App 时旧 fg 回池并最后布局一次） |
-| `SBControlCenterWindow` | — | CC 期间 | CC 打开时主屏 fg 被**借**进此窗口 |
+| 窗口 | 角色 | 门禁 |
+|---|---|---|
+| `UIStatusBarWindow` (level 999) | 常驻总窗口：主屏/锁屏 fg 复用 | ✅ 放行 |
+| `SBMainSwitcherWindow` | **App 前台的正宿主**（App 内状态栏由 SB 远程渲染，App 进程 windows=1 且无 fg 实例） | ✅ 放行 |
+| `SBStatusBarReusePoolWindow` (hidden) | 备用 fg 池（切 App 时旧 fg 回池） | ❌ 拒绝 |
+| `SBControlCenterWindow` | CC 迷你 fg（宽 361 假岛） | ❌ 拒绝 |
 
-辅助条为全局单例挂在 `fg.superview`，fg 被搬动条会跟着消失/搬错。三道防线：
+【实测铁证 19:40】App 进程 windows=1、树内无 `_UIStatusBarForegroundView`；App 内 fg
+首挂窗早于 dylib ctor → hook 装好后 App 进程内 fg 永不触发布局 → App 进程做 3 轮
+主动扫描（0.5/2/5s）兜底。锁屏判定用 `SBLockScreenManager.uiIsLocked`
+（StringView.y 判据不可用：主屏与锁屏的 fg 内部坐标相同 y=18.67）。
 
-1. **前台门禁**：拒绝 hidden 窗口、类名含 `ReusePool`/`ControlCenter` 的窗口、
-   宽度≠屏宽（CC/Spotlight 迷你 fg 361≠430，内部是伪居中 Pill 假岛）的 fg；
-2. **多档重试**：data 变化 / didMoveToWindow 后 0/0.3/0.8/1.5s 强制重排（`gAuxForceRelayout` 跳节流）；
-3. **2s 定时自愈**：判据用**硬编码合法窗口名**（`UIStatusBarWindow`）而非
-   `gStrip.window != fg.window` —— CC 期间条和 fg 同在 CC 窗口，旧判据会误判"没丢"。
+## v1.4.6 五道防线
 
-验证口径：CC 开合全程 `stripWin=UIStatusBarWindow` 纹丝不动；CC 收回 / App 退出回主屏
-0.6s 内条已在位。
+1. **门禁进程分流**：SB 内放行 UIStatusBarWindow+MainSwitcher、拒 ReusePool/CC/hidden；
+   App 内只拒 hidden；
+2. **锁屏隐藏**：`uiIsLocked` → 条 hidden，解锁布局触发自动恢复；
+3. **host 同窗防护**：`host.window != fg.window` 不搬家（过渡瞬间容器漂移防护）；
+4. **多档重试 ×4 路事件**：data 变化 / didMoveToWindow / didMoveToSuperview /
+   setHidden: 各排 0/0.3/0.8/1.5s 强制重排（`gAuxForceRelayout` 跳节流）；
+5. **1s 自愈 + 见过表**：gActiveFG 陈旧时从弱引用表找回当前合法 fg 实测 1s 内把条
+   从 MainSwitcher/ReusePool 搬回主屏宿主。
+
+## 工程坑（v1.4.6 新增）
+
+- **日志多进程互踩**：限流统计 `writeToFile atomically:YES` 是整文件覆盖 —— SB 与
+  App 共写同一 sbs_log 时互删对方全部行 → 改 fileHandle append；
+- **ctor 内日志被限流吞**：[载入] 后 50ms 内的 [hook] 行全丢 → install 的 hook 结果
+  用 `sbs_logNow` 直写（一次性日志直写安全）；
+- **诊断日志分级**：关键事件（[move]/[heal]/[unhide]/[dmsup]/[scan]）直写不限流，
+  dump 类走 20 行/秒限流；plist `verbose=YES` 开启。

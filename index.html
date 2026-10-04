@@ -68,7 +68,7 @@
     </tr>
     <tr>
       <td><code>com.xu.statusbarscale</code></td>
-      <td>1.4.5</td>
+      <td>1.4.6</td>
       <td>StatusBarScale — 状态栏右侧图标缩放对齐 + 系统辅助图标条（灵动岛正下方居中）</td>
     </tr>
   </table>
@@ -105,14 +105,14 @@
         兜底 Assets.car 的 Black_* 字形），状态源为 <code>_UIStatusBarData</code>，
         <b>灵动岛正下方居中</b>显示 9pt 小图标，
         闹钟/勿扰/旋转锁/VPN/蓝牙 激活才显示，颜色跟随时间文字</li>
-    <li><b>v1.4.1–1.4.5 稳定性</b>：全被动写 + 33ms 节流 + 宿主恒定（修 CC 开合
+    <li><b>v1.4.1–1.4.6 稳定性</b>：全被动写 + 33ms 节流 + 宿主恒定（修 CC 开合
         Jetsam）；只托管全屏宽度 fg + 岛窗口坐标双校验 + 解锁补触发（修锁屏解锁后
         条消失/偏移）；data 驱动多档延迟重试（修 CC 收起后辅助条延迟数秒才显示）；
-        前台门禁（拒绝 fg 复用池/隐藏窗口托管）+ didMove 多档重试 + 2s 定时自愈
-        （修退出 App 回主屏后延迟数秒）；门禁追加拒绝 ControlCenter 窗口 +
-        自愈判据硬编码合法窗口（修主屏 CC 收回后延迟复发 —— CC 打开时主屏 fg 被
-        <b>借</b>进 SBControlCenterWindow，条跟着搬入、收起后宿主销毁）。
-        实测 CC 收回 / App 退出回主屏 0.6s 内条已在位</li>
+        前台门禁 + 1s 定时自愈 + 见过表找回 + didMoveToSuperview 多档重试（修快速
+        开关 App 后条消失数秒）；<b>App 内条支持</b> —— SBMainSwitcherWindow 是
+        App 前台状态栏的远程渲染宿主（App 进程无状态栏视图），门禁放行；
+        <b>锁屏自动隐藏</b>（SBLockScreenManager.uiIsLocked），解锁自动恢复。
+        实测主屏/App 内/锁屏/快速切换全链路通过</li>
     <li>配置
       <code>/var/mobile/Library/Preferences/com.xu.statusbarscale.plist</code>
       （enabled / scale / dy / threshold / auxEnabled / auxIcons，改后 respring）</li>
