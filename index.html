@@ -68,8 +68,8 @@
     </tr>
     <tr>
       <td><code>com.xu.statusbarscale</code></td>
-      <td>1.0.1</td>
-      <td>StatusBarScale — 状态栏右侧图标缩放对齐（与时间等高、重心对齐）</td>
+      <td>1.3.0</td>
+      <td>StatusBarScale — 状态栏右侧图标缩放对齐 + 系统辅助图标条（灵动岛下方居中）</td>
     </tr>
   </table>
 
@@ -101,9 +101,13 @@
     <li>hook <code>_UIStatusBarForegroundView -layoutSubviews</code>，对右侧图标施加
         <b>绕中心缩放 0.92 + 下移 1.7pt</b>（实测重心差 −1.66 → −0.07px）</li>
     <li>transform 不参与布局 → <b>间距与点击区域不受影响</b>；灵动岛展开自动跟随</li>
+    <li><b>系统辅助图标条</b>：直接用系统自带字形（Assets.car 的
+        Black_Alarm / Black_Location 等），状态源为 <code>_UIStatusBarData</code>，
+        <b>灵动岛正下方居中</b>显示 9pt 小图标，闹钟/定位/勿扰/旋转锁/VPN/蓝牙
+        激活才显示，颜色跟随时间文字</li>
     <li>配置
       <code>/var/mobile/Library/Preferences/com.xu.statusbarscale.plist</code>
-      （enabled / scale / dy / threshold，改后 respring）</li>
+      （enabled / scale / dy / threshold / auxEnabled / auxIcons，改后 respring）</li>
   </ol>
   <p class="sub" style="margin-top:14px">
     注入全部 UIKit App + SpringBoard，主屏与 App 内状态栏观感一致。

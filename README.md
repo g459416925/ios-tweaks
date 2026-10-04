@@ -16,7 +16,7 @@ https://g459416925.github.io/ios-tweaks/
 |---|---|---|
 | `com.xu.compactorfix` | 1.0.0 | **CompactorFix** — 把系统 UI 字体整体换成 Apple Watch 的 SF Compact |
 | `com.xu.screentimelocker16` | 5.2.0 | **ScreenTimeLocker16** — 让「屏幕使用时间」的 App 限额真正锁得住 |
-| `com.xu.statusbarscale` | 1.0.1 | **StatusBarScale** — 状态栏右侧图标缩放对齐（与时间等高、重心对齐） |
+| `com.xu.statusbarscale` | 1.3.0 | **StatusBarScale** — 状态栏右侧图标缩放对齐 + 系统辅助图标条（灵动岛下方居中） |
 
 ### CompactorFix
 
@@ -52,10 +52,23 @@ https://g459416925.github.io/ios-tweaks/
 - `transform` 不参与 frame 布局 → 间距、点击区域完全不受影响
 - 灵动岛展开/收起自动跟随（每次布局后重设，幂等）
 - 配置 `/var/mobile/Library/Preferences/com.xu.statusbarscale.plist`：
-  `enabled` / `scale` / `dy` / `threshold`（改后 respring）
+  `enabled` / `scale` / `dy` / `threshold` / `auxEnabled` / `auxIcons`（改后 respring）
 - 注入全部 UIKit App + SpringBoard（`Filter.Classes = ["UIApplication"]`）
 - ⚠️ RootHide 坑：SSH 部署该配置**必须**走
   `/rootfs/private/var/mobile/Library/Preferences/`（不带前缀是影子目录）
+
+**v1.1–1.3 新增：系统辅助图标条**
+
+- 直接使用**系统自带图标包**（UIKitCore `Artwork.bundle/Assets.car` 的
+  `Black_Alarm` / `Black_Location` / `Black_QuietMode` / `Black_RotationLock` /
+  `Black_VPN` / `Black_Bluetooth` 原生字形），不依赖任何第三方图标包
+- 状态源 = `_UIStatusBarData`：hook `applyUpdate:` / `_applyUpdate:keys:`
+  捕获数据对象，实时读取 `alarmEntry` / `locationEntry` 等驱动的显隐
+- 位置：**灵动岛正下方居中**，9pt 小图标，颜色跟随时间文字，不碍眼
+- 仅显示激活项：闹钟/定位/勿扰/旋转锁/VPN/蓝牙（无状态时整条隐藏）
+- ⚠️ RootHide 坑：dylib 内**绝不能出现完整 `/System/Library/...` 路径字面量** ——
+  roothidepatch 会重定向该路径并破坏签名 → dyld `Invalid Page` 直接杀 SpringBoard。
+  必须运行时拼接（`/System` + `/Library` + ...）绕过字符串扫描
 
 ## 目录结构
 
