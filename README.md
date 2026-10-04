@@ -16,7 +16,7 @@ https://g459416925.github.io/ios-tweaks/
 |---|---|---|
 | `com.xu.compactorfix` | 1.0.0 | **CompactorFix** — 把系统 UI 字体整体换成 Apple Watch 的 SF Compact |
 | `com.xu.screentimelocker16` | 5.2.0 | **ScreenTimeLocker16** — 让「屏幕使用时间」的 App 限额真正锁得住 |
-| `com.xu.statusbarscale` | 1.0.0 | **StatusBarScale** — 状态栏右侧图标缩放对齐（与时间等高、重心对齐） |
+| `com.xu.statusbarscale` | 1.0.1 | **StatusBarScale** — 状态栏右侧图标缩放对齐（与时间等高、重心对齐） |
 
 ### CompactorFix
 

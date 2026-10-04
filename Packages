@@ -48,7 +48,7 @@ SHA256: fe3ffb054169151c6aaaf4122c70a81d05fba38cf9a0f32ca4b9dce7978abe97
 
 Package: com.xu.statusbarscale
 Name: StatusBarScale
-Version: 1.0.0
+Version: 1.0.1
 Architecture: iphoneos-arm64e
 Description: 状态栏右侧图标缩放对齐：iPhone 灵动岛机型上右侧
  信号/WiFi/电池 图标比左侧时间略大且重心偏高（实测 14 Pro Max
@@ -67,9 +67,9 @@ Maintainer: g459416925
 Author: g459416925 (iOS 16.5.1 / RootHide)
 Section: Tweaks
 Depends: mobilesubstrate
-Installed-Size: 70
+Installed-Size: 71
 Tag: purpose::extension
-Filename: ./debs/StatusBarScale_1.0.0_iphoneos-arm64e.deb
-Size: 8322
-MD5sum: fa44fbdadaf09d4e60feb7ae346f31c2
-SHA256: 375f3d62e63194c5944b940aabd29979d12eb1acad81906ce0ff0b9ede16cff2
+Filename: ./debs/StatusBarScale_1.0.1_iphoneos-arm64e.deb
+Size: 9644
+MD5sum: ceeb9aa09b011c23e8cf54656484e7c0
+SHA256: 54f864da5515728772e4933be524157e8ef84430beeb19656cdfcf92cb1a9061

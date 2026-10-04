@@ -21,7 +21,7 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 
-#define SBS_VERSION @"1.0.0"
+#define SBS_VERSION @"1.0.1"
 #define SBS_LOG_PATH @"/var/mobile/Documents/sbs_log.txt"
 
 static BOOL    gEnabled = YES;
@@ -30,6 +30,14 @@ static CGFloat gDy      = 1.7f;
 static CGFloat gThr     = 312.0f;
 static BOOL    gVerbose = NO;
 static int     gDidDump = 0;
+
+// 受管图标视图的弱引用集合：系统/动画改动它们的 transform 时会被 setTransform: hook 拦截
+static NSHashTable *gManaged = nil;   // weak objects
+
+static CGAffineTransform sbs_targetTransform(void) {
+    return CGAffineTransformTranslate(
+        CGAffineTransformMakeScale(gScale, gScale), 0, gDy / gScale);
+}
 
 static void sbs_log(NSString *fmt, ...) NS_FORMAT_FUNCTION(1, 2);
 static void sbs_log(NSString *fmt, ...) {
@@ -90,15 +98,15 @@ static void sbs_dumpOnce(UIView *fg) {
 
 static void sbs_apply(UIView *fg) {
     if (!gEnabled) return;
-    // 绕中心缩放 + 下移 dy（transform 的平移发生在缩放坐标系 → 除以 s）
-    CGAffineTransform t = CGAffineTransformTranslate(
-        CGAffineTransformMakeScale(gScale, gScale), 0, gDy / gScale);
+    CGAffineTransform t = sbs_targetTransform();
+    if (!gManaged) gManaged = [NSHashTable weakObjectsHashTable];
     for (UIView *v in fg.subviews) {
         if (CGRectGetMinX(v.frame) >= gThr) {
+            // 登记为受管视图（弱引用，view 销毁自动剔除）
+            [gManaged addObject:v];
             if (!CGAffineTransformEqualToTransform(v.transform, t)) v.transform = t;
         }
     }
-    if (gVerbose && gDidDump) { /* verbose 帧级日志默认关，避免刷盘 */ }
 }
 
 // ===========================================================================
@@ -145,6 +153,42 @@ static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
         sbs_log(@"[exc] %@", e);
     }
 }
+
+// ⭐ 核心修复：hook UIView 的 setTransform:。
+// 灵动岛过渡动画会直接改写【图标子视图】的 transform（复原/过渡），
+// 而这不触发父视图 layoutSubviews。此处拦截：只要 self 是被登记的受管图标，
+// 就把系统改动的 transform 立即改回我们的缩放值，消除「复原→二次缩放」空窗。
+- (void)sbs_viewSetTransform:(CGAffineTransform)t {
+    [self sbs_viewSetTransform:t];        // 原实现
+    if (!gEnabled || !gManaged) return;
+    @try {
+        UIView *v = (UIView *)self;
+        if ([gManaged containsObject:v]) {
+            CGAffineTransform want = sbs_targetTransform();
+            if (!CGAffineTransformEqualToTransform(t, want)) {
+                v.transform = want;       // 重新走 setTransform（值已等于 want，不会死循环）
+            }
+        }
+    } @catch (NSException *e) {
+        sbs_log(@"[exc] %@", e);
+    }
+}
+
+// 状态栏 foreground view 被重新挂到 window（灵动岛过渡重建）时补一次。
+- (void)sbs_fgDidMoveToWindow {
+    [self sbs_fgDidMoveToWindow];         // 原实现
+    @try {
+        if (gVerbose) sbs_log(@"[didMove] self=%@ win=%@",
+            NSStringFromClass(((UIView *)self).class),
+            ((UIView *)self).window ? @"有" : @"nil");
+        // 挂载后的布局尚未发生时，子视图可能还没建好 → 下一 runloop 补施
+        dispatch_async(dispatch_get_main_queue(), ^{
+            sbs_apply((UIView *)self);
+        });
+    } @catch (NSException *e) {
+        sbs_log(@"[exc] %@", e);
+    }
+}
 @end
 
 static void sbs_install(void) {
@@ -152,8 +196,16 @@ static void sbs_install(void) {
     if (!FG) { sbs_log(@"[hook] FAIL _UIStatusBarForegroundView 不存在"); return; }
     BOOL ok = SBSHook(FG, @selector(layoutSubviews),
                       SBSHelper.class, @selector(sbs_fgLayoutSubviews));
-    sbs_log(@"[hook] _UIStatusBarForegroundView.layoutSubviews → %@",
-            ok ? @"已安装" : @"失败");
+    sbs_log(@"[hook] layoutSubviews → %@", ok ? @"已安装" : @"失败");
+
+    // 全局 hook UIView.setTransform: 拦截受管图标被系统重置（关键修复）
+    ok = SBSHook([UIView class], @selector(setTransform:),
+                 SBSHelper.class, @selector(sbs_viewSetTransform:));
+    sbs_log(@"[hook] UIView.setTransform: → %@", ok ? @"已安装" : @"失败");
+
+    ok = SBSHook(FG, @selector(didMoveToWindow),
+                 SBSHelper.class, @selector(sbs_fgDidMoveToWindow));
+    sbs_log(@"[hook] didMoveToWindow → %@", ok ? @"已安装" : @"失败");
 }
 
 __attribute__((constructor))
