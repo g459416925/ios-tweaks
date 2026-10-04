@@ -21,7 +21,7 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 
-#define SBS_VERSION @"1.4.3"
+#define SBS_VERSION @"1.4.4"
 #define SBS_LOG_PATH @"/var/mobile/Documents/sbs_log.txt"
 
 static BOOL    gEnabled = YES;
@@ -165,6 +165,7 @@ static void sbs_dumpOnChange(UIView *fg) {
 }
 
 static void sbs_auxLayoutInFG(UIView *fg);   // 辅助图标条布局（定义见后）
+static void sbs_auxRelayoutFromData(void);    // ⭐ v1.4.4 data 驱动重排（定义见后）
 
 static void sbs_apply(UIView *fg) {
     if (!gEnabled) return;
@@ -332,6 +333,7 @@ static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
     @try {
         sbs_setGData((id)self);
         sbs_auxRefresh();
+        sbs_auxRelayoutFromData();        // ⭐ v1.4.4 CC 开合后条立即恢复
     } @catch (NSException *e) {
         sbs_log(@"[exc] %@", e);
     }
@@ -343,6 +345,7 @@ static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
         sbs_setGData((id)self);
         if (gVerbose) sbs_log(@"[dataU] keys=%@", keys);
         sbs_auxRefresh();
+        sbs_auxRelayoutFromData();        // ⭐ v1.4.4 CC 开合后条立即恢复
     } @catch (NSException *e) {
         sbs_log(@"[exc] %@", e);
     }
@@ -431,6 +434,32 @@ static void sbs_setGData(id d) {
 static UIView       *gStrip = nil;                       // 辅助图标条容器
 static NSMutableDictionary<NSString *, UIImageView *> *gAuxViews = nil;
 static NSMutableDictionary<NSString *, NSString *>   *gAuxKeys  = nil;  // ident→"xxxEntry"（预计算，refresh 零分配）
+static UIView *gActiveFG = nil;                          // ⭐ v1.4.4 当前活动 fg（强引用，CC 动画期间不失效）
+static BOOL gAuxForceRelayout = NO;                      // ⭐ v1.4.4 data 驱动时跳过节流
+
+// ⭐ v1.4.4 data 驱动重排：CC 开合/状态变化时，主屏 fg 的 layoutSubviews 可能
+//   不再触发（布局没变），导致辅助条 hidden 后迟迟不回来（许总："收回 CC 后
+//   辅助条消失，要等好几秒"）。根因实测：CC 关闭过渡动画期间主屏 fg 宽度在
+//   430/370 间抖动且 StringView 暂被移除（fgIsLive=NO），动画结束后系统不再
+//   触发布局 → 条没人放回。修：data 变化后【多档延迟重试】重排，直到条恢复。
+static void sbs_auxRelayoutFromData(void) {
+    static NSTimeInterval last = 0;
+    NSTimeInterval now = [NSDate date].timeIntervalSince1970;
+    if (now - last < 0.08) return;      // 去抖 80ms
+    last = now;
+    // 多档重试：立即 / 0.3s / 0.8s / 1.5s（覆盖 CC 过渡动画 0.5~1s 全周期）
+    for (int i = 0; i < 4; i++) {
+        NSTimeInterval delay = (i == 0 ? 0.0 : (i == 1 ? 0.3 : (i == 2 ? 0.8 : 1.5)));
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            UIView *fg = gActiveFG;
+            if (!fg) return;
+            gAuxForceRelayout = YES;    // 跳过节流
+            @try { sbs_auxLayoutInFG(fg); }
+            @catch (NSException *e) { sbs_log(@"[exc-auxRD] %@", e); }
+        });
+    }
+}
 // ⭐ v1.4.2 系统原生图标捕获表：hook viewForIdentifier: 时记下系统自己渲染的
 //   item 视图 image（CC 迷你状态栏/锁屏等场景系统会创建这些视图）。
 //   许总要求"用系统自身的图标，参考 CC 状态栏那个"——捕获到的系统图 100% 同款，
@@ -680,18 +709,22 @@ static void sbs_auxRefresh(void) {
 //    同步布局死循环 → autorelease 池不排空 → SB 内存 10 秒涨 4GB → Jetsam。
 static void sbs_auxLayoutInFG(UIView *fg) {
     if (!gAuxEnabled || !gAuxStrip) { if (gStrip && !gStrip.hidden) gStrip.hidden = YES; return; }
-    if (!sbs_fgIsLive(fg)) return;            // 非活动 fg 不托管不搬动
-    // ⭐⭐ v1.4.2 关键修复：只托管【全屏宽度】的 fg。
+    // ⭐⭐ v1.4.2 关键修复：只托管【全屏宽度】的 fg（先做，优先级最高）。
     //    实测假岛根因：CC/Spotlight 窗口的迷你状态栏 fg 宽 361（≠屏宽 430），
-    //    其内部有类名含 Pill 且尺寸恰好 126×37 的居中视图 → 岛检测误命中
-    //    （对那个 fg 来说"居中"校验还真通过）→ 条偏移 35pt。
-    //    主屏/锁屏 fg 宽度 = 屏幕宽度；窗口化的 fg 一律不托管。
+    //    其内部有类名含 Pill 且尺寸恰好 126×37 的居中视图 → 岛检测误命中。
     CGFloat scrW = fg.window ? fg.window.bounds.size.width : [UIScreen mainScreen].bounds.size.width;
-    if (scrW > 0 && fabs(fg.bounds.size.width - scrW) > 1.0) return;
+    if (scrW > 0 && fabs(fg.bounds.size.width - scrW) > 1.0) return;   // 窗口化 fg（CC/Spotlight 迷你栏 361）
+    // ⭐ v1.4.4 关键：全屏宽度的 fg 就是主屏/锁屏状态栏，先记录（强引用），
+    //    即使下面 fgIsLive 暂时失败（CC 动画期间 StringView 被移除），
+    //    多档重试也能在动画结束后把它劫持回来。
+    gActiveFG = fg;
+    if (!sbs_fgIsLive(fg)) return;            // CC 动画期间 StringView 暂被移除，动画后多档重试恢复
     // ⭐ 节流 33ms（CC 动画每帧都调 layoutSubviews，封顶 30fps 防止任何残余循环）
+    //    data 驱动（sbs_auxRelayoutFromData）会先置 gAuxForceRelayout 跳过节流。
     static NSTimeInterval lastRun = 0;
     NSTimeInterval now = [NSDate date].timeIntervalSince1970;
-    if (now - lastRun < 0.033) return;
+    if (!gAuxForceRelayout && now - lastRun < 0.033) return;
+    gAuxForceRelayout = NO;
     lastRun = now;
     sbs_auxEnsureCreated();
     if (!gStrip) return;

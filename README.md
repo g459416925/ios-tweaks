@@ -16,7 +16,7 @@ https://g459416925.github.io/ios-tweaks/
 |---|---|---|
 | `com.xu.compactorfix` | 1.0.0 | **CompactorFix** — 把系统 UI 字体整体换成 Apple Watch 的 SF Compact |
 | `com.xu.screentimelocker16` | 5.2.0 | **ScreenTimeLocker16** — 让「屏幕使用时间」的 App 限额真正锁得住 |
-| `com.xu.statusbarscale` | 1.4.3 | **StatusBarScale** — 状态栏右侧图标缩放对齐 + 系统辅助图标条（灵动岛正下方居中） |
+| `com.xu.statusbarscale` | 1.4.4 | **StatusBarScale** — 状态栏右侧图标缩放对齐 + 系统辅助图标条（灵动岛正下方居中） |
 
 ### CompactorFix
 
@@ -135,3 +135,8 @@ git add -A && git commit -m "release: <包名> <版本>" && git push
 - **v1.4.3**：布局回正 —— 辅助图标条固定在**灵动岛正下方居中**
   （许总澄清：电话助手左右两侧放的是时间/电池/信号等主要元素，
   那些由系统原生渲染；辅助条本体就该在岛正下方）
+
+- **v1.4.4**：修复 CC 收起后辅助条要等几秒才显示 —— 实测根因：CC 关闭过渡动画
+  期间主屏 fg 宽度在 430/370 间抖动且 StringView 暂被移除（fgIsLive=NO），
+  动画结束后系统不再触发布局 → 条没人放回。修：记录活动 fg（强引用）+
+  data 变化驱动多档延迟重试（0/0.3/0.8/1.5s），条跟随 data 恢复立即回来
