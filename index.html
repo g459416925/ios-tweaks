@@ -68,8 +68,8 @@
     </tr>
     <tr>
       <td><code>com.xu.statusbarscale</code></td>
-      <td>1.4.2</td>
-      <td>StatusBarScale — 状态栏右侧图标缩放对齐 + 系统辅助图标（贴灵动岛左右两侧）</td>
+      <td>1.4.3</td>
+      <td>StatusBarScale — 状态栏右侧图标缩放对齐 + 系统辅助图标条（灵动岛正下方居中）</td>
     </tr>
   </table>
 
@@ -103,7 +103,7 @@
     <li>transform 不参与布局 → <b>间距与点击区域不受影响</b>；灵动岛展开自动跟随</li>
     <li><b>系统辅助图标</b>：用系统原生字形（hook 捕获系统 item 视图渲染图，
         兜底 Assets.car 的 Black_* 字形），状态源为 <code>_UIStatusBarData</code>，
-        <b>贴灵动岛左右两侧</b>（电话助手同款布局）显示 9pt 小图标，
+        <b>灵动岛正下方居中</b>显示 9pt 小图标，
         闹钟/勿扰/旋转锁/VPN/蓝牙 激活才显示，颜色跟随时间文字</li>
     <li><b>v1.4.1–1.4.2 稳定性</b>：全被动写 + 33ms 节流 + 宿主恒定（修 CC 开合
         Jetsam）；只托管全屏宽度 fg + 岛窗口坐标双校验 + 解锁补触发（修锁屏解锁后

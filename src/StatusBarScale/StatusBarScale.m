@@ -21,7 +21,7 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 
-#define SBS_VERSION @"1.4.2"
+#define SBS_VERSION @"1.4.3"
 #define SBS_LOG_PATH @"/var/mobile/Documents/sbs_log.txt"
 
 static BOOL    gEnabled = YES;
@@ -672,10 +672,9 @@ static void sbs_auxRefresh(void) {
     }
 }
 
-// 布局（v1.4.2 ⭐ 重构）：【贴灵动岛左右两侧】—— 电话助手 CallAssist 同款
-//（许总："电话助手把图标放在灵动岛左右两侧，图标出现的位置还是不对的"）。
-// 左半图标紧贴岛左缘向左排，右半图标紧贴岛右缘向右排，垂直与岛中线齐平。
-// 图标 9pt，颜色跟随时间文字；宿主恒定 fg.superview。
+// 布局（v1.4.3 ⭐ 回正）：【灵动岛正下方居中】—— 许总澄清：辅助图标条就该在岛正下方；
+//  电话助手左右两侧放的是时间/电池/信号这些主要元素（那些系统已原生渲染，不用我们做）。
+// 辅助条横向屏幕居中、垂直 = 岛底缘 + 1.5pt，图标 9pt，颜色跟随时间文字。
 // ⭐⭐ 全被动写：所有 frame/hidden/host 写入前先比对缓存，无变化不写。
 //    血泪教训：拉控制中心时布局回调每帧狂调，任何"写即失效"都会造成
 //    同步布局死循环 → autorelease 池不排空 → SB 内存 10 秒涨 4GB → Jetsam。
@@ -721,27 +720,20 @@ static void sbs_auxLayoutInFG(UIView *fg) {
         if (gStrip.superview && !gStrip.hidden) gStrip.hidden = YES;
         return;
     }
-    // —— 左右分堆：左侧 ceil(n/2)，右侧 floor(n/2) ——
+    // —— 单条水平居中：总宽 = n*isz + (n-1)*gap，x = (fgW-w)/2 ——
     NSInteger n = vis.count;
-    NSInteger nL = (n + 1) / 2;
     CGRect island = sbs_islandFrameInFG(fg);
     CGFloat gap = kAuxGap, isz = kAuxIconSize;
-    // 垂直：与岛垂直中线齐平
-    CGFloat cy = island.origin.y + island.size.height / 2.0 - isz / 2.0;
+    CGFloat w = n * isz + (n - 1) * gap;
+    // ⭐ 垂直 = 岛底缘 + 1.5pt；水平 = 屏幕居中
+    CGFloat x = (fgW - w) / 2.0;
+    CGFloat y = CGRectGetMaxY(island) + 1.5;
     // 每个图标的目标 frame（fg 坐标系）；先算好再统一被动写
     NSMutableDictionary<NSString *, NSValue *> *targets = [NSMutableDictionary dictionary];
-    CGFloat x;
-    // 左组：靠岛的最右，往左依次展开（vis[0..nL-1] 从左到右）
-    x = island.origin.x - gap - isz - (nL - 1) * (isz + gap);
-    for (NSInteger i = 0; i < nL; i++) {
-        targets[vis[i]] = [NSValue valueWithCGRect:CGRectMake(x, cy, isz, isz)];
-        x += isz + gap;
-    }
-    // 右组：紧贴岛右缘向右（vis[nL..n-1] 从左到右）
-    x = CGRectGetMaxX(island) + gap;
-    for (NSInteger i = nL; i < n; i++) {
-        targets[vis[i]] = [NSValue valueWithCGRect:CGRectMake(x, cy, isz, isz)];
-        x += isz + gap;
+    CGFloat cx = x;
+    for (NSString *ident in vis) {
+        targets[ident] = [NSValue valueWithCGRect:CGRectMake(cx, y, isz, isz)];
+        cx += isz + gap;
     }
     // ⭐ 宿主恒定 = fg.superview（v1.4.1 二分定位：clipsToBounds 条件换宿主会在
     //    CC 动画中抖动 → 每帧 add/remove → 同步布局死循环 → 内存 4GB → Jetsam）。

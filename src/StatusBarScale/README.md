@@ -1,6 +1,6 @@
 # StatusBarScale — 状态栏图标缩放对齐
 
-**包名** `com.xu.statusbarscale` · **版本** 1.4.2 · **宿主** 全部 UIKit App + SpringBoard
+**包名** `com.xu.statusbarscale` · **版本** 1.4.3 · **宿主** 全部 UIKit App + SpringBoard
 
 ## 解决什么问题
 

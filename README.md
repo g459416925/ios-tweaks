@@ -16,7 +16,7 @@ https://g459416925.github.io/ios-tweaks/
 |---|---|---|
 | `com.xu.compactorfix` | 1.0.0 | **CompactorFix** — 把系统 UI 字体整体换成 Apple Watch 的 SF Compact |
 | `com.xu.screentimelocker16` | 5.2.0 | **ScreenTimeLocker16** — 让「屏幕使用时间」的 App 限额真正锁得住 |
-| `com.xu.statusbarscale` | 1.4.2 | **StatusBarScale** — 状态栏右侧图标缩放对齐 + 系统辅助图标（贴灵动岛左右两侧） |
+| `com.xu.statusbarscale` | 1.4.3 | **StatusBarScale** — 状态栏右侧图标缩放对齐 + 系统辅助图标条（灵动岛正下方居中） |
 
 ### CompactorFix
 
@@ -65,15 +65,15 @@ https://g459416925.github.io/ios-tweaks/
   `Black_Bluetooth`（系统状态栏渲染用的就是这批原始字形）
 - 状态源 = `_UIStatusBarData`：hook `applyUpdate:` / `_applyUpdate:keys:`
   捕获数据对象（含保底：锁屏空 Entry 的 data 不覆盖主屏 data），实时驱动显隐
-- 位置：**贴灵动岛左右两侧**（电话助手 CallAssist 同款布局）——
-  左半图标右对齐岛左缘，右半图标左对齐岛右缘，垂直与岛中线齐平，9pt 小图标
+- 位置：**灵动岛正下方居中**（岛底缘 +1.5pt，岛位置运行时动态检测），
+  横向屏幕居中，9pt 小图标
 - 仅显示激活项：闹钟/勿扰/旋转锁/VPN/蓝牙（无状态时整条隐藏）；
   默认不显示定位（系统原生定位箭头已存在，避免重复）
 - 图标显隐与系统一致：蓝牙未连接设备时 Entry 不激活 → 不显示
 - **v1.4.0**：岛位置动态检测（类名 Aperture/Island/Pill + 尺寸/居中校验）；
   日志限流；默认去重 location
 - **v1.4.1**：修复 CC 开合触发 Jetsam —— 全被动写 + 33ms 节流 + 宿主恒定
-- **v1.4.2**：修复锁屏解锁后辅助条消失/位置偏移 ——
+- **v1.4.2**：修复锁屏解锁后辅助条消失/位置偏移（布局机制加固）——
   ①只托管全屏宽度的 fg（CC/Spotlight 窗口 fg 宽 361≠屏宽 430，其内部"伪居中"
   的 Pill 视图曾误判为岛 → 偏移 35pt）②岛候选再验窗口坐标居中（双保险）
   ③fg didMoveToWindow 补触发布局（解锁后劫持条回新宿主）
@@ -131,3 +131,7 @@ git add -A && git commit -m "release: <包名> <版本>" && git push
 ## 免责声明
 
 个人自用插件源，未经全面测试，仅供学习与自用。安装前请自行评估风险，刷机/变砖后果自负。
+
+- **v1.4.3**：布局回正 —— 辅助图标条固定在**灵动岛正下方居中**
+  （许总澄清：电话助手左右两侧放的是时间/电池/信号等主要元素，
+  那些由系统原生渲染；辅助条本体就该在岛正下方）
