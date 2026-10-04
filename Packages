@@ -238,6 +238,6 @@ Depends: mobilesubstrate
 Installed-Size: 95
 Tag: purpose::extension
 Filename: ./debs/StatusBarScale_1.4.5_iphoneos-arm64e.deb
-Size: 24802
-MD5sum: 8c1f543547621e0c4c06cc5a029ae65d
-SHA256: 7e88b2d3fccd53c2dee6dc553b8360ede833f91af46a1797f91c1146135337cb
+Size: 25252
+MD5sum: ed0ed4847d40fd4b2267f8a7708b973d
+SHA256: 66bc8b02d7cd79a03c8127fc0262b23abcbc2726d12c2d824bf747dbdfead116

@@ -484,10 +484,20 @@ static void sbs_auxSelfHealStart(void) {
             @try {
                 if (!gAuxEnabled || !gAuxStrip || !gStrip || !gActiveFG) return;
                 UIView *fg = gActiveFG;
-                if (!fg.window) return;              // fg 自己不在窗口（池里）→ 等它回来
+                // ⭐ v1.4.5 修正判据：条必须挂在 UIStatusBarWindow（常驻状态栏总窗口）。
+                //   不能用 gStrip.window != fg.window —— CC 打开时 fg 自身会被"借"进
+                //   CC 窗口，旧判据在 CC 期间恒为"没丢"，CC 收起时条跟着宿主销毁。
+                NSString *swCls = gStrip.window ? NSStringFromClass(gStrip.window.class) : @"";
+                NSString *fwCls = fg.window ? NSStringFromClass(fg.window.class) : @"";
                 BOOL stripLost = (!gStrip.superview || gStrip.hidden ||
-                                  gStrip.window != fg.window);
-                if (stripLost) {
+                                  [swCls containsString:@"ControlCenter"] ||
+                                  [swCls containsString:@"ReusePool"] ||
+                                  (![swCls containsString:@"UIStatusBarWindow"] &&
+                                   gStrip.superview));
+                // 只在 fg 自己在合法窗口时才重排（fg 被借进 CC 时重排会被门禁拒绝）
+                BOOL fgLegal = [fwCls containsString:@"UIStatusBarWindow"] &&
+                               !fg.window.isHidden;
+                if (stripLost && fgLegal) {
                     gAuxForceRelayout = YES;         // 强制跳过节流
                     sbs_auxLayoutInFG(fg);
                 }
@@ -746,14 +756,18 @@ static void sbs_auxRefresh(void) {
 //    同步布局死循环 → autorelease 池不排空 → SB 内存 10 秒涨 4GB → Jetsam。
 static void sbs_auxLayoutInFG(UIView *fg) {
     if (!gAuxEnabled || !gAuxStrip) { if (gStrip && !gStrip.hidden) gStrip.hidden = YES; return; }
-    // ⭐⭐ v1.4.5 前台门禁（第一优先）：备用 fg 池/隐藏窗口的 fg 一律不托管。
-    //    实测架构（窗口诊断）：UIStatusBarWindow(level 999) 是常驻状态栏总窗口
-    //    （主屏/App 的 fg 都在这里复用）；SBStatusBarReusePoolWindow(level 0,
-    //    hidden=1) 是备用 fg 池 —— 切 App 时旧 fg 被放回池里并最后布局一次，
-    //    若不拒绝它，条会被搬进隐藏窗口跟着消失（退出 App 后条消失几秒的根因）。
+    // ⭐⭐ v1.4.5 前台门禁（第一优先）：备用 fg 池/隐藏窗口/CC 窗口的 fg 一律不托管。
+    //    实测架构（窗口诊断）：
+    //    - UIStatusBarWindow(level 999) = 常驻状态栏总窗口（主屏/App 的 fg 复用）
+    //    - SBStatusBarReusePoolWindow(hidden=1) = 备用 fg 池（切 App 时旧 fg 被放回）
+    //    - SBControlCenterWindow = CC 窗口 —— CC 打开时主屏 fg 会被"借"进 CC 窗口，
+    //      若不拒绝，条被搬进 CC 窗口 → CC 收起时宿主销毁 → 条消失等恢复
+    //      （"下拉 CC 再收起后条消失几秒"的真正根因，[heal] 日志实证）
     UIWindow *sbWin = fg.window;
+    NSString *winCls = sbWin ? NSStringFromClass(sbWin.class) : @"";
     if (!sbWin || sbWin.isHidden ||
-        [NSStringFromClass(sbWin.class) containsString:@"ReusePool"]) return;
+        [winCls containsString:@"ReusePool"] ||
+        [winCls containsString:@"ControlCenter"]) return;
     // ⭐⭐ v1.4.2 关键修复：只托管【全屏宽度】的 fg。
     //    实测假岛根因：CC/Spotlight 窗口的迷你状态栏 fg 宽 361（≠屏宽 430），
     //    其内部有类名含 Pill 且尺寸恰好 126×37 的居中视图 → 岛检测误命中。

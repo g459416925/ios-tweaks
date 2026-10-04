@@ -60,3 +60,24 @@ python3 build_deb.py  # 打 .deb（版本自动取自源码 #define SBS_VERSION�
 - 部署后 2 次 sbreload 全成功，`sbs_log` 0 异常，CrashReporter 无新增；
 - 基线 vs 修改后 `_sb_measure.py` 对比：高度差 +1.00→−1.00、重心差 −1.66→−0.07；
 - hook 同时在 SpringBoard 与 Spotlight/各 App 内生效（Filter.Classes=UIApplication）。
+
+## 辅助条宿主架构（v1.4.x 系列实测）
+
+SpringBoard 有三个状态栏相关窗口，fg 会在其间被搬动：
+
+| 窗口 | level | 可见 | 角色 |
+|---|---|---|---|
+| `UIStatusBarWindow` | 999 | ✅ | 常驻状态栏总窗口（主屏/App fg 复用） |
+| `SBStatusBarReusePoolWindow` | 0 | hidden | 备用 fg 池（切 App 时旧 fg 回池并最后布局一次） |
+| `SBControlCenterWindow` | — | CC 期间 | CC 打开时主屏 fg 被**借**进此窗口 |
+
+辅助条为全局单例挂在 `fg.superview`，fg 被搬动条会跟着消失/搬错。三道防线：
+
+1. **前台门禁**：拒绝 hidden 窗口、类名含 `ReusePool`/`ControlCenter` 的窗口、
+   宽度≠屏宽（CC/Spotlight 迷你 fg 361≠430，内部是伪居中 Pill 假岛）的 fg；
+2. **多档重试**：data 变化 / didMoveToWindow 后 0/0.3/0.8/1.5s 强制重排（`gAuxForceRelayout` 跳节流）；
+3. **2s 定时自愈**：判据用**硬编码合法窗口名**（`UIStatusBarWindow`）而非
+   `gStrip.window != fg.window` —— CC 期间条和 fg 同在 CC 窗口，旧判据会误判"没丢"。
+
+验证口径：CC 开合全程 `stripWin=UIStatusBarWindow` 纹丝不动；CC 收回 / App 退出回主屏
+0.6s 内条已在位。

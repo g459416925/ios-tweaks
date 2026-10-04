@@ -146,3 +146,11 @@ git add -A && git commit -m "release: <包名> <版本>" && git push
   隐藏窗口跟着消失；回主屏后 fg 又不触发布局 → 没人搬回。修：前台门禁
   （拒绝隐藏窗口/ReusePool 池的 fg 托管条）+ didMoveToWindow 多档重试 +
   2s 定时自愈（条丢失/挂错窗口自动强制重排）
+
+- **v1.4.5 补**：修复主屏下拉 CC 再收回后条延迟数秒（复发）—— 日志实锤第二个窗口架构：
+  CC 打开时主屏 fg 被**借**进 `SBControlCenterWindow`，条（挂在 fg.superview）跟着
+  搬进 CC 窗口；CC 收起时该宿主被销毁 → 条消失，等几秒才被搬回 UIStatusBarWindow。
+  旧自愈判据 `gStrip.window != fg.window` 失效（CC 期间条和 fg 同在 CC 窗口，误判
+  "没丢"）。修：门禁加拒绝 `ControlCenter` 窗口（与 ReusePool 同待遇）；自愈判据改
+  硬编码合法窗口（`UIStatusBarWindow`）+ fg 合法性检查。实测 CC 开合全程
+  `stripWin=UIStatusBarWindow` 纹丝不动，收回 0.6s 内条已在位
