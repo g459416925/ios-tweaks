@@ -16,7 +16,7 @@ https://g459416925.github.io/ios-tweaks/
 |---|---|---|
 | `com.xu.compactorfix` | 1.0.0 | **CompactorFix** — 把系统 UI 字体整体换成 Apple Watch 的 SF Compact |
 | `com.xu.screentimelocker16` | 5.2.0 | **ScreenTimeLocker16** — 让「屏幕使用时间」的 App 限额真正锁得住 |
-| `com.xu.statusbarscale` | 1.3.0 | **StatusBarScale** — 状态栏右侧图标缩放对齐 + 系统辅助图标条（灵动岛下方居中） |
+| `com.xu.statusbarscale` | 1.4.1 | **StatusBarScale** — 状态栏右侧图标缩放对齐 + 系统辅助图标条（灵动岛下方居中） |
 
 ### CompactorFix
 
@@ -57,15 +57,24 @@ https://g459416925.github.io/ios-tweaks/
 - ⚠️ RootHide 坑：SSH 部署该配置**必须**走
   `/rootfs/private/var/mobile/Library/Preferences/`（不带前缀是影子目录）
 
-**v1.1–1.3 新增：系统辅助图标条**
+**v1.1–1.4 新增：系统辅助图标条**
 
 - 直接使用**系统自带图标包**（UIKitCore `Artwork.bundle/Assets.car` 的
-  `Black_Alarm` / `Black_Location` / `Black_QuietMode` / `Black_RotationLock` /
+  `Black_Alarm` / `Black_QuietMode` / `Black_RotationLock` /
   `Black_VPN` / `Black_Bluetooth` 原生字形），不依赖任何第三方图标包
 - 状态源 = `_UIStatusBarData`：hook `applyUpdate:` / `_applyUpdate:keys:`
-  捕获数据对象，实时读取 `alarmEntry` / `locationEntry` 等驱动的显隐
-- 位置：**灵动岛正下方居中**，9pt 小图标，颜色跟随时间文字，不碍眼
-- 仅显示激活项：闹钟/定位/勿扰/旋转锁/VPN/蓝牙（无状态时整条隐藏）
+  捕获数据对象，实时读取 `alarmEntry` / `quietModeEntry` / `rotationLockEntry` 等驱动的显隐
+- 位置：**灵动岛正下方居中**（运行时动态检测岛位置与高度），9pt 小图标，
+  颜色跟随时间文字，不碍眼
+- 仅显示激活项：闹钟/勿扰/旋转锁/VPN/蓝牙（无状态时整条隐藏）；
+  默认不显示定位（时间右侧系统原生定位箭头已存在，避免重复）
+- 图标显隐与系统一致：如蓝牙未连接任何设备时系统 Entry 本身不激活 → 不显示
+  （与 CC 顶部迷你状态栏行为一致）
+- **v1.4.0**：灵动岛位置动态检测（不再硬编码坐标）；日志限流（≤20 行/秒 +
+  2MB 文件上限）；默认去重 location
+- **v1.4.1**：修复控制中心开合触发 Jetsam 循环重启 —— 全被动写
+  （frame/hidden/host 未变化不写入）+ 33ms 节流 + 宿主恒定 `fg.superview`，
+  消除 CC 动画期间每帧 addSubview/removeFromSuperview 的同步布局死循环
 - ⚠️ RootHide 坑：dylib 内**绝不能出现完整 `/System/Library/...` 路径字面量** ——
   roothidepatch 会重定向该路径并破坏签名 → dyld `Invalid Page` 直接杀 SpringBoard。
   必须运行时拼接（`/System` + `/Library` + ...）绕过字符串扫描

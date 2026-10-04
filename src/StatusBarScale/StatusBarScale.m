@@ -21,7 +21,7 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 
-#define SBS_VERSION @"1.3.0"
+#define SBS_VERSION @"1.4.1"
 #define SBS_LOG_PATH @"/var/mobile/Documents/sbs_log.txt"
 
 static BOOL    gEnabled = YES;
@@ -33,6 +33,8 @@ static int     gDidDump = 0;
 // 辅助图标（系统原生 item 强制启用，参照电话助手排列）
 static BOOL         gAuxEnabled = YES;
 static NSArray<NSString *> *gAuxIcons = nil;   // 标识集合（小写）
+static BOOL         gAuxStrip = YES;              // 二分开关：条+岛扫描
+static BOOL         gAuxData  = YES;              // 二分开关：applyUpdate 数据钩子
 // 辅助条外观：灵动岛下方居中，小尺寸不碍眼
 static const CGFloat kAuxIconSize = 9.0;        // 图标边长（points）
 static const CGFloat kAuxGap      = 4.0;        // 图标间距
@@ -47,6 +49,21 @@ static CGAffineTransform sbs_targetTransform(void) {
 
 static void sbs_log(NSString *fmt, ...) NS_FORMAT_FUNCTION(1, 2);
 static void sbs_log(NSString *fmt, ...) {
+    // ⭐ 限流（v1.4.0 血泪教训：探针每秒几千次写日志 → 日志 150MB +
+    //    SpringBoard 内存 5.5GB → Jetsam 循环杀进程 = 许总看到的"下拉就 respring"）
+    static NSTimeInterval windowStart = 0, lastWrite = 0;
+    static int dropped = 0;
+    NSTimeInterval now = [NSDate date].timeIntervalSince1970;
+    if (windowStart == 0) windowStart = now;
+    if (now - windowStart >= 5.0) {
+        if (dropped > 0) {
+            NSString *s = [NSString stringWithFormat:@"[限流] 5s 丢弃 %d 条日志\n", dropped];
+            [s writeToFile:SBS_LOG_PATH atomically:YES encoding:NSUTF8StringEncoding error:nil];
+        }
+        windowStart = now; dropped = 0;
+    }
+    if (now - lastWrite < 0.05) { dropped++; return; }   // ≤20 行/秒
+    lastWrite = now;
     va_list ap; va_start(ap, fmt);
     NSString *body = [[NSString alloc] initWithFormat:fmt arguments:ap];
     va_end(ap);
@@ -59,6 +76,15 @@ static void sbs_log(NSString *fmt, ...) {
     NSString *line = [NSString stringWithFormat:@"%@ [%@/%d] %@\n",
                       [df stringFromDate:[NSDate date]],
                       [[NSProcessInfo processInfo] processName], getpid(), body];
+    // 文件超 2MB 归零（保险丝）
+    static int writes = 0;
+    if ((++writes & 0x3F) == 0) {
+        NSDictionary *attr = [NSFileManager.defaultManager
+            attributesOfItemAtPath:SBS_LOG_PATH error:nil];
+        if ([attr fileSize] > 2 * 1024 * 1024) {
+            [NSFileManager.defaultManager removeItemAtPath:SBS_LOG_PATH error:nil];
+        }
+    }
     NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:SBS_LOG_PATH];
     if (!fh) {
         [line writeToFile:SBS_LOG_PATH atomically:YES encoding:NSUTF8StringEncoding error:nil];
@@ -81,13 +107,18 @@ static void sbs_loadConfig(void) {
         if ((n = d[@"verbose"])   && [n isKindOfClass:[NSNumber class]]) gVerbose = n.boolValue;
     }
     if (gScale < 0.3f || gScale > 2.0f) gScale = 0.92f;   // 防呆
-    // 辅助图标配置：默认 = 电话助手的辅助图标集合（系统原生标识）
-    if (!gAuxIcons) gAuxIcons = @[@"alarm", @"location", @"quietMode",
+    // 辅助图标配置：默认 = 系统状态栏【没有】原生显示的项。
+    // ⚠️ location 不放默认集：系统已在时间旁渲染原生定位箭头，重复显示（许总反馈）。
+    if (!gAuxIcons) gAuxIcons = @[@"alarm", @"quietMode",
                                   @"rotationLock", @"vpn", @"bluetooth"];
     if (d) {
         NSNumber *n;
         if ((n = d[@"auxEnabled"]) && [n isKindOfClass:[NSNumber class]])
             gAuxEnabled = n.boolValue;
+        if ((n = d[@"auxStrip"]) && [n isKindOfClass:[NSNumber class]])
+            gAuxStrip = n.boolValue;
+        if ((n = d[@"auxData"]) && [n isKindOfClass:[NSNumber class]])
+            gAuxData = n.boolValue;
         NSArray *arr = d[@"auxIcons"];
         if ([arr isKindOfClass:[NSArray class]] && arr.count) {
             NSMutableArray *m = [NSMutableArray array];
@@ -208,8 +239,12 @@ static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
 - (void)sbs_fgLayoutSubviews {
     [self sbs_fgLayoutSubviews];          // 原实现
     @try {
-        sbs_dumpOnce((UIView *)self);
-        sbs_dumpOnChange((UIView *)self);
+        // ⛔ dump 探针仅 verbose 模式（v1.3.0 血泪教训：控制中心动画时 subviews
+        //    每帧变化 → dump 风暴 → 日志 150MB + SB 内存 5.5GB → Jetsam 循环重启）
+        if (gVerbose) {
+            sbs_dumpOnce((UIView *)self);
+            sbs_dumpOnChange((UIView *)self);
+        }
         sbs_apply((UIView *)self);
     } @catch (NSException *e) {
         sbs_log(@"[exc] %@", e);
@@ -370,6 +405,7 @@ static void sbs_setGData(id d) {
 
 static UIView       *gStrip = nil;                       // 辅助图标条容器
 static NSMutableDictionary<NSString *, UIImageView *> *gAuxViews = nil;
+static NSMutableDictionary<NSString *, NSString *>   *gAuxKeys  = nil;  // ident→"xxxEntry"（预计算，refresh 零分配）
 
 // 标识 → (car 字形候选[], SF Symbol 兜底)
 static NSArray *sbs_auxSpec(NSString *ident) {
@@ -428,19 +464,14 @@ static UIImage *sbs_auxImage(NSString *ident) {
     return nil;
 }
 
-// 建条：全局只建一次；fg 重建时把同一条移过去（不重建，避免 0.2s 内重建 16 次的抖动）
-static void sbs_auxEnsureInFG(UIView *fg) {
-    if (!gAuxEnabled || !gAuxIcons.count) return;
-    if (gStrip) {
-        if (gStrip.superview == fg) return;
-        [gStrip removeFromSuperview];
-        [fg addSubview:gStrip];               // 移动复用，图标/状态全保留
-        return;
-    }
+// 建条：全局只建一次（不挂载——宿主 fg 或其父容器由布局按灵动岛位置决定）
+static void sbs_auxEnsureCreated(void) {
+    if (!gAuxEnabled || !gAuxIcons.count || gStrip) return;
     gStrip = [[UIView alloc] initWithFrame:CGRectZero];
     gStrip.userInteractionEnabled = NO;
     gStrip.backgroundColor = nil;
     gAuxViews = [NSMutableDictionary dictionary];
+    gAuxKeys  = [NSMutableDictionary dictionary];
     CGFloat x = 0;
     for (NSString *ident in gAuxIcons) {
         UIImage *im = sbs_auxImage(ident);
@@ -453,9 +484,9 @@ static void sbs_auxEnsureInFG(UIView *fg) {
         iv.hidden = YES;
         [gStrip addSubview:iv];
         gAuxViews[ident.lowercaseString] = iv;
+        gAuxKeys[ident.lowercaseString]  = [NSString stringWithFormat:@"%@Entry", ident];
         x += kAuxIconSize + kAuxGap;
     }
-    [fg addSubview:gStrip];
     sbs_log(@"[aux] 条已创建 icons=%lu size=%.0f", (unsigned long)gAuxViews.count, kAuxIconSize);
 }
 
@@ -470,11 +501,62 @@ static BOOL sbs_fgIsLive(UIView *fg) {
     return NO;
 }
 
-// Entry → 是否激活（多形态兼容；未知形态打一次样本日志）
+// ⭐ 灵动岛检测（v1.4.0，许总要求"读取灵动岛的位置和高度"）。
+// 灵动岛不是 _UIStatusBarForegroundView 的子视图（dump 证实），是 SystemAperture
+// 家族的独立视图。从 fg 向上爬 ≤4 层，在每层兄弟子树里按类名找（深度 ≤2）。
+static CGRect sbs_findIslandRect(UIView *v, int depth, UIView *target) {
+    if (!v || depth < 0) return CGRectZero;
+    NSString *cn = NSStringFromClass(v.class);
+    if ([cn containsString:@"Aperture"] || [cn containsString:@"Island"] ||
+        [cn containsString:@"Pill"]) {
+        CGRect f = [v convertRect:v.bounds toView:target];
+        CGFloat w = f.size.width, h = f.size.height;
+        if (w >= 70 && w <= 240 && h >= 20 && h <= 70) return f;   // 胶囊尺寸校验
+    }
+    for (UIView *s in v.subviews) {
+        CGRect r = sbs_findIslandRect(s, depth - 1, target);
+        if (!CGRectIsEmpty(r)) return r;
+    }
+    return CGRectZero;
+}
+
+static CGRect sbs_islandFrameInFG(UIView *fg) {
+    // 缓存 2s（每帧递归扫视图树太贵）；static 默认零初始化 = 无缓存
+    static CGRect cached;
+    static NSTimeInterval at;
+    NSTimeInterval now = [NSDate date].timeIntervalSince1970;
+    if (!CGRectIsEmpty(cached) && now - at < 2.0) return cached;
+    UIView *node = fg;
+    CGRect found = CGRectZero;
+    for (int up = 0; up < 4 && node.superview && CGRectIsEmpty(found); up++) {
+        UIView *parent = node.superview;
+        for (UIView *sib in parent.subviews) {
+            if (sib == node || sib == gStrip) continue;
+            found = sbs_findIslandRect(sib, 2, fg);
+            if (!CGRectIsEmpty(found)) break;
+        }
+        node = parent;
+    }
+    if (CGRectIsEmpty(found)) {
+        // 兜底：14 Pro Max 已知几何（居中 宽126 top11 高37 → 底缘48）
+        CGFloat fw = fg.bounds.size.width;
+        found = CGRectMake((fw - 126.0) / 2.0, 11.0, 126.0, 37.0);
+    }
+    cached = found; at = now;
+    sbs_logIdentOnce(@"island", NSStringFromCGRect(found));
+    return found;
+}
+
+// Entry → 是否激活。
+// 实测语义（v1.4.0 修正）：Entry **关闭时为 nil，开启时才非 nil** 的项：
+//   rotationLock / quietMode（KVC enabled 键不适用）；
+//   恒存在 + enabled 标志的项：alarm / vpn / location / bluetooth。
+// 故：nil → 关；非 nil → 先试已知键，**都不匹配则视为开启**（存在即显示）。
 static BOOL sbs_entryActive(id entry, NSString *ident) {
     if (!entry) return NO;
     if ([entry isKindOfClass:[NSNumber class]]) return [(NSNumber *)entry boolValue];
-    for (NSString *k in (@[@"visible", @"isVisible", @"shown", @"active", @"enabled"])) {
+    for (NSString *k in (@[@"enabled", @"visible", @"isVisible", @"showing",
+                           @"active", @"on", @"state"])) {
         @try {
             id v = [entry valueForKey:k];
             if ([v isKindOfClass:[NSNumber class]]) {
@@ -484,33 +566,44 @@ static BOOL sbs_entryActive(id entry, NSString *ident) {
             }
         } @catch (__unused NSException *e) {}
     }
-    sbs_logIdentOnce(@"entry", [NSString stringWithFormat:@"%@ 样本 %@(%@)",
-        ident, NSStringFromClass([entry class]), entry]);
-    return NO;
+    sbs_logIdentOnce(@"entry", [NSString stringWithFormat:@"%@ 无键匹配→按开启 (%@)",
+        ident, NSStringFromClass([entry class])]);
+    return YES;   // 非 nil 但没有布尔键 → 存在即激活
 }
 
 // 读 _UIStatusBarData 各 Entry → 驱动图标显隐
+// ⭐ 被动式：只在 hidden 值真正变化时才写 iv.hidden（防止写操作触发重布局 → 循环）
 static void sbs_auxRefresh(void) {
     if (!gAuxEnabled || !gAuxViews.count) return;
     id data = sbs_gData();
     if (!data) return;
     for (NSString *ident in gAuxViews) {
-        NSString *key = [NSString stringWithFormat:@"%@Entry", ident];
-        id entry = nil;
-        @try { entry = [data valueForKey:key]; } @catch (__unused NSException *e) {}
         UIImageView *iv = gAuxViews[ident];
-        iv.hidden = !sbs_entryActive(entry, ident);
+        id entry = nil;
+        @try { entry = [data valueForKey:gAuxKeys[ident]]; } @catch (__unused NSException *e) {}
+        BOOL active = sbs_entryActive(entry, ident);
+        if (iv.hidden == !active) continue;      // 无变化不写
+        iv.hidden = !active;
     }
 }
 
-// 布局：条放灵动岛正下方居中（许总指定），图标缩小到 9pt，颜色跟随时间文字
+// 布局：条放【灵动岛正下方居中】——动态读取灵动岛 frame（v1.4.0），
+// 图标 9pt，颜色跟随时间文字；越出 fg 边界时自动换宿主到 fg.superview。
+// ⭐⭐ 全被动写（v1.4.1）：所有 frame/hidden/host 写入前先比对缓存，无变化不写。
+//    血泪教训：拉控制中心时布局回调每帧狂调，任何"写即失效"都会造成
+//    同步布局死循环 → autorelease 池不排空 → SB 内存 10 秒涨 4GB → Jetsam。
 static void sbs_auxLayoutInFG(UIView *fg) {
-    if (!gAuxEnabled) { if (gStrip) gStrip.hidden = YES; return; }
+    if (!gAuxEnabled || !gAuxStrip) { if (gStrip && !gStrip.hidden) gStrip.hidden = YES; return; }
     if (!sbs_fgIsLive(fg)) return;            // 非活动 fg 不托管不搬动
-    sbs_auxEnsureInFG(fg);
-    if (!gStrip || gStrip.superview != fg) return;
+    // ⭐ 节流 33ms（CC 动画每帧都调 layoutSubviews，封顶 30fps 防止任何残余循环）
+    static NSTimeInterval lastRun = 0;
+    NSTimeInterval now = [NSDate date].timeIntervalSince1970;
+    if (now - lastRun < 0.033) return;
+    lastRun = now;
+    sbs_auxEnsureCreated();
+    if (!gStrip) return;
     sbs_auxRefresh();
-    // 颜色跟随时间文字
+    // 颜色跟随时间文字（只在色值变化时写）
     UIColor *tint = nil;
     for (UIView *v in fg.subviews) {
         if ([NSStringFromClass(v.class) containsString:@"StringView"]) {
@@ -518,7 +611,11 @@ static void sbs_auxLayoutInFG(UIView *fg) {
             if ([l respondsToSelector:@selector(textColor)]) { tint = l.textColor; break; }
         }
     }
-    for (UIImageView *iv in gAuxViews.allValues) iv.tintColor = tint ?: UIColor.whiteColor;
+    static UIColor *lastTint = nil;
+    if (tint != lastTint) {
+        for (UIImageView *iv in gAuxViews.allValues) iv.tintColor = tint ?: UIColor.whiteColor;
+        lastTint = tint;
+    }
     // 统计可见图标 → 总宽
     NSInteger n = 0;
     for (NSString *ident in gAuxIcons) {
@@ -526,19 +623,46 @@ static void sbs_auxLayoutInFG(UIView *fg) {
         if (iv && !iv.hidden) n++;
     }
     CGFloat fgW = fg.bounds.size.width;
-    CGFloat fgH = fg.bounds.size.height;
-    if (n <= 0 || fgW <= 0) { gStrip.hidden = YES; return; }
-    gStrip.hidden = NO;
+    if (n <= 0 || fgW <= 0) {
+        if (gStrip.superview && !gStrip.hidden) gStrip.hidden = YES;
+        return;
+    }
     CGFloat w = n * kAuxIconSize + (n - 1) * kAuxGap;
-    CGFloat x = (fgW - w) / 2.0;              // 水平居中
-    CGFloat y = fgH - kAuxIconSize - 1.0;     // 贴底 = 灵动岛正下方（fg 高 54 → y=44）
-    gStrip.frame = CGRectMake(x, y, w, kAuxIconSize);
+    // ⭐ 垂直 = 灵动岛底缘 + 1.5pt（动态读取，实测底缘 48）；水平 = 屏幕居中
+    CGRect island = sbs_islandFrameInFG(fg);
+    CGFloat x = (fgW - w) / 2.0;
+    CGFloat y = CGRectGetMaxY(island) + 1.5;
+    // ⭐ 宿主恒定 = fg.superview（v1.4.1 二分定位：clipsToBounds 条件换宿主会在
+    //    CC 动画中抖动 → 每帧 add/remove → 同步布局死循环 → 内存 4GB → Jetsam）。
+    //    父容器不裁剪、层级更高，条固定放那里，坐标用 convertRect 换算。
+    UIView *host = fg.superview ?: fg;
+    CGRect f = [fg convertRect:CGRectMake(x, y, w, kAuxIconSize) toView:host];
+    // —— 被动写：宿主/几何任一变化才动手 ——
+    static void  *lastHost  = nil;
+    static CGRect lastFrame = {{0,0},{0,0}};
+    static BOOL   lastShown = NO;
+    BOOL shown = YES;
+    if ((__bridge UIView *)lastHost == host && gStrip.superview == host &&
+        CGRectEqualToRect(f, lastFrame) && lastShown == shown && !gStrip.hidden) {
+        return;                               // 一切没变 → 一个字都不写
+    }
+    if (gStrip.superview != host) {
+        [gStrip removeFromSuperview];
+        [host addSubview:gStrip];
+    }
+    gStrip.frame = f;
+    gStrip.hidden = NO;
+    lastHost = (__bridge void *)host;
+    lastFrame = f;
+    lastShown = shown;
     // 从左往右排可见图标（保持 gAuxIcons 声明顺序）
     CGFloat cx = 0;
     for (NSString *ident in gAuxIcons) {
         UIImageView *iv = gAuxViews[ident.lowercaseString];
         if (!iv || iv.hidden) continue;
-        iv.frame = CGRectMake(cx, 0, kAuxIconSize, kAuxIconSize);
+        CGRect old = iv.frame;
+        CGRect nf = CGRectMake(cx, 0, kAuxIconSize, kAuxIconSize);
+        if (!CGRectEqualToRect(old, nf)) iv.frame = nf;
         cx += kAuxIconSize + kAuxGap;
     }
 }
@@ -636,26 +760,29 @@ static void sbs_installAux(void) {
         // ⭐ 状态源 hook：_UIStatusBarData 的 applyUpdate 系列。
         // 这是状态栏数据每次更新的真实入口，必须 hook 它来捕获 data 并驱动辅助条刷新。
         // （此前只 hook canEnableDisplayItem 但该路径 SpringBoard 不常走 → data 一直为空）
-        Class D = objc_getClass("_UIStatusBarData");
-        if (D) {
-            // 探测签名（applyUpdate: 与 _applyUpdate:keys:）
-            Method m1 = class_getInstanceMethod(D, @selector(applyUpdate:));
-            Method m2 = class_getInstanceMethod(D, @selector(_applyUpdate:keys:));
-            sbs_log(@"[dataU] applyUpdate: 签名 = %s",
-                    m1 ? method_getTypeEncoding(m1) : "(无)");
-            sbs_log(@"[dataU] _applyUpdate:keys: 签名 = %s",
-                    m2 ? method_getTypeEncoding(m2) : "(无)");
-            // 优先 hook 底层 _applyUpdate:keys:（每次状态更新必调，签名 v32@0:8@16@24）
-            if (m2) {
-                BOOL ok = SBSHook(D, @selector(_applyUpdate:keys:),
-                                  SBSHelper.class, @selector(sbs_dataApplyUpdateKeys:keys:));
-                sbs_log(@"[hook] _applyUpdate:keys: → %@", ok ? @"已安装" : @"失败");
-            }
-            // 兜底 hook applyUpdate:
-            if (m1) {
-                BOOL ok = SBSHook(D, @selector(applyUpdate:),
-                                  SBSHelper.class, @selector(sbs_dataApplyUpdate:));
-                sbs_log(@"[hook] applyUpdate: → %@", ok ? @"已安装" : @"失败");
+        // 二分开关 auxData=NO 时跳过（排查内存问题用）
+        if (gAuxData) {
+            Class D = objc_getClass("_UIStatusBarData");
+            if (D) {
+                // 探测签名（applyUpdate: 与 _applyUpdate:keys:）
+                Method m1 = class_getInstanceMethod(D, @selector(applyUpdate:));
+                Method m2 = class_getInstanceMethod(D, @selector(_applyUpdate:keys:));
+                sbs_log(@"[dataU] applyUpdate: 签名 = %s",
+                        m1 ? method_getTypeEncoding(m1) : "(无)");
+                sbs_log(@"[dataU] _applyUpdate:keys: 签名 = %s",
+                        m2 ? method_getTypeEncoding(m2) : "(无)");
+                // 优先 hook 底层 _applyUpdate:keys:（每次状态更新必调，签名 v32@0:8@16@24）
+                if (m2) {
+                    BOOL ok = SBSHook(D, @selector(_applyUpdate:keys:),
+                                      SBSHelper.class, @selector(sbs_dataApplyUpdateKeys:keys:));
+                    sbs_log(@"[hook] _applyUpdate:keys: → %@", ok ? @"已安装" : @"失败");
+                }
+                // 兜底 hook applyUpdate:
+                if (m1) {
+                    BOOL ok = SBSHook(D, @selector(applyUpdate:),
+                                      SBSHelper.class, @selector(sbs_dataApplyUpdate:));
+                    sbs_log(@"[hook] applyUpdate: → %@", ok ? @"已安装" : @"失败");
+                }
             }
         }
     } @catch (NSException *e) {
