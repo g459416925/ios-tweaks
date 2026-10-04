@@ -7,8 +7,8 @@ Architectures: iphoneos-arm64e iphoneos-arm64 iphoneos-arm
 Components: main
 Description: Personal iOS tweak repository (RootHide / arm64e)
 MD5Sum:
- ed47c56771ad67b52d7524c293c21e22 2171 Packages
- 4cdcdf2daa54fa68a5a93a4ac403d43a 1455 Packages.bz2
+ 1d4917f491e7b38e0b43bb83a92158d1 3537 Packages
+ 48f74c29a714be47c21475ac53774c28 2116 Packages.bz2
 SHA256:
- 80f8c4abed2373a14eecf06c80519255a648adef69794b5ca88f9bb5fea267ba 2171 Packages
- 89a499c8bbc6638b3daababcfc3bf4b3015c2b4b7b7904a44eef281544617d58 1455 Packages.bz2
+ e14c01f728602c91c74251a39d0df6ff4d5dd6ee7de78fd9fe82aefc99fff015 3537 Packages
+ 04d56f940a16a70a872f4832c74640ae0b7601b790cec99ff9a0d02ffb1bced1 2116 Packages.bz2

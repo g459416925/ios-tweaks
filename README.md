@@ -16,6 +16,7 @@ https://g459416925.github.io/ios-tweaks/
 |---|---|---|
 | `com.xu.compactorfix` | 1.0.0 | **CompactorFix** — 把系统 UI 字体整体换成 Apple Watch 的 SF Compact |
 | `com.xu.screentimelocker16` | 5.2.0 | **ScreenTimeLocker16** — 让「屏幕使用时间」的 App 限额真正锁得住 |
+| `com.xu.statusbarscale` | 1.0.0 | **StatusBarScale** — 状态栏右侧图标缩放对齐（与时间等高、重心对齐） |
 
 ### CompactorFix
 
@@ -40,6 +41,22 @@ https://g459416925.github.io/ios-tweaks/
 不隐藏任何原生按钮，「请求更多使用时间」照常保留。
 宿主进程 `SpringBoard`；依赖 `mobilesubstrate`（ellekit 已 `Provides`）。
 
+### StatusBarScale
+
+灵动岛机型状态栏右侧图标与左侧时间不对齐（14 Pro Max / iOS 16.5.1 实测：
+图标墨迹高 13–14px vs 时间 12px，重心偏高 1.66px）。本插件 hook
+`_UIStatusBarForegroundView -layoutSubviews`，对灵动岛右侧图标施加
+**绕中心缩放 0.92 + 下移 1.7pt**：
+
+- 实测：图标高度 13→12（=时间），重心差 **−1.66 → −0.07px**
+- `transform` 不参与 frame 布局 → 间距、点击区域完全不受影响
+- 灵动岛展开/收起自动跟随（每次布局后重设，幂等）
+- 配置 `/var/mobile/Library/Preferences/com.xu.statusbarscale.plist`：
+  `enabled` / `scale` / `dy` / `threshold`（改后 respring）
+- 注入全部 UIKit App + SpringBoard（`Filter.Classes = ["UIApplication"]`）
+- ⚠️ RootHide 坑：SSH 部署该配置**必须**走
+  `/rootfs/private/var/mobile/Library/Preferences/`（不带前缀是影子目录）
+
 ## 目录结构
 
 ```
@@ -56,14 +73,15 @@ ios-tweaks/
 │   └── docs/                           # 各版本改动与实机验证记录
 ├── src/ScreenTimeLocker16/             # 屏幕使用时间锁（宿主 SpringBoard）
 ├── src/CompactorFix/                   # 系统字体换 SF Compact（宿主 全 UIKit App）
+├── src/StatusBarScale/                 # 状态栏图标缩放对齐（宿主 全 UIKit App）
 └── tools/gen_repo.py                   # 扫描 debs/ 重建 APT 索引
 ```
 
 ## 发布新版本
 
 ```bash
-# 以 <包名> 为 ScreenTimeLocker16 / CompactorFix 之一
-# 1. 改 src/<包名>/<包名>.m 里的版本宏（ScreenTimeLocker16=STL_VERSION；CompactorFix=CF_VERSION）
+# 以 <包名> 为 ScreenTimeLocker16 / CompactorFix / StatusBarScale 之一
+# 1. 改 src/<包名>/<包名>.m 里的版本宏（ScreenTimeLocker16=STL_VERSION；CompactorFix=CF_VERSION；StatusBarScale=SBS_VERSION）
 # 2. 交叉编译并签名，产出 <包名>.signed.dylib（同时会部署到手机；见脚本内说明）
 cd src/<包名> && ./build_deploy.sh && cd ../..
 # 3. 打包 deb（版本号自动读取源码，无需手填）

@@ -66,6 +66,11 @@
       <td>5.2.0</td>
       <td>ScreenTimeLocker16 — 让「屏幕使用时间」的 App 限额真正锁得住</td>
     </tr>
+    <tr>
+      <td><code>com.xu.statusbarscale</code></td>
+      <td>1.0.0</td>
+      <td>StatusBarScale — 状态栏右侧图标缩放对齐（与时间等高、重心对齐）</td>
+    </tr>
   </table>
 
   <h2>CompactorFix</h2>
@@ -88,6 +93,20 @@
   </ol>
   <p class="sub" style="margin-top:14px">
     不隐藏任何原生按钮，「请求更多使用时间」照常保留。宿主进程 SpringBoard。
+  </p>
+
+  <h2>StatusBarScale</h2>
+  <ol>
+    <li>灵动岛右侧图标比时间<b>大一号且重心偏高 1.66px</b> —— 本插件缩放对齐</li>
+    <li>hook <code>_UIStatusBarForegroundView -layoutSubviews</code>，对右侧图标施加
+        <b>绕中心缩放 0.92 + 下移 1.7pt</b>（实测重心差 −1.66 → −0.07px）</li>
+    <li>transform 不参与布局 → <b>间距与点击区域不受影响</b>；灵动岛展开自动跟随</li>
+    <li>配置
+      <code>/var/mobile/Library/Preferences/com.xu.statusbarscale.plist</code>
+      （enabled / scale / dy / threshold，改后 respring）</li>
+  </ol>
+  <p class="sub" style="margin-top:14px">
+    注入全部 UIKit App + SpringBoard，主屏与 App 内状态栏观感一致。
   </p>
 
   <h2>索引文件</h2>
