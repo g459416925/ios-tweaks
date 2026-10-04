@@ -14,7 +14,19 @@ https://g459416925.github.io/ios-tweaks/
 
 | 包名 | 版本 | 说明 |
 |---|---|---|
+| `com.xu.compactorfix` | 1.0.0 | **CompactorFix** — 把系统 UI 字体整体换成 Apple Watch 的 SF Compact |
 | `com.xu.screentimelocker16` | 5.2.0 | **ScreenTimeLocker16** — 让「屏幕使用时间」的 App 限额真正锁得住 |
+
+### CompactorFix
+
+原版 *Compactor* 在 iOS 16 上"看起来没生效"，根因是**调用时机太晚**：
+它在 `_UIApplicationInitialize` 钩子里调用私有 API `CTFontSetAltTextStyleSpec()`，
+而此时字体子系统已初始化完毕。本版改在 **dyld 构造函数**（早于 `main`）里调用 → 实测生效。
+
+- 全部 `kCTFontUIFontType` 0..24 变为 `.SFCompact-*`；整屏 **13.07%** 像素变化
+- 注入到**全部 UIKit App + SpringBoard**（`Filter.Classes = ["UIApplication"]`）
+- ⚠️ **SF Compact 是拉丁系字体**：含拉丁/希腊/西里尔 1358 个码位，
+  **不含中日韩** → 中文仍回退**苹方 PingFang**，中文外观不变属**预期行为**
 
 ### ScreenTimeLocker16
 
@@ -32,29 +44,34 @@ https://g459416925.github.io/ios-tweaks/
 
 ```
 ios-tweaks/
+├── index.html                          # 源首页（Sileo 添加源步骤 + 插件说明）
 ├── Release / Packages / Packages.bz2   # APT 索引（由 tools/gen_repo.py 生成，勿手改）
 ├── debs/                               # 实际分发的 .deb
 ├── src/<包名>/                          # 插件源码 + 构建脚本 + docs
-│   ├── ScreenTimeLocker16.m            # 源码（版本号唯一来源：#define STL_VERSION）
-│   ├── ScreenTimeLocker16.plist        # 注入过滤（Bundles）
+│   ├── <包名>.m                        # 源码（版本号唯一来源：#define *_VERSION）
+│   ├── <包名>.plist                    # 注入过滤
 │   ├── build_deploy.sh                 # 交叉编译 + 签名 + 部署到设备
 │   ├── build_deb.py                    # 打 .deb（版本号自动取自源码）
+│   ├── README.md                       # 该插件的原理与构建说明
 │   └── docs/                           # 各版本改动与实机验证记录
+├── src/ScreenTimeLocker16/             # 屏幕使用时间锁（宿主 SpringBoard）
+├── src/CompactorFix/                   # 系统字体换 SF Compact（宿主 全 UIKit App）
 └── tools/gen_repo.py                   # 扫描 debs/ 重建 APT 索引
 ```
 
 ## 发布新版本
 
 ```bash
-# 1. 改 src/<包名>/<包名>.m 里的 #define STL_VERSION
+# 以 <包名> 为 ScreenTimeLocker16 / CompactorFix 之一
+# 1. 改 src/<包名>/<包名>.m 里的版本宏（ScreenTimeLocker16=STL_VERSION；CompactorFix=CF_VERSION）
 # 2. 交叉编译并签名，产出 <包名>.signed.dylib（同时会部署到手机；见脚本内说明）
-cd src/ScreenTimeLocker16 && ./build_deploy.sh && cd ../..
+cd src/<包名> && ./build_deploy.sh && cd ../..
 # 3. 打包 deb（版本号自动读取源码，无需手填）
-python3 src/ScreenTimeLocker16/build_deb.py
+/Users/xu/.workbuddy/binaries/python/versions/3.13.12/bin/python3 src/<包名>/build_deb.py
 # 4. 把产物丢进 debs/
-cp src/ScreenTimeLocker16/<产物>.deb debs/
+cp src/<包名>/<包名>_*_iphoneos-arm64e.deb debs/
 # 5. 重建 APT 索引
-python3 tools/gen_repo.py
+/Users/xu/.workbuddy/binaries/python/versions/3.13.12/bin/python3 tools/gen_repo.py
 # 6. 提交推送
 git add -A && git commit -m "release: <包名> <版本>" && git push
 ```

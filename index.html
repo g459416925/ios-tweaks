@@ -57,11 +57,27 @@
   <table>
     <tr><th>包名</th><th>版本</th><th>说明</th></tr>
     <tr>
+      <td><code>com.xu.compactorfix</code></td>
+      <td>1.0.0</td>
+      <td>CompactorFix — 把系统 UI 字体整体换成 Apple Watch 的 SF Compact</td>
+    </tr>
+    <tr>
       <td><code>com.xu.screentimelocker16</code></td>
       <td>5.2.0</td>
       <td>ScreenTimeLocker16 — 让「屏幕使用时间」的 App 限额真正锁得住</td>
     </tr>
   </table>
+
+  <h2>CompactorFix</h2>
+  <ol>
+    <li>原版 Compactor 失效是<b>调用时机太晚</b>，本版改在 <b>dyld 构造函数</b>里调用私有 API</li>
+    <li>实测：全部 UI 字体类型 <code>0..24</code> 变为 <code>.SFCompact-*</code>，整屏 13.07% 像素变化</li>
+    <li>注入到<b>全部 UIKit App + SpringBoard</b>（<code>Filter.Classes = UIApplication</code>）</li>
+  </ol>
+  <p class="sub" style="margin-top:14px">
+    ⚠️ SF Compact 是<b>拉丁系</b>字体（拉丁/希腊/西里尔，共 1358 码位），
+    <b>不含中日韩</b> → 中文仍回退<b>苹方 PingFang</b>，中文外观不变属<b>预期行为</b>。
+  </p>
 
   <h2>ScreenTimeLocker16</h2>
   <ol>

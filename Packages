@@ -1,3 +1,28 @@
+Package: com.xu.compactorfix
+Name: CompactorFix
+Version: 1.0.0
+Architecture: iphoneos-arm64e
+Description: 把系统 UI 字体整体切换成 Apple Watch 的 SF Compact。
+ 原版 Compactor 失效的根因是「调用时机太晚」——它在 UIKit 的
+ _UIApplicationInitialize 钩子里调用私有 API CTFontSetAltTextStyleSpec()，
+ 此时字体子系统已初始化完毕，改了也没用。
+ 本版在 dyld 构造函数（早于 main）里调用 → 实测生效，全部 UI 字体类型
+ 0..24 均变为 .SFCompact-*。
+ 注意 SF Compact 是拉丁系字体：含拉丁/希腊/西里尔，不含中日韩，
+ 中文仍回退苹方（PingFang），中文外观不变属预期行为。
+ 注入到全部 UIKit App + SpringBoard（Filter.Classes = UIApplication）。
+ 适用 iOS 16.x / RootHide (arm64e)。
+Maintainer: g459416925
+Author: g459416925 (iOS 16.5.1 / RootHide 重写版)
+Section: Tweaks
+Depends: mobilesubstrate
+Installed-Size: 49
+Tag: purpose::extension
+Filename: ./debs/CompactorFix_1.0.0_iphoneos-arm64e.deb
+Size: 2816
+MD5sum: bf6109754a963872500eeb01c9dfd529
+SHA256: 964f11c4e14b5207f527fdcc4c89cbd7c34117d1c916cd263c9d76f309cf79b7
+
 Package: com.xu.screentimelocker16
 Name: ScreenTimeLocker16
 Version: 5.2.0

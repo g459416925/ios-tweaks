@@ -7,9 +7,10 @@ __pycache__/
 *.pyc
 *.pyo
 
-# 编译中间产物（只保留最终 .deb）
+# 编译中间产物（只保留 debs/ 下的最终 .deb）
 src/**/build/
 src/**/*.dylib
+src/**/*.deb
 src/**/*.plist.bak
 src/**/*.broken*
 *.ips
