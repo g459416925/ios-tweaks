@@ -21,7 +21,7 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 
-#define SBS_VERSION @"1.4.1"
+#define SBS_VERSION @"1.4.2"
 #define SBS_LOG_PATH @"/var/mobile/Documents/sbs_log.txt"
 
 static BOOL    gEnabled = YES;
@@ -204,6 +204,7 @@ static void sbs_logIdentOnce(NSString *tag, NSString *ident) {
 static id   sbs_gData(void);
 static void sbs_setGData(id d);
 static void sbs_auxRefresh(void);
+static void sbs_captureSysIcon(NSString *ident, UIView *v);   // v1.4.2 系统图捕获
 
 static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
     if (!target) return NO;
@@ -282,6 +283,14 @@ static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
         dispatch_async(dispatch_get_main_queue(), ^{
             sbs_apply((UIView *)self);
         });
+        // ⭐ v1.4.2 补触发辅助条布局：锁屏→解锁后 fg 被重新挂载，
+        //    辅助条全局单例还挂在旧宿主上 → "解锁后条消失"的根因。
+        //    延迟 0.3s（等 fgIsLive 内容视图就绪）再劫持回新宿主。
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            @try { sbs_auxLayoutInFG((UIView *)self); }
+            @catch (NSException *e) { sbs_log(@"[exc-auxDM] %@", e); }
+        });
     } @catch (NSException *e) {
         sbs_log(@"[exc] %@", e);
     }
@@ -339,11 +348,13 @@ static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
     }
 }
 
-// 侦查：item 视图创建流（词表 + aux 标识是否被问到）
+// ⭐ v1.4.2 核心增强：捕获系统自己渲染的状态栏 item 视图 image（实现见后）。
 - (UIView *)sbs_viewForIdentifier:(id)ident {
     UIView *v = [self sbs_viewForIdentifier:ident];
-    @try { sbs_logIdentOnce(@"viewFor", [ident isKindOfClass:NSString.class] ? ident : nil); }
-    @catch (__unused NSException *e) {}
+    @try {
+        if ([ident isKindOfClass:[NSString class]])
+            sbs_captureSysIcon((NSString *)ident, v);
+    } @catch (__unused NSException *e) {}
     return v;
 }
 
@@ -399,6 +410,20 @@ static id sbs_gData(void) {
     return objc_getAssociatedObject(SBSHelper.class, @selector(sbs_gData));
 }
 static void sbs_setGData(id d) {
+    if (!d) return;
+    // ⭐ v1.4.2 保底：锁屏/解锁切换时新 data 的 Entry 可能全为空（锁屏 data），
+    //    若直接覆盖会导致辅助图标全隐（条"短暂出现又消失"的根因之一）。
+    //    策略：数一数新 data 里非 nil 的 Entry，只有 ≥ 旧 data 才替换。
+    id old = sbs_gData();
+    if (old && old != d) {
+        NSInteger oldN = 0, newN = 0;
+        for (NSString *k in (@[@"alarmEntry", @"locationEntry", @"quietModeEntry",
+                               @"rotationLockEntry", @"vpnEntry", @"bluetoothEntry"])) {
+            @try { if ([old valueForKey:k]) oldN++; } @catch (__unused NSException *e) {}
+            @try { if ([d valueForKey:k]) newN++; } @catch (__unused NSException *e) {}
+        }
+        if (newN < oldN) return;              // 更空 → 不覆盖（防锁屏 data 冲掉主屏 data）
+    }
     objc_setAssociatedObject(SBSHelper.class, @selector(sbs_gData), d,
                              OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
@@ -406,6 +431,11 @@ static void sbs_setGData(id d) {
 static UIView       *gStrip = nil;                       // 辅助图标条容器
 static NSMutableDictionary<NSString *, UIImageView *> *gAuxViews = nil;
 static NSMutableDictionary<NSString *, NSString *>   *gAuxKeys  = nil;  // ident→"xxxEntry"（预计算，refresh 零分配）
+// ⭐ v1.4.2 系统原生图标捕获表：hook viewForIdentifier: 时记下系统自己渲染的
+//   item 视图 image（CC 迷你状态栏/锁屏等场景系统会创建这些视图）。
+//   许总要求"用系统自身的图标，参考 CC 状态栏那个"——捕获到的系统图 100% 同款，
+//   且 CC 打开时捕获、CC 关闭后辅助条继续用（正是"CC 有、关 CC 也有"）。
+static NSMutableDictionary<NSString *, UIImage *>    *gSysImages = nil;
 
 // 标识 → (car 字形候选[], SF Symbol 兜底)
 static NSArray *sbs_auxSpec(NSString *ident) {
@@ -443,7 +473,49 @@ static NSBundle *sbs_auxUIKitBundle(void) {
     return b;
 }
 
+// ⭐ v1.4.2 系统原生图标捕获（hook viewForIdentifier: 调进来）。
+// 许总要求"用系统自身的图标（参考 CC 状态栏那个），不要自绘"——
+// 系统在 CC 迷你状态栏/锁屏/各场景会为 alarm/rotationLock/bluetooth 等标识
+// 创建原生 item 视图（UIImageView）。把返回视图的 image 存进 gSysImages，
+// 辅助条优先用捕获图 → 图标与系统 100% 同款；CC 打开时捕获，关 CC 后继续用。
+static void sbs_captureSysIcon(NSString *ident, UIView *v) {
+    if (!ident.length) return;
+    sbs_logIdentOnce(@"viewFor", ident);
+    if (!v || !gAuxEnabled) return;
+    UIImage *img = nil;
+    if ([v isKindOfClass:[UIImageView class]]) {
+        img = [(UIImageView *)v image];
+    } else {
+        for (UIView *s in v.subviews) {
+            if ([s isKindOfClass:[UIImageView class]] && [(UIImageView *)s image]) {
+                img = [(UIImageView *)s image]; break;
+            }
+        }
+    }
+    if (!img) return;
+    if (!gSysImages) gSysImages = [NSMutableDictionary dictionary];
+    NSString *key = ident.lowercaseString;
+    if (gSysImages[key]) return;              // 首捕获为准（同 ident 不同状态样式可能不同）
+    gSysImages[key] = img;
+    sbs_log(@"[sysIcon] 捕获 %@ (%@ %@x%.0f)", key,
+            NSStringFromClass(v.class), NSStringFromCGSize(img.size), img.scale);
+    // 已建条 → 立即换上系统图（未建条时 sbs_auxEnsureCreated 会优先用捕获图）
+    UIImageView *iv = gAuxViews ? gAuxViews[key] : nil;
+    if (iv && iv.image != img) {
+        iv.image = [img imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    }
+}
+
 static UIImage *sbs_auxImage(NSString *ident) {
+    // ⭐ v1.4.2 优先级 1：系统自己渲染的同款图（viewForIdentifier: 捕获）
+    if (gSysImages) {
+        UIImage *sys = gSysImages[ident.lowercaseString];
+        if (sys) {
+            sbs_logIdentOnce(@"icon", [NSString stringWithFormat:@"%@ ← 系统捕获图", ident]);
+            return sys;
+        }
+    }
+    // 优先级 2：Assets.car 原生字形；优先级 3：SF Symbol 兜底
     NSArray *spec = sbs_auxSpec(ident);
     NSArray *cars = spec.count > 0 ? spec[0] : @[];
     NSString *sf  = spec.count > 1 ? spec[1] : nil;
@@ -504,45 +576,58 @@ static BOOL sbs_fgIsLive(UIView *fg) {
 // ⭐ 灵动岛检测（v1.4.0，许总要求"读取灵动岛的位置和高度"）。
 // 灵动岛不是 _UIStatusBarForegroundView 的子视图（dump 证实），是 SystemAperture
 // 家族的独立视图。从 fg 向上爬 ≤4 层，在每层兄弟子树里按类名找（深度 ≤2）。
-static CGRect sbs_findIslandRect(UIView *v, int depth, UIView *target) {
+// ⭐⭐ v1.4.2 加水平居中硬校验：实测锁屏/解锁后扫到假岛（宽126高37 恰好匹配但
+//    x=117.5 中心 180.5 ≠ 屏幕中心 215）→ 条整体偏左 35pt（许总反馈"位置偏移"）。
+//    真岛永远水平居中于状态栏，宽度校验 + 居中校验双条件。
+static CGRect sbs_findIslandRect(UIView *v, int depth, UIView *target, CGFloat fgW) {
     if (!v || depth < 0) return CGRectZero;
     NSString *cn = NSStringFromClass(v.class);
     if ([cn containsString:@"Aperture"] || [cn containsString:@"Island"] ||
         [cn containsString:@"Pill"]) {
         CGRect f = [v convertRect:v.bounds toView:target];
         CGFloat w = f.size.width, h = f.size.height;
-        if (w >= 70 && w <= 240 && h >= 20 && h <= 70) return f;   // 胶囊尺寸校验
+        BOOL sizeOK  = (w >= 70 && w <= 240 && h >= 20 && h <= 70);
+        BOOL centerOK = fgW > 0 && fabs((f.origin.x + w / 2.0) - fgW / 2.0) <= 20.0;
+        // ⭐ 双保险：换算到窗口坐标系再验屏幕居中（防异宽 fg 坐标系内的"伪居中"）
+        if (sizeOK && centerOK && v.window) {
+            CGRect fInWin = [v convertRect:v.bounds toView:v.window];
+            CGFloat scrW = v.window.bounds.size.width;
+            if (scrW > 0 && fabs((fInWin.origin.x + fInWin.size.width / 2.0) - scrW / 2.0) > 25.0)
+                centerOK = NO;                // 窗口坐标系下不居中 → 假岛
+        }
+        if (sizeOK && centerOK) return f;
     }
     for (UIView *s in v.subviews) {
-        CGRect r = sbs_findIslandRect(s, depth - 1, target);
+        CGRect r = sbs_findIslandRect(s, depth - 1, target, fgW);
         if (!CGRectIsEmpty(r)) return r;
     }
     return CGRectZero;
 }
 
 static CGRect sbs_islandFrameInFG(UIView *fg) {
-    // 缓存 2s（每帧递归扫视图树太贵）；static 默认零初始化 = 无缓存
+    // 缓存 2s（每帧递归扫视图树太贵）；⭐ v1.4.2 缓存绑定 fg 实例（不同 fg 坐标系不同）
     static CGRect cached;
     static NSTimeInterval at;
+    static UIView *cachedFG = nil;
     NSTimeInterval now = [NSDate date].timeIntervalSince1970;
-    if (!CGRectIsEmpty(cached) && now - at < 2.0) return cached;
+    if (!CGRectIsEmpty(cached) && now - at < 2.0 && cachedFG == fg) return cached;
+    CGFloat fgW = fg.bounds.size.width;
     UIView *node = fg;
     CGRect found = CGRectZero;
     for (int up = 0; up < 4 && node.superview && CGRectIsEmpty(found); up++) {
         UIView *parent = node.superview;
         for (UIView *sib in parent.subviews) {
             if (sib == node || sib == gStrip) continue;
-            found = sbs_findIslandRect(sib, 2, fg);
+            found = sbs_findIslandRect(sib, 2, fg, fgW);
             if (!CGRectIsEmpty(found)) break;
         }
         node = parent;
     }
     if (CGRectIsEmpty(found)) {
         // 兜底：14 Pro Max 已知几何（居中 宽126 top11 高37 → 底缘48）
-        CGFloat fw = fg.bounds.size.width;
-        found = CGRectMake((fw - 126.0) / 2.0, 11.0, 126.0, 37.0);
+        found = CGRectMake((fgW - 126.0) / 2.0, 11.0, 126.0, 37.0);
     }
-    cached = found; at = now;
+    cached = found; at = now; cachedFG = fg;
     sbs_logIdentOnce(@"island", NSStringFromCGRect(found));
     return found;
 }
@@ -587,14 +672,23 @@ static void sbs_auxRefresh(void) {
     }
 }
 
-// 布局：条放【灵动岛正下方居中】——动态读取灵动岛 frame（v1.4.0），
-// 图标 9pt，颜色跟随时间文字；越出 fg 边界时自动换宿主到 fg.superview。
-// ⭐⭐ 全被动写（v1.4.1）：所有 frame/hidden/host 写入前先比对缓存，无变化不写。
+// 布局（v1.4.2 ⭐ 重构）：【贴灵动岛左右两侧】—— 电话助手 CallAssist 同款
+//（许总："电话助手把图标放在灵动岛左右两侧，图标出现的位置还是不对的"）。
+// 左半图标紧贴岛左缘向左排，右半图标紧贴岛右缘向右排，垂直与岛中线齐平。
+// 图标 9pt，颜色跟随时间文字；宿主恒定 fg.superview。
+// ⭐⭐ 全被动写：所有 frame/hidden/host 写入前先比对缓存，无变化不写。
 //    血泪教训：拉控制中心时布局回调每帧狂调，任何"写即失效"都会造成
 //    同步布局死循环 → autorelease 池不排空 → SB 内存 10 秒涨 4GB → Jetsam。
 static void sbs_auxLayoutInFG(UIView *fg) {
     if (!gAuxEnabled || !gAuxStrip) { if (gStrip && !gStrip.hidden) gStrip.hidden = YES; return; }
     if (!sbs_fgIsLive(fg)) return;            // 非活动 fg 不托管不搬动
+    // ⭐⭐ v1.4.2 关键修复：只托管【全屏宽度】的 fg。
+    //    实测假岛根因：CC/Spotlight 窗口的迷你状态栏 fg 宽 361（≠屏宽 430），
+    //    其内部有类名含 Pill 且尺寸恰好 126×37 的居中视图 → 岛检测误命中
+    //    （对那个 fg 来说"居中"校验还真通过）→ 条偏移 35pt。
+    //    主屏/锁屏 fg 宽度 = 屏幕宽度；窗口化的 fg 一律不托管。
+    CGFloat scrW = fg.window ? fg.window.bounds.size.width : [UIScreen mainScreen].bounds.size.width;
+    if (scrW > 0 && fabs(fg.bounds.size.width - scrW) > 1.0) return;
     // ⭐ 节流 33ms（CC 动画每帧都调 layoutSubviews，封顶 30fps 防止任何残余循环）
     static NSTimeInterval lastRun = 0;
     NSTimeInterval now = [NSDate date].timeIntervalSince1970;
@@ -616,54 +710,58 @@ static void sbs_auxLayoutInFG(UIView *fg) {
         for (UIImageView *iv in gAuxViews.allValues) iv.tintColor = tint ?: UIColor.whiteColor;
         lastTint = tint;
     }
-    // 统计可见图标 → 总宽
-    NSInteger n = 0;
+    // 可见图标列表（保持 gAuxIcons 声明顺序）
+    NSMutableArray<NSString *> *vis = [NSMutableArray array];
     for (NSString *ident in gAuxIcons) {
         UIImageView *iv = gAuxViews[ident.lowercaseString];
-        if (iv && !iv.hidden) n++;
+        if (iv && !iv.hidden) [vis addObject:ident.lowercaseString];
     }
     CGFloat fgW = fg.bounds.size.width;
-    if (n <= 0 || fgW <= 0) {
+    if (!vis.count || fgW <= 0) {
         if (gStrip.superview && !gStrip.hidden) gStrip.hidden = YES;
         return;
     }
-    CGFloat w = n * kAuxIconSize + (n - 1) * kAuxGap;
-    // ⭐ 垂直 = 灵动岛底缘 + 1.5pt（动态读取，实测底缘 48）；水平 = 屏幕居中
+    // —— 左右分堆：左侧 ceil(n/2)，右侧 floor(n/2) ——
+    NSInteger n = vis.count;
+    NSInteger nL = (n + 1) / 2;
     CGRect island = sbs_islandFrameInFG(fg);
-    CGFloat x = (fgW - w) / 2.0;
-    CGFloat y = CGRectGetMaxY(island) + 1.5;
+    CGFloat gap = kAuxGap, isz = kAuxIconSize;
+    // 垂直：与岛垂直中线齐平
+    CGFloat cy = island.origin.y + island.size.height / 2.0 - isz / 2.0;
+    // 每个图标的目标 frame（fg 坐标系）；先算好再统一被动写
+    NSMutableDictionary<NSString *, NSValue *> *targets = [NSMutableDictionary dictionary];
+    CGFloat x;
+    // 左组：靠岛的最右，往左依次展开（vis[0..nL-1] 从左到右）
+    x = island.origin.x - gap - isz - (nL - 1) * (isz + gap);
+    for (NSInteger i = 0; i < nL; i++) {
+        targets[vis[i]] = [NSValue valueWithCGRect:CGRectMake(x, cy, isz, isz)];
+        x += isz + gap;
+    }
+    // 右组：紧贴岛右缘向右（vis[nL..n-1] 从左到右）
+    x = CGRectGetMaxX(island) + gap;
+    for (NSInteger i = nL; i < n; i++) {
+        targets[vis[i]] = [NSValue valueWithCGRect:CGRectMake(x, cy, isz, isz)];
+        x += isz + gap;
+    }
     // ⭐ 宿主恒定 = fg.superview（v1.4.1 二分定位：clipsToBounds 条件换宿主会在
     //    CC 动画中抖动 → 每帧 add/remove → 同步布局死循环 → 内存 4GB → Jetsam）。
-    //    父容器不裁剪、层级更高，条固定放那里，坐标用 convertRect 换算。
     UIView *host = fg.superview ?: fg;
-    CGRect f = [fg convertRect:CGRectMake(x, y, w, kAuxIconSize) toView:host];
-    // —— 被动写：宿主/几何任一变化才动手 ——
-    static void  *lastHost  = nil;
-    static CGRect lastFrame = {{0,0},{0,0}};
-    static BOOL   lastShown = NO;
-    BOOL shown = YES;
-    if ((__bridge UIView *)lastHost == host && gStrip.superview == host &&
-        CGRectEqualToRect(f, lastFrame) && lastShown == shown && !gStrip.hidden) {
-        return;                               // 一切没变 → 一个字都不写
-    }
+    // —— 被动写：宿主变化才搬家；条 frame = 所有目标的最小包围盒；图标逐个比对 ——
     if (gStrip.superview != host) {
         [gStrip removeFromSuperview];
         [host addSubview:gStrip];
     }
-    gStrip.frame = f;
-    gStrip.hidden = NO;
-    lastHost = (__bridge void *)host;
-    lastFrame = f;
-    lastShown = shown;
-    // 从左往右排可见图标（保持 gAuxIcons 声明顺序）
-    CGFloat cx = 0;
-    for (NSString *ident in gAuxIcons) {
-        UIImageView *iv = gAuxViews[ident.lowercaseString];
-        if (!iv || iv.hidden) continue;
-        CGRect old = iv.frame;
-        CGRect nf = CGRectMake(cx, 0, kAuxIconSize, kAuxIconSize);
-        if (!CGRectEqualToRect(old, nf)) iv.frame = nf;
-        cx += kAuxIconSize + kAuxGap;
+    CGRect unionR = CGRectZero;
+    for (NSValue *v in targets.objectEnumerator) unionR = CGRectUnion(unionR, v.CGRectValue);
+    CGRect hostF = [fg convertRect:unionR toView:host];
+    if (!CGRectEqualToRect(gStrip.frame, hostF)) gStrip.frame = hostF;
+    if (gStrip.hidden) gStrip.hidden = NO;
+    for (NSString *ident in targets) {
+        UIImageView *iv = gAuxViews[ident];
+        CGRect t = [targets[ident] CGRectValue];
+        CGRect want = CGRectMake(t.origin.x - unionR.origin.x,   // 相对条容器的本地坐标
+                                 t.origin.y - unionR.origin.y, isz, isz);
+        if (!CGRectEqualToRect(iv.frame, want)) iv.frame = want;
     }
 }
 

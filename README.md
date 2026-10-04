@@ -16,7 +16,7 @@ https://g459416925.github.io/ios-tweaks/
 |---|---|---|
 | `com.xu.compactorfix` | 1.0.0 | **CompactorFix** — 把系统 UI 字体整体换成 Apple Watch 的 SF Compact |
 | `com.xu.screentimelocker16` | 5.2.0 | **ScreenTimeLocker16** — 让「屏幕使用时间」的 App 限额真正锁得住 |
-| `com.xu.statusbarscale` | 1.4.1 | **StatusBarScale** — 状态栏右侧图标缩放对齐 + 系统辅助图标条（灵动岛下方居中） |
+| `com.xu.statusbarscale` | 1.4.2 | **StatusBarScale** — 状态栏右侧图标缩放对齐 + 系统辅助图标（贴灵动岛左右两侧） |
 
 ### CompactorFix
 
@@ -57,27 +57,30 @@ https://g459416925.github.io/ios-tweaks/
 - ⚠️ RootHide 坑：SSH 部署该配置**必须**走
   `/rootfs/private/var/mobile/Library/Preferences/`（不带前缀是影子目录）
 
-**v1.1–1.4 新增：系统辅助图标条**
+**v1.1–1.4 新增：系统辅助图标**
 
-- 直接使用**系统自带图标包**（UIKitCore `Artwork.bundle/Assets.car` 的
-  `Black_Alarm` / `Black_QuietMode` / `Black_RotationLock` /
-  `Black_VPN` / `Black_Bluetooth` 原生字形），不依赖任何第三方图标包
+- 图标 = **系统原生字形**：优先用 hook `viewForIdentifier:` 捕获的系统 item 视图
+  渲染图（与系统 100% 同款），兜底 UIKitCore `Artwork.bundle/Assets.car` 的
+  `Black_Alarm` / `Black_QuietMode` / `Black_RotationLock` / `Black_VPN` /
+  `Black_Bluetooth`（系统状态栏渲染用的就是这批原始字形）
 - 状态源 = `_UIStatusBarData`：hook `applyUpdate:` / `_applyUpdate:keys:`
-  捕获数据对象，实时读取 `alarmEntry` / `quietModeEntry` / `rotationLockEntry` 等驱动的显隐
-- 位置：**灵动岛正下方居中**（运行时动态检测岛位置与高度），9pt 小图标，
-  颜色跟随时间文字，不碍眼
+  捕获数据对象（含保底：锁屏空 Entry 的 data 不覆盖主屏 data），实时驱动显隐
+- 位置：**贴灵动岛左右两侧**（电话助手 CallAssist 同款布局）——
+  左半图标右对齐岛左缘，右半图标左对齐岛右缘，垂直与岛中线齐平，9pt 小图标
 - 仅显示激活项：闹钟/勿扰/旋转锁/VPN/蓝牙（无状态时整条隐藏）；
-  默认不显示定位（时间右侧系统原生定位箭头已存在，避免重复）
-- 图标显隐与系统一致：如蓝牙未连接任何设备时系统 Entry 本身不激活 → 不显示
-  （与 CC 顶部迷你状态栏行为一致）
-- **v1.4.0**：灵动岛位置动态检测（不再硬编码坐标）；日志限流（≤20 行/秒 +
-  2MB 文件上限）；默认去重 location
-- **v1.4.1**：修复控制中心开合触发 Jetsam 循环重启 —— 全被动写
-  （frame/hidden/host 未变化不写入）+ 33ms 节流 + 宿主恒定 `fg.superview`，
-  消除 CC 动画期间每帧 addSubview/removeFromSuperview 的同步布局死循环
-- ⚠️ RootHide 坑：dylib 内**绝不能出现完整 `/System/Library/...` 路径字面量** ——
-  roothidepatch 会重定向该路径并破坏签名 → dyld `Invalid Page` 直接杀 SpringBoard。
-  必须运行时拼接（`/System` + `/Library` + ...）绕过字符串扫描
+  默认不显示定位（系统原生定位箭头已存在，避免重复）
+- 图标显隐与系统一致：蓝牙未连接设备时 Entry 不激活 → 不显示
+- **v1.4.0**：岛位置动态检测（类名 Aperture/Island/Pill + 尺寸/居中校验）；
+  日志限流；默认去重 location
+- **v1.4.1**：修复 CC 开合触发 Jetsam —— 全被动写 + 33ms 节流 + 宿主恒定
+- **v1.4.2**：修复锁屏解锁后辅助条消失/位置偏移 ——
+  ①只托管全屏宽度的 fg（CC/Spotlight 窗口 fg 宽 361≠屏宽 430，其内部"伪居中"
+  的 Pill 视图曾误判为岛 → 偏移 35pt）②岛候选再验窗口坐标居中（双保险）
+  ③fg didMoveToWindow 补触发布局（解锁后劫持条回新宿主）
+  ④data 保底 ⑤改 dpkg 安装（root cp 直写 TweakInject 会触发不完整 patch → 签名失效）
+- ⚠️ RootHide 坑：dylib 内**绝不能出现完整 `/System/Library/...` 路径字面量**；
+  部署**必须走 dpkg -i**（直接 cp 到 TweakInject 目录会被 jbroot 不完整 patch
+  破坏签名 → dyld `Invalid Page` 杀 SpringBoard）
 
 ## 目录结构
 
