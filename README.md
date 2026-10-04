@@ -16,7 +16,7 @@ https://g459416925.github.io/ios-tweaks/
 |---|---|---|
 | `com.xu.compactorfix` | 1.0.0 | **CompactorFix** — 把系统 UI 字体整体换成 Apple Watch 的 SF Compact |
 | `com.xu.screentimelocker16` | 5.2.0 | **ScreenTimeLocker16** — 让「屏幕使用时间」的 App 限额真正锁得住 |
-| `com.xu.statusbarscale` | 1.4.4 | **StatusBarScale** — 状态栏右侧图标缩放对齐 + 系统辅助图标条（灵动岛正下方居中） |
+| `com.xu.statusbarscale` | 1.4.5 | **StatusBarScale** — 状态栏右侧图标缩放对齐 + 系统辅助图标条（灵动岛正下方居中） |
 
 ### CompactorFix
 
@@ -140,3 +140,9 @@ git add -A && git commit -m "release: <包名> <版本>" && git push
   期间主屏 fg 宽度在 430/370 间抖动且 StringView 暂被移除（fgIsLive=NO），
   动画结束后系统不再触发布局 → 条没人放回。修：记录活动 fg（强引用）+
   data 变化驱动多档延迟重试（0/0.3/0.8/1.5s），条跟随 data 恢复立即回来
+- **v1.4.5**：修复退出 App 回主屏后辅助条延迟数秒 —— 实测架构：UIStatusBarWindow
+  (level 999) 是常驻状态栏总窗口（主屏/App 的 fg 复用），SBStatusBarReusePoolWindow
+  (hidden=1) 是备用 fg 池，切 App 时旧 fg 被放回池里并最后布局一次，条被搬进
+  隐藏窗口跟着消失；回主屏后 fg 又不触发布局 → 没人搬回。修：前台门禁
+  （拒绝隐藏窗口/ReusePool 池的 fg 托管条）+ didMoveToWindow 多档重试 +
+  2s 定时自愈（条丢失/挂错窗口自动强制重排）

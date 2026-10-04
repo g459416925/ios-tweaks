@@ -21,7 +21,7 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 
-#define SBS_VERSION @"1.4.4"
+#define SBS_VERSION @"1.4.5"
 #define SBS_LOG_PATH @"/var/mobile/Documents/sbs_log.txt"
 
 static BOOL    gEnabled = YES;
@@ -166,6 +166,11 @@ static void sbs_dumpOnChange(UIView *fg) {
 
 static void sbs_auxLayoutInFG(UIView *fg);   // 辅助图标条布局（定义见后）
 static void sbs_auxRelayoutFromData(void);    // ⭐ v1.4.4 data 驱动重排（定义见后）
+// ⭐ v1.4.4/5 全局状态（必须定义在 SBSHelper @implementation 之前，
+//   hook 方法 sbs_fgDidMoveToWindow 内要用 gAuxForceRelayout）
+static UIView *gActiveFG = nil;                          // 当前活动 fg（强引用，CC 动画期间不失效）
+static BOOL gAuxForceRelayout = NO;                      // data/自愈驱动时跳过节流
+static dispatch_source_t gHealTimer = nil;               // v1.4.5 定时自愈
 
 static void sbs_apply(UIView *fg) {
     if (!gEnabled) return;
@@ -273,7 +278,7 @@ static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
     }
 }
 
-// 状态栏 foreground view 被重新挂到 window（灵动岛过渡重建）时补一次。
+// 状态栏 foreground view 被重新挂到 window（App↔主屏切换/锁屏解锁）时补多次。
 - (void)sbs_fgDidMoveToWindow {
     [self sbs_fgDidMoveToWindow];         // 原实现
     @try {
@@ -284,14 +289,19 @@ static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
         dispatch_async(dispatch_get_main_queue(), ^{
             sbs_apply((UIView *)self);
         });
-        // ⭐ v1.4.2 补触发辅助条布局：锁屏→解锁后 fg 被重新挂载，
-        //    辅助条全局单例还挂在旧宿主上 → "解锁后条消失"的根因。
-        //    延迟 0.3s（等 fgIsLive 内容视图就绪）再劫持回新宿主。
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{
-            @try { sbs_auxLayoutInFG((UIView *)self); }
-            @catch (NSException *e) { sbs_log(@"[exc-auxDM] %@", e); }
-        });
+        // ⭐ v1.4.5 多档补触发（同 data 驱动的重试节奏）：退出 App 回主屏时
+        //    主屏 fg 可能不触发 layoutSubviews（实测 home 后零布局），
+        //    0.3s 单次触发不够 —— 多档重试覆盖切换动画全周期。
+        for (int i = 0; i < 4; i++) {
+            NSTimeInterval delay = (i == 0 ? 0.0 : (i == 1 ? 0.3 : (i == 2 ? 0.8 : 1.5)));
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{
+                @try {
+                    gAuxForceRelayout = YES;
+                    sbs_auxLayoutInFG((UIView *)self);
+                } @catch (NSException *e) { sbs_log(@"[exc-auxDM] %@", e); }
+            });
+        }
     } @catch (NSException *e) {
         sbs_log(@"[exc] %@", e);
     }
@@ -434,8 +444,6 @@ static void sbs_setGData(id d) {
 static UIView       *gStrip = nil;                       // 辅助图标条容器
 static NSMutableDictionary<NSString *, UIImageView *> *gAuxViews = nil;
 static NSMutableDictionary<NSString *, NSString *>   *gAuxKeys  = nil;  // ident→"xxxEntry"（预计算，refresh 零分配）
-static UIView *gActiveFG = nil;                          // ⭐ v1.4.4 当前活动 fg（强引用，CC 动画期间不失效）
-static BOOL gAuxForceRelayout = NO;                      // ⭐ v1.4.4 data 驱动时跳过节流
 
 // ⭐ v1.4.4 data 驱动重排：CC 开合/状态变化时，主屏 fg 的 layoutSubviews 可能
 //   不再触发（布局没变），导致辅助条 hidden 后迟迟不回来（许总："收回 CC 后
@@ -459,6 +467,35 @@ static void sbs_auxRelayoutFromData(void) {
             @catch (NSException *e) { sbs_log(@"[exc-auxRD] %@", e); }
         });
     }
+}
+
+// ⭐ v1.4.5 定时自愈：兜底所有未知的条丢失场景（App↔主屏切换 fg 不布局、
+//   didMove 没触发、任何系统行为导致的条不可见）。每 2s 一次纯状态比较
+//   （不 dump 不写布局），极轻；仅在条确实丢失/挂错窗口时才强制重排。
+static void sbs_auxSelfHealStart(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        gHealTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0,
+                                            dispatch_get_main_queue());
+        dispatch_source_set_timer(gHealTimer,
+                                  dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)),
+                                  2 * NSEC_PER_SEC, (int64_t)(0.5 * NSEC_PER_SEC));
+        dispatch_source_set_event_handler(gHealTimer, ^{
+            @try {
+                if (!gAuxEnabled || !gAuxStrip || !gStrip || !gActiveFG) return;
+                UIView *fg = gActiveFG;
+                if (!fg.window) return;              // fg 自己不在窗口（池里）→ 等它回来
+                BOOL stripLost = (!gStrip.superview || gStrip.hidden ||
+                                  gStrip.window != fg.window);
+                if (stripLost) {
+                    gAuxForceRelayout = YES;         // 强制跳过节流
+                    sbs_auxLayoutInFG(fg);
+                }
+            } @catch (__unused NSException *e) {}
+        });
+        dispatch_resume(gHealTimer);
+        sbs_log(@"[aux] 自愈计时器已启动（2s 间隔）");
+    });
 }
 // ⭐ v1.4.2 系统原生图标捕获表：hook viewForIdentifier: 时记下系统自己渲染的
 //   item 视图 image（CC 迷你状态栏/锁屏等场景系统会创建这些视图）。
@@ -709,16 +746,24 @@ static void sbs_auxRefresh(void) {
 //    同步布局死循环 → autorelease 池不排空 → SB 内存 10 秒涨 4GB → Jetsam。
 static void sbs_auxLayoutInFG(UIView *fg) {
     if (!gAuxEnabled || !gAuxStrip) { if (gStrip && !gStrip.hidden) gStrip.hidden = YES; return; }
-    // ⭐⭐ v1.4.2 关键修复：只托管【全屏宽度】的 fg（先做，优先级最高）。
+    // ⭐⭐ v1.4.5 前台门禁（第一优先）：备用 fg 池/隐藏窗口的 fg 一律不托管。
+    //    实测架构（窗口诊断）：UIStatusBarWindow(level 999) 是常驻状态栏总窗口
+    //    （主屏/App 的 fg 都在这里复用）；SBStatusBarReusePoolWindow(level 0,
+    //    hidden=1) 是备用 fg 池 —— 切 App 时旧 fg 被放回池里并最后布局一次，
+    //    若不拒绝它，条会被搬进隐藏窗口跟着消失（退出 App 后条消失几秒的根因）。
+    UIWindow *sbWin = fg.window;
+    if (!sbWin || sbWin.isHidden ||
+        [NSStringFromClass(sbWin.class) containsString:@"ReusePool"]) return;
+    // ⭐⭐ v1.4.2 关键修复：只托管【全屏宽度】的 fg。
     //    实测假岛根因：CC/Spotlight 窗口的迷你状态栏 fg 宽 361（≠屏宽 430），
     //    其内部有类名含 Pill 且尺寸恰好 126×37 的居中视图 → 岛检测误命中。
-    CGFloat scrW = fg.window ? fg.window.bounds.size.width : [UIScreen mainScreen].bounds.size.width;
-    if (scrW > 0 && fabs(fg.bounds.size.width - scrW) > 1.0) return;   // 窗口化 fg（CC/Spotlight 迷你栏 361）
-    // ⭐ v1.4.4 关键：全屏宽度的 fg 就是主屏/锁屏状态栏，先记录（强引用），
+    CGFloat scrW = sbWin.bounds.size.width;
+    if (scrW > 0 && fabs(fg.bounds.size.width - scrW) > 1.0) return;
+    // ⭐ v1.4.4 关键：合法 fg 先记录（强引用），
     //    即使下面 fgIsLive 暂时失败（CC 动画期间 StringView 被移除），
     //    多档重试也能在动画结束后把它劫持回来。
     gActiveFG = fg;
-    if (!sbs_fgIsLive(fg)) return;            // CC 动画期间 StringView 暂被移除，动画后多档重试恢复
+    if (!sbs_fgIsLive(fg)) return;
     // ⭐ 节流 33ms（CC 动画每帧都调 layoutSubviews，封顶 30fps 防止任何残余循环）
     //    data 驱动（sbs_auxRelayoutFromData）会先置 gAuxForceRelayout 跳过节流。
     static NSTimeInterval lastRun = 0;
@@ -908,6 +953,8 @@ static void sbs_installAux(void) {
                 }
             }
         }
+        // ⭐ v1.4.5 启动定时自愈（兜底一切条丢失场景）
+        sbs_auxSelfHealStart();
     } @catch (NSException *e) {
         sbs_log(@"[exc-aux] %@", e);
     }
