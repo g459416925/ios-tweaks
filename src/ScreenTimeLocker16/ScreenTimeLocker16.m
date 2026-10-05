@@ -67,7 +67,7 @@
 #import <string.h>
 #import <mach-o/dyld.h>      // _dyld_register_func_for_add_image
 
-#define STL_VERSION @"5.2.0"
+#define STL_VERSION @"5.2.1"     // 5.2.1 = 仅收窄注入过滤（去掉框架级 bundle id，见 .plist 注释）
 
 // ---- 原版四层功能开关（默认全开 = 完整还原原版 DisableOneMoreMinute 行为）----
 //   ① 数据层 STManagementState → @(NO)          ← 永远开（本插件核心）

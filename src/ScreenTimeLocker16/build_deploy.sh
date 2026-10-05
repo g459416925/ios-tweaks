@@ -26,27 +26,31 @@ fi
 echo "    ✓ 无私有类符号"
 
 echo "==> 3/5 上传并在设备上 ldid -S 签名"
-scp -q "$PKG.dylib" iphone:/tmp/$PKG.dylib
-ssh iphone "ldid -S /tmp/$PKG.dylib; echo -n '/tmp/$PKG.dylib 签名后体积: '; stat -c %s /tmp/$PKG.dylib"
-SIGNED=$(ssh iphone "stat -c %s /tmp/$PKG.dylib")
+# ⚠️ RootHide 下不要用 /tmp（相对符号链接会解析进 jbroot 影子目录）→ 一律 /var/tmp
+scp -q "$PKG.dylib" iphone:/var/tmp/$PKG.dylib
+ssh iphone "ldid -S /var/tmp/$PKG.dylib; echo -n '/var/tmp/$PKG.dylib 签名后体积: '; stat -c %s /var/tmp/$PKG.dylib"
+SIGNED=$(ssh iphone "stat -c %s /var/tmp/$PKG.dylib")
 if [ "$SIGNED" -le "$UNSIGNED" ]; then
   echo "    ✗ 签名未生效（体积未增长 $UNSIGNED -> $SIGNED）！拒绝部署。"; exit 1
 fi
 echo "    ✓ 签名已生效 ($UNSIGNED -> $SIGNED, +$((SIGNED-UNSIGNED)) B)"
 
 echo "==> 4/5 拉回校验 CodeDirectory"
-scp -q iphone:/tmp/$PKG.dylib ./$PKG.signed.dylib
+scp -q iphone:/var/tmp/$PKG.dylib ./$PKG.signed.dylib
 codesign -dvvv ./$PKG.signed.dylib 2>&1 | grep -E "CodeDirectory|Hash type|hashes" || true
 
-echo "==> 5/5 部署到设备"
-scp -q ./$PKG.signed.dylib iphone:/var/mobile/Documents/
-scp -q ./$PKG.plist        iphone:/var/mobile/Documents/
-ssh iphone-root "DL=/Library/MobileSubstrate/DynamicLibraries
-cp /var/mobile/Documents/$PKG.signed.dylib \$DL/$PKG.dylib
-cp /var/mobile/Documents/$PKG.plist        \$DL/$PKG.plist
-chmod 755 \$DL/$PKG.dylib; chown root:wheel \$DL/$PKG.dylib
-chmod 644 \$DL/$PKG.plist; chown root:wheel \$DL/$PKG.plist
-echo '    落地:'; ls -la \$DL/$PKG.dylib \$DL/$PKG.plist
-echo \"    DynamicLibraries 计数: \$(ls \$DL/*.dylib | wc -l)\""
+echo "==> 5/5 打包 DEB 并用 dpkg 部署"
+# ⛔⛔ 历史事故（技能 §2.14）：**绝不能 root cp 直写 /usr/lib/TweakInject 的二进制**——
+#      RootHide 的 jbroot on-write patch 会改写文件头/尾 → 签名失效 → dyld 以
+#      `SIGKILL CODESIGNING / Invalid Page` 杀掉宿主（曾把 SpringBoard 打挂）。
+#      必须走 dpkg -i。（plist 无签名，cp 安全，但统一走 deb 更省心。）
+/Users/xu/.workbuddy/binaries/python/versions/3.13.12/bin/python3 build_deb.py
+DEB=$(ls -t ${PKG}_*_iphoneos-arm64e.deb | head -1)
+test -n "$DEB"
+scp -q "$DEB" iphone:/var/tmp/$PKG.deb
+ssh iphone-root "dpkg -i /var/tmp/$PKG.deb
+DL=/usr/lib/TweakInject
+echo '    落地:'; ls -la \$DL/$PKG.dylib \$DL/$PKG.plist"
 
-echo "==> 完成。设备侧自行验证签名：ssh iphone \"stat -c %s /Library/MobileSubstrate/DynamicLibraries/$PKG.dylib\" 应等于 $SIGNED"
+echo "==> 完成。生效需 respring（sbreload）。"
+echo "==> 设备侧校验: ssh iphone-root 'wc -c /usr/lib/TweakInject/$PKG.dylib' 应等于 $SIGNED"
