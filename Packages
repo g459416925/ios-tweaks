@@ -300,3 +300,42 @@ Filename: ./debs/StatusBarScale_1.7.3_iphoneos-arm64e.deb
 Size: 36920
 MD5sum: 30a4963ad4061b998b572453f2931300
 SHA256: 29cbb86ba60f762f63cf9e4c1e5413aa6e619396a5523eb778b3b146799d7883
+
+Package: com.xu.statusbarscale
+Name: StatusBarScale
+Version: 1.8.7
+Architecture: iphoneos-arm64e
+Description: 状态栏图标缩放对齐（灵动岛机型）：右侧 信号/WiFi/电池 图标比左侧时间
+ 略大且重心偏高（实测 14 Pro Max iOS 16.5.1：图标高 13-14px vs 时间 12px，
+ 重心偏高 1.66px），本插件 hook _UIStatusBarForegroundView -layoutSubviews，
+ 每次布局后对灵动岛右侧图标施加 绕中心缩放(默认0.92)+下移(默认1.5pt)，
+ 与时间高度/重心对齐。
+ v1.7.0 新增：时间右侧、灵动岛左侧的图标（闹钟/定位/录屏等，无法按标识枚举）
+ 改为运行时按 frame 区间发现，单独缩放 0.6 倍（leadScale）。
+ v1.8.0 新增「辅助图标条」：把系统不显示在灵动岛左右的图标（闹钟/专注/
+ 旋转锁/定位/VPN/蓝牙/飞行模式）收拢到灵动岛正下方一行显示，缩放 0.4 倍
+ （基准 17pt → 6.8pt），主屏与 App 内跟随时间显示，锁屏隐藏。
+ v1.8.6 去重改为「状态栏变化信号」驱动：hook _UIStatusBarForegroundView 的
+ addSubview:/insertSubview:/willRemoveSubview: + _UIStatusBar 的
+ _updateDisplayedItemsWithData:styleAttributes:extraAnimations:，由状态栏
+ 视图树增删事件实时重算「系统正在显示谁」——系统自己画出定位箭头时，
+ 辅助条同一帧内把定位图标剔除，绝不重复（加立即、减需连续 3 次一致）。
+ transform 不参与布局计算，不影响间距与点击区域判定。
+ 配置 /var/mobile/Library/Preferences/com.xu.statusbarscale.plist：
+ enabled(bool)=YES / scale(float)=0.92 / dy(float)=1.5 / threshold(float)=280 /
+ leadEnabled(bool)=YES / leadScale(float)=0.60 / leadDy(float)=0 /
+ auxEnabled(bool)=YES / auxScale(float)=0.4 / auxBaseSize(float)=17 /
+ auxGap(float)=3 / auxDebug(bool)=NO / diag(bool)=YES / verbose(bool)=NO，
+ 改后 respring 生效。
+ 仅注入 SpringBoard（Filter.Bundles = com.apple.springboard）。
+ 适用 iOS 16.x / RootHide (arm64e)。
+Maintainer: g459416925
+Author: g459416925 (iOS 16.5.1 / RootHide)
+Section: Tweaks
+Depends: mobilesubstrate
+Installed-Size: 188
+Tag: purpose::extension
+Filename: ./debs/StatusBarScale_1.8.7_iphoneos-arm64e.deb
+Size: 60394
+MD5sum: 0e6f6eabed57969da6ff121b7e84534e
+SHA256: 058632827b34642d2ff8db4a3a79b0290f4b6541932e39531e623284f271ec7d

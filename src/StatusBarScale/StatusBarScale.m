@@ -1,4 +1,4 @@
-// StatusBarScale.m —— 状态栏图标缩放对齐 v1.7.3
+// StatusBarScale.m —— 状态栏图标缩放对齐 v1.8.0
 //
 // 问题：iPhone 14 Pro Max (iOS 16.5.1) 灵动岛右侧图标与时间不对齐
 //   实测基线（_sb_measure.py，1x points）：时间 高12 上沿24 下沿35 重心29.38
@@ -16,24 +16,37 @@
 //   fg 坐标系 frame 区间发现（非 StringView + (时间右缘, 灵动岛左缘)），
 //   单独缩放 0.6。命中清单直写 [lead] 日志供核对，详见 sbs_applyLead。
 //
+// ⭐ v1.8.0 辅助条定位变更（许总 2026-10-05 需求）：
+//   ① 辅助条【只收纳系统不在状态栏左右两侧显示的图标】（系统已显示的自动剔除，不重复）；
+//   ② 图标尺寸 = 系统原图标(约 17pt) × 0.4 ≈ 6.8pt（许总确认的基准）；
+//   ③ 位置 = 灵动岛正下方屏幕水平居中；④ 锁屏不显示，主屏 + App 内跟随时间显示。
+//   判定"系统是否已显示"的唯一证据 = canEnableDisplayItem:fromData: 的 orig 返回值
+//   （orig==YES 说明系统本来就会渲染它 → 辅助条跳过）。全程直写日志供许总核对。
+//
 // 配置 /var/mobile/Library/Preferences/com.xu.statusbarscale.plist（改后需 respring）：
 //   enabled(bool,默认YES)  scale(float,默认0.92)  dy(float,默认1.5)
 //   threshold(float,默认312)  verbose(bool,默认NO)
 //   leadEnabled(bool,默认YES)  leadScale(float,默认0.60)  leadDy(float,默认0)
 //   diag(bool,默认YES) —— 关键事件直写（v1.7.1 起独立于 verbose，默认开）
+//   auxEnabled(bool,默认YES)  auxStrip(bool)  auxData(bool)  auxIcons(array)
+//   auxBaseSize(float,默认17) —— 系统原图标点尺寸基准
+//   auxScale(float,默认0.4)   —— 相对基准的缩放（许总指定 0.4）
+//   auxGap(float,默认3)       —— 图标间距
 //
 // 日志：/var/mobile/Documents/sbs_log.txt
-//   diag=YES：关键事件（[hook]/[lead]/[move]/[heal]/[scan]）直写落盘；
+//   diag=YES：关键事件（[hook]/[lead]/[aux]/[canEnable]/[auxVis]/[move]/[heal]/[scan]）直写落盘；
 //   verbose=YES：额外输出高频诊断（[pass]/[deny]/层级 dump）
 //
 // ⚠️ v1.7.1 修复的回归：v1.5.0 曾把 sbs_logNow 也挂上 `if (!gVerbose) return;`，
 //   导致设备 verbose=NO 时【完全无日志】—— 故障无法定位（"图标无法枚举"的元凶）。
+// ⚠️ v1.8.0 同类修复：aux 全链路日志原本走 sbs_log（verbose 门控）→ 设备上
+//   一个字节都看不到，辅助条"没显示"无法定位（2026-10-05 截图实证条不在屏上）。
 
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 
-#define SBS_VERSION @"1.7.3"
+#define SBS_VERSION @"1.8.7"
 #define SBS_LOG_PATH @"/var/mobile/Documents/sbs_log.txt"
 
 static BOOL    gEnabled = YES;
@@ -55,9 +68,29 @@ static BOOL         gAuxEnabled = YES;
 static NSArray<NSString *> *gAuxIcons = nil;   // 标识集合（小写）
 static BOOL         gAuxStrip = YES;              // 二分开关：条+岛扫描
 static BOOL         gAuxData  = YES;              // 二分开关：applyUpdate 数据钩子
-// 辅助条外观：灵动岛下方居中，小尺寸不碍眼
-static const CGFloat kAuxIconSize = 9.0;        // 图标边长（points）
-static const CGFloat kAuxGap      = 4.0;        // 图标间距
+static BOOL         gAuxDebug = NO;               // ⭐ v1.8.0 调试：红底描边直观判定"条是否在屏上"
+// 辅助条外观（v1.8.0）：灵动岛正下方居中；图标边长 = 系统原尺寸 × auxScale
+static CGFloat      gAuxBaseSize = 17.0;        // 系统原图标点尺寸基准（状态栏 item 实测 17.3pt）
+static CGFloat      gAuxScale    = 0.4;         // 许总指定：相对系统原图标缩小为 0.4 倍
+static CGFloat      gAuxGap      = 3.0;         // 图标间距
+// ⭐ v1.8.0「只放系统不显示的」判定表（证据 = canEnableDisplayItem 的 orig 返回值）：
+//   gSysShown  : orig==YES → 系统本就会在状态栏显示该图标 → 辅助条跳过（不重复）
+//   gSysHidden : orig==NO  → 系统不显示 → 辅助条负责收纳
+static NSMutableSet *gSysShown  = nil;
+static NSMutableSet *gSysHidden = nil;
+// ⭐ v1.8.0 当次布局快照：本次扫描 fg 时反查到的「系统正在显示」的 ident。
+//   每次布局前清空重建（不累积）—— 累积会误伤只在该场景出现的图标。
+static NSMutableSet *gSysShownNow = nil;
+// ⭐ v1.8.0 动态回收计数：某 ident 在【可信快照】里连续缺席的次数。
+//   满 3 次才从抑制表移除（迟滞），避免"系统图标稍晚建立"被误判为"系统不再显示"。
+static NSMutableDictionary<NSString *, NSNumber *> *gSysAbsent = nil;
+// ⭐⭐ v1.8.1 真·信号源（许总指正：不许按图标名称判断，要监听状态栏变化信号）
+//   `_UIStatusBar -_updateDisplayedItemsWithData:styleAttributes:extraAnimations:`
+//   是状态栏的**显示决策入口**（每次状态更新都会走）→ 在那里读 `_items` 容器，
+//   拿到"系统此刻真的给哪些 item 建了视图"= 系统正在显示谁。这是实时状态，不是快照。
+static BOOL          gSignalSeen  = NO;   // 信号源是否已工作（有信号事件到达）
+static NSUInteger    gSignalCount = 0;    // 信号事件计数
+static NSMutableSet *gSysNameHit  = nil;  // 名称兜底命中表（只增不减：保守加项）
 
 // 受管图标视图的弱引用集合：系统/动画改动它们的 transform 时会被 setTransform: hook 拦截
 static NSHashTable *gManaged = nil;   // weak objects
@@ -173,6 +206,82 @@ static void sbs_logNow(NSString *fmt, ...) {
     [fh closeFile];
 }
 
+// ⭐⭐ v1.8.0 API 探针（一次性）：定位"状态栏前景色/风格"的可靠来源。
+//   背景：`_UIStatusBarStringView.textColor` 实测与**实际渲染取反**
+//   （主屏渲染黑字却报白、Calculator 渲染白字却报黑）→ 不足以定色。
+//   需要找 style / legibility 这类真实来源（状态栏前景色由 legibility 决定）。
+static void sbs_probeAPIs(UIView *fg) {
+    static BOOL done = NO;
+    if (done) return;
+    done = YES;
+    NSArray *cls = @[@"_UIStatusBarStringView", @"_UIStatusBarForegroundView",
+                     @"_UIStatusBar", @"UIStatusBar_Modern", @"_UIStatusBarData"];
+    for (NSString *cn in cls) {
+        Class C = objc_getClass(cn.UTF8String);
+        if (!C) { sbs_logNow(@"[capi] %@ 不存在", cn); continue; }
+        unsigned int n = 0;
+        Method *ms = class_copyMethodList(C, &n);
+        NSMutableString *s = [NSMutableString string];
+        for (unsigned int i = 0; i < n; i++) {
+            NSString *sn = @(sel_getName(method_getName(ms[i])));
+            if ([sn rangeOfString:@"tyle"].location != NSNotFound ||
+                [sn rangeOfString:@"olor"].location != NSNotFound ||
+                [sn rangeOfString:@"ore"].location != NSNotFound ||
+                [sn rangeOfString:@"egib"].location != NSNotFound ||
+                [sn rangeOfString:@"ontent"].location != NSNotFound)
+                [s appendFormat:@"%@ ", sn];
+        }
+        free(ms);
+        sbs_logNow(@"[capi] %@(%u): %@", cn, n, s);
+    }
+    // 运行时：沿 fg → superview（≤4 层）KVC 取值
+    UIView *v = fg;
+    for (int i = 0; i < 4 && v; i++) {
+        for (NSString *k in @[@"style", @"legibilityStyle", @"foregroundColor",
+                              @"contentStyle", @"statusBarStyle"]) {
+            @try {
+                id val = [v valueForKey:k];
+                if (val) sbs_logNow(@"[capi] %@.%@ = %@",
+                                    NSStringFromClass(v.class), k, val);
+            } @catch (__unused NSException *e) {}
+        }
+        v = v.superview;
+    }
+    @try { sbs_logNow(@"[capi] app.statusBarStyle = %@",
+                      [[UIApplication sharedApplication] valueForKey:@"statusBarStyle"]); }
+    @catch (__unused NSException *e) {}
+    // ⭐ v1.8.0 找「系统当前显示哪些 item」的**信号容器**（许总要求：不要靠图标名称判断）：
+    //   `_UIStatusBar` 的 item 对象自带 identifier，且 item.view != nil 即"正在显示"。
+    Class C2 = objc_getClass("_UIStatusBar");
+    if (C2) {
+        unsigned int ic = 0;
+        Ivar *ivs = class_copyIvarList(C2, &ic);
+        NSMutableString *s2 = [NSMutableString string];
+        for (unsigned int i = 0; i < ic; i++)
+            [s2 appendFormat:@"%s(%s) ", ivar_getName(ivs[i]), ivar_getTypeEncoding(ivs[i])];
+        free(ivs);
+        sbs_logNow(@"[capi] _UIStatusBar ivars(%u): %@", ic, s2);
+    }
+    // 运行时 KVC：找 items 容器
+    UIView *bar = fg.superview;
+    for (int i = 0; i < 2 && bar; i++) {
+        if ([NSStringFromClass(bar.class) isEqualToString:@"_UIStatusBar"]) {
+            for (NSString *k in @[@"items", @"displayItems", @"displayedItems",
+                                  @"_items", @"itemViews", @"partStyles"]) {
+                @try {
+                    id val = [bar valueForKey:k];
+                    if (val) sbs_logNow(@"[capi] _UIStatusBar.%@ = %@(%@) count=%lu",
+                        k, NSStringFromClass([val class]), val,
+                        (unsigned long)([val respondsToSelector:@selector(count)]
+                                        ? (unsigned long)[val count] : 0));
+                } @catch (__unused NSException *e) {}
+            }
+            break;
+        }
+        bar = bar.superview;
+    }
+}
+
 static void sbs_loadConfig(void) {
     NSDictionary *d = [NSDictionary dictionaryWithContentsOfFile:
         @"/var/mobile/Library/Preferences/com.xu.statusbarscale.plist"];
@@ -192,9 +301,19 @@ static void sbs_loadConfig(void) {
     }
     if (gScale < 0.3f || gScale > 2.0f) gScale = 0.92f;   // 防呆
     if (gLeadScale < 0.2f || gLeadScale > 1.0f) gLeadScale = 0.60f;   // 防呆
+    // ⭐ v1.8.0 辅助条尺寸防呆（默认 0.4 × 17 ≈ 6.8pt）
+    if (gAuxBaseSize < 8.0f || gAuxBaseSize > 40.0f) gAuxBaseSize = 17.0f;
+    if (gAuxScale <= 0.05f || gAuxScale > 2.0f)      gAuxScale    = 0.4f;
+    if (gAuxGap < 0.0f || gAuxGap > 20.0f)           gAuxGap      = 3.0f;
     // 辅助图标配置：默认 = 系统状态栏【没有】原生显示的项。
     // ⚠️ location 不放默认集：系统已在时间旁渲染原生定位箭头，重复显示（许总反馈）。
-    if (!gAuxIcons) gAuxIcons = @[@"alarm", @"quietMode", @"rotationLock",
+    // ⭐⭐ v1.8.0 默认名单 = 许总要求的「系统不显示在灵动岛左/右两侧的图标」全集。
+    //   ⚠️ 2026-10-05 实机修正：早前误以为 alarm/rotationLock 会被系统显示而移出名单 ——
+    //      日志实证系统侧只有 `location.fill` 一个图标（时间旁那个是**定位箭头**，不是闹钟），
+    //      即灵动岛机型上闹钟/旋转锁/静音等并未被系统渲染，本就应该交给辅助条收纳。
+    //   location 也纳入名单：系统显示它时由运行期剔除逻辑自动跳过（见 sbs_identShownBySystem），
+    //      系统不显示时才由辅助条补上 —— 无论哪种情况都不会重复。
+    if (!gAuxIcons) gAuxIcons = @[@"alarm", @"quietMode", @"rotationLock", @"location",
                                   @"vpn", @"bluetooth", @"airplane"];
     if (d) {
         NSNumber *n;
@@ -204,6 +323,12 @@ static void sbs_loadConfig(void) {
             gAuxStrip = n.boolValue;
         if ((n = d[@"auxData"]) && [n isKindOfClass:[NSNumber class]])
             gAuxData = n.boolValue;
+        // ⭐ v1.8.0 辅助条尺寸/间距
+        if ((n = d[@"auxBaseSize"]) && [n isKindOfClass:[NSNumber class]]) gAuxBaseSize = n.floatValue;
+        if ((n = d[@"auxScale"])    && [n isKindOfClass:[NSNumber class]]) gAuxScale    = n.floatValue;
+        if ((n = d[@"auxGap"])      && [n isKindOfClass:[NSNumber class]]) gAuxGap      = n.floatValue;
+        // ⭐ v1.8.0 调试红底（默认 NO；开=条红底描边，肉眼判定"条是否真的在屏上"）
+        if ((n = d[@"auxDebug"])    && [n isKindOfClass:[NSNumber class]]) gAuxDebug    = n.boolValue;
         NSArray *arr = d[@"auxIcons"];
         if ([arr isKindOfClass:[NSArray class]] && arr.count) {
             NSMutableArray *m = [NSMutableArray array];
@@ -250,6 +375,8 @@ static void sbs_dumpOnChange(UIView *fg) {
 }
 
 static void sbs_auxLayoutInFG(UIView *fg);   // 辅助图标条布局（定义见后）
+static BOOL sbs_fgIsLive(UIView *fg);         // ⭐ v1.8.0 App 兜底扫描取证要用（定义见后）
+static void sbs_colorTick(void);              // ⭐ v1.8.0 配色巡检（定义见后）
 static void sbs_auxRelayoutFromData(void);    // ⭐ v1.4.4 data 驱动重排（定义见后）
 static void sbs_applyLead(UIView *fg);        // ⭐ v1.7.0 leading 区图标缩放（定义见后）
 static CGRect sbs_islandFrameInFG(UIView *fg); // ⭐ v1.7.0 leading 判定要用（定义见后）
@@ -316,10 +443,137 @@ static void sbs_logIdentOnce(NSString *tag, NSString *ident) {
     sbs_log(@"[%@] %@", tag, ident);
 }
 
+// ⭐ v1.8.0 辅助条图标边长 = 系统原图标尺寸 × 缩放倍数（默认 17 × 0.4 ≈ 6.8pt）
+static CGFloat sbs_auxIconSize(void) { return gAuxBaseSize * gAuxScale; }
+
+// ⭐ v1.8.0「系统是否已显示」判定表（懒初始化）
+//    证据源：canEnableDisplayItem:fromData: 的 orig 返回值 —— orig==YES 即系统
+//    本来就会渲染该图标，辅助条必须跳过（许总需求：只放系统不显示的）。
+static NSMutableSet *sbs_sysShown(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ gSysShown = [NSMutableSet set]; });
+    return gSysShown;
+}
+static NSMutableSet *sbs_sysHidden(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ gSysHidden = [NSMutableSet set]; });
+    return gSysHidden;
+}
+// ⭐⭐ v1.8.0 状态栏**实时信号源**（许总指正：不应靠图标名称比对）：
+//   hook `_UIStatusBar -viewForIdentifier:` —— 系统**只为要显示的 item** 索要视图，
+//   故该回调 = "系统正在显示这个图标"的实时变化信号（定位/免打扰这种实时状态最准）。
+static NSMutableSet *gSysRendered = nil;
+static NSMutableSet *sbs_sysRendered(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ gSysRendered = [NSMutableSet set]; });
+    return gSysRendered;
+}
+// hook 回调时记一笔（线程安全：主线程调用，加锁兜底）
+static void sbs_noteRendered(NSString *ident) {
+    if (!ident.length) return;
+    @synchronized (sbs_sysRendered()) {
+        [sbs_sysRendered() addObject:[ident lowercaseString]];
+    }
+}
+
+// ⭐⭐ v1.8.4 名称兜底命中表（保留：仅作身份映射的关键词命中记录，供日志追溯）
+static void sbs_auxLogOnce(NSString *key, NSString *fmt, ...) NS_FORMAT_FUNCTION(2, 3);
+static void sbs_auxRefresh(void);
+static void sbs_rescanSchedule(NSString *why);   // ⭐ v1.8.4 视图树信号（定义见后）
+static NSArray<NSString *> *sbs_auxKeyWords(NSString *ident); // ⭐ v1.8.4 身份映射关键词（定义见后）
+static NSMutableSet *sbs_sysNameHit(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ gSysNameHit = [NSMutableSet set]; });
+    return gSysNameHit;
+}
+
+// ⭐⭐ v1.8.1 发布"系统正在显示"的信号集 → 覆写抑制表。
+//   语义：抑制表 = 信号集 ∪ 名称兜底集（后者保守、只增）。
+//   与旧实现的区别（本次修复的核心）：
+//     · 旧：抑制表单向累积 + "缺席计数连续 3 次就撤销" → 扫描是时序快照，
+//       某一轮没采到系统图标就把之前的正确抑制撤销 → 定位图标回到辅助条
+//       （2026-10-05 10:51 日志实证：22.972 那轮 location withdrawn，真机复现重复）。
+//     · 新：以**信号集全量覆写**为准（系统此刻显示谁，抑制表就是谁）——
+//       信号是状态栏自己的显示决策，不受扫描时机影响。名称集只做加项。
+// ⭐⭐ v1.8.4 信号发布（**重写**）：抑制表 = 实时信号集（实时重算，非快照累积）。
+//   语义（许总需求：图标不重复，且要随状态实时变化）：
+//     · 加：立即生效
+//     · 减：需连续 2 次"健康巡检"一致缺席（防过渡态/单次漏扫把抑制误撤）
+//   与旧实现（v1.8.0「缺席计数 3 次」）的区别：现在的巡检是**事件驱动**的
+//   （状态栏视图树变更即触发），不是靠 layout 时序碰运气 → 漏扫概率极低。
+static void sbs_publishRescan(NSSet *now, BOOL healthy, NSString *why) {
+    NSMutableSet *cur = sbs_sysRendered();
+    NSMutableSet *added = [NSMutableSet set];
+    NSMutableSet *removed = [NSMutableSet set];
+    @synchronized (cur) {
+        for (id o in now) {
+            NSString *k = [o lowercaseString];
+            if (![cur containsObject:k]) { [cur addObject:k]; [added addObject:k]; }
+            if (gSysAbsent) [gSysAbsent removeObjectForKey:k];
+        }
+        if (healthy) {
+            for (NSString *k in [cur allObjects]) {
+                if ([now containsObject:k]) continue;
+                NSInteger n = [gSysAbsent[k] integerValue] + 1;
+                if (n >= 3) { [cur removeObject:k]; [removed addObject:k]; }
+                else gSysAbsent[k] = @(n);
+            }
+        }
+    }
+    NSMutableSet *s = sbs_sysShown();
+    [s removeAllObjects];
+    @synchronized (cur) { [s unionSet:cur]; }
+    NSArray *sorted = [s.allObjects sortedArrayUsingSelector:@selector(compare:)];
+    NSString *setStr = sorted.count ? [sorted componentsJoinedByString:@","] : @"(空)";
+    sbs_auxLogOnce([NSString stringWithFormat:@"rsig:%@:%@:%d", setStr, why ?: @"?",
+                    healthy ? 1 : 0],
+        @"【信号】系统正在显示=%@ ｜ 触发=%@ 巡检健康=%d 本次+[%@] -[%@]",
+        setStr, why ?: @"?", healthy ? 1 : 0,
+        added.count ? [[added.allObjects sortedArrayUsingSelector:@selector(compare:)]
+                       componentsJoinedByString:@","] : @"-",
+        removed.count ? [[removed.allObjects sortedArrayUsingSelector:@selector(compare:)]
+                         componentsJoinedByString:@","] : @"-");
+    if (added.count || removed.count) {
+        gSignalSeen = YES;
+        gSignalCount++;
+        sbs_auxRefresh();                       // ① 立即驱动图标显隐
+        // ② 显隐变了 → 条要重排（否则位置不移）。⭐ 异步执行：避免在 gInRescan
+        //    保护区内同步回调 sbs_auxLayoutInFG → 后者又会触发 fg 视图写入 → 递归。
+        dispatch_async(dispatch_get_main_queue(), ^{
+            UIView *fg = gActiveFG;
+            if (!fg) return;
+            gAuxForceRelayout = YES;
+            @try { sbs_auxLayoutInFG(fg); } @catch (__unused NSException *e) {}
+        });
+    }
+}
+
+// ⭐ v1.8.0 aux 诊断日志：去重 + 直写（走 sbs_logNow，受 diag 门控、不受 verbose 影响）。
+//    用途：证明辅助条「真的建了 / 真的显示了 / 为什么没显示」。
+//    ⚠️ 2026-10-05 教训：aux 日志原本全走 sbs_log（verbose 门控），设备 verbose=false
+//       → 一个字节都看不到，辅助条没显示时无法定位是卡在哪一步。
+static NSMutableSet *sbs_auxSeen(void) {
+    static NSMutableSet *s; static dispatch_once_t once;
+    dispatch_once(&once, ^{ s = [NSMutableSet set]; });
+    return s;
+}
+static void sbs_auxLogOnce(NSString *key, NSString *fmt, ...) NS_FORMAT_FUNCTION(2, 3);
+static void sbs_auxLogOnce(NSString *key, NSString *fmt, ...) {
+    if (![key isKindOfClass:[NSString class]] || !key.length) return;
+    if ([sbs_auxSeen() containsObject:key]) return;
+    [sbs_auxSeen() addObject:key];
+    va_list ap; va_start(ap, fmt);
+    NSString *body = [[NSString alloc] initWithFormat:fmt arguments:ap];
+    va_end(ap);
+    sbs_logNow(@"[aux] %@", body);
+}
+
 // 辅助图标条模块前向声明（定义见 SBSHelper 之后）
 static id   sbs_gData(void);
 static void sbs_setGData(id d);
 static void sbs_auxRefresh(void);
+static void sbs_signalFromBar(id bar, id data);   // ⭐ v1.8.1 真·信号源（定义见后）
+static void sbs_probeSignal(UIView *fg);          // ⭐ v1.8.1 信号容器探针（定义见后）
 static void sbs_captureSysIcon(NSString *ident, UIView *v);   // v1.4.2 系统图捕获
 static void sbs_installAux(void);
 static void sbs_startAuxIfNeeded(void);
@@ -538,9 +792,19 @@ static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
         sbs_logIdentOnce(@"canEnable", ident);
         // 顺带捕获 data 对象（辅助图标条的状态源）
         if (data && !sbs_gData()) sbs_setGData(data);
-        BOOL want = [gAuxIcons containsObject:ident.lowercaseString];
-        if (want) sbs_log(@"[canEnable] %@ orig=%d → 强制 YES", ident, orig);
-        return want ? YES : orig;
+        // ⭐⭐ v1.8.1 关键回退：**不再强制 YES**。
+        //   旧实现 `return want ? YES : orig;` 会替系统启用这些 item → 系统自己就会
+        //   把它们画到状态栏上 → ①违反许总"只放系统不显示的"需求；②污染我们自己的
+        //   "系统显示了谁"信号（自证伪）。现在一律**原样放行**，让系统保持原生行为，
+        //   我们的信号才干净。辅助条用自备 Assets.car 字形渲染，不依赖系统建 item。
+        //   （注：本固件实测该回调一次都不触发 —— 留着只作观测/回归保险。）
+        if ([gAuxIcons containsObject:ident.lowercaseString]) {
+            NSString *k = ident.lowercaseString;
+            if (orig) [sbs_sysShown() addObject:k];
+            sbs_auxLogOnce([NSString stringWithFormat:@"ce:%@:%d", k, orig ? 1 : 0],
+                @"canEnable %@ orig=%d → 原样放行（不再强制）", ident, orig);
+        }
+        return orig;
     } @catch (NSException *e) {
         sbs_log(@"[exc] %@", e);
         return orig;
@@ -573,14 +837,100 @@ static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
     }
 }
 
-// ⭐ v1.4.2 核心增强：捕获系统自己渲染的状态栏 item 视图 image（实现见后）。
+// ⭐⭐ v1.4.2 核心增强 / v1.8.0 改为**实时信号源**（许总要求）：
+//   系统**只为要显示的 item** 调 viewForIdentifier: → 这是"系统正在显示该图标"的
+//   实时信号，比事后按名称嗅探渲染结果可靠得多（定位/免打扰等实时变化的项尤其明显）。
+//   ⚠️ 实测参数**不是 NSString**（是 `_UIStatusBarIdentifier` 之类），旧实现直接跳过
+//      → 信号全漏（日志零条）。现在统一解析：字符串 / `identifier` 键 / description。
 - (UIView *)sbs_viewForIdentifier:(id)ident {
     UIView *v = [self sbs_viewForIdentifier:ident];
     @try {
-        if ([ident isKindOfClass:[NSString class]])
-            sbs_captureSysIcon((NSString *)ident, v);
+        NSString *s = nil;
+        if ([ident isKindOfClass:[NSString class]]) {
+            s = (NSString *)ident;
+        } else if (ident) {
+            @try {
+                id iv = [ident valueForKey:@"identifier"];
+                if ([iv isKindOfClass:[NSString class]]) s = (NSString *)iv;
+            } @catch (__unused NSException *e) {}
+            if (!s.length) {
+                @try {
+                    NSString *d = [ident description];
+                    // description 形如 `<前缀: 值>` → 取冒号后的部分
+                    NSRange r = [d rangeOfString:@":"];
+                    s = (r.location != NSNotFound && r.location + 1 <= d.length)
+                        ? [d substringFromIndex:r.location + 1] : d;
+                } @catch (__unused NSException *e) {}
+            }
+            // 取证：打印参数真实类型（一次性/类型）
+            sbs_auxLogOnce([@"vfiT:" stringByAppendingString:NSStringFromClass([ident class])],
+                @"viewForIdentifier 参数类=%@ 原样=%@ 解析=%@",
+                NSStringFromClass([ident class]),
+                [ident description] ?: @"(nil)", s ?: @"(nil)");
+        } else {
+            // nil 参数：系统在"清理/重置"item 视图树 → 清空信号（当前无显示项）
+            @synchronized (sbs_sysRendered()) { [sbs_sysRendered() removeAllObjects]; }
+            sbs_auxLogOnce(@"vfi:nil", @"viewForIdentifier(nil) → 清空状态栏显示信号");
+        }
+        if (s.length) {
+            // 去掉包裹的空白与引号
+            s = [s stringByTrimmingCharactersInSet:
+                 [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            sbs_noteRendered(s);
+            sbs_captureSysIcon(s, v);
+            sbs_auxLogOnce([@"vfi:" stringByAppendingString:s],
+                @"状态栏信号 viewForIdentifier → 「%@」(视图=%@)", s,
+                v ? NSStringFromClass(v.class) : @"nil");
+        }
     } @catch (__unused NSException *e) {}
     return v;
+}
+
+// ⭐⭐⭐ v1.8.1 **真·信号源**（许总指正后的核心改动）
+//   许总原话："你不应该根据图标名称来判断，而是要去监听状态栏的变化信号，
+//   像免打扰和定位这种是实时变化的。"
+//   实现：hook `_UIStatusBar -_updateDisplayedItemsWithData:styleAttributes:
+//   extraAnimations:` —— 这是状态栏每次数据更新时的**显示决策入口**（探针实证
+//   该方法在 `_UIStatusBar` 自身方法表里存在，见 [capi] `_UIStatusBar(243)`）。
+//   在它之后读 `_items` 容器 → 拿到"系统此刻为哪些 item 建了视图"= 系统正在显示谁。
+//   ⚠️ 不再用 `viewForIdentifier:`：该 hook 在本固件零回调（整份日志无一条 vfi:）。
+- (void)sbs_updateDisplayedItemsWithData:(id)data styleAttributes:(id)sa
+                         extraAnimations:(id)ea {
+    [self sbs_updateDisplayedItemsWithData:data styleAttributes:sa extraAnimations:ea];
+    @try {
+        sbs_signalFromBar((id)self, data);          // ① 记录 item 级状态（诊断）
+        // ② ⭐ v1.8.4 数据变化 = 状态栏变化信号 → 立刻重算"系统正在显示谁"
+        //    ⚠️ 只传原因字符串，**不传任何视图**（见 sbs_fgAddSubview: 的崩溃教训）
+        sbs_rescanSchedule(@"data");
+    }
+    @catch (__unused NSException *e) {}
+}
+
+// ⭐⭐⭐ v1.8.4 **真·状态栏变化信号**（许总指正的核心落地）
+//   许总原话："你不应该根据图标名称来判断，而是要去监听状态栏的变化信号，
+//   像免打扰和定位这种是实时变化的。"
+//   实现：给 `_UIStatusBarForegroundView` 挂**视图树变更事件**——
+//     `addSubview:` / `insertSubview:atIndex:` / `willRemoveSubview:`
+//   系统要显示某图标 → 把它的图标视图加进 fg；不再显示 → 移除。
+//   每一次增删都是一次"信号"，我们立刻重算「系统正在显示谁」。
+//   ⚠️⚠️ v1.8.7 **致命教训**：早期版本把 `(UIView *)self` 传进 `dispatch_async`
+//     block → block 捕获这个 fg 视图并在执行时 `objc_retain`。
+//     而 `willRemoveSubview:` **会在 fg 自身销毁/被状态栏复用池回收的过程中触发**
+//     → retain 一个将死对象 → `EXC_BAD_ACCESS@0x20` → SpringBoard SIGSEGV
+//     （2026-10-05 11:11 连崩两次，ellekit 写安全模式标记）。
+//     ∴ 现在**绝不捕获任何视图**：只传一个字符串原因，执行时从全局强引用
+//     `gActiveFG` 现取 fg 并校验存活（window 非空、未隐藏）。
+- (void)sbs_fgAddSubview:(UIView *)v {
+    [self sbs_fgAddSubview:v];
+    @try { sbs_rescanSchedule(@"add"); } @catch (__unused NSException *e) {}
+}
+- (void)sbs_fgInsertSubview:(UIView *)v atIndex:(NSInteger)idx {
+    [self sbs_fgInsertSubview:v atIndex:idx];
+    @try { sbs_rescanSchedule(@"ins"); } @catch (__unused NSException *e) {}
+}
+- (void)sbs_fgWillRemoveSubview:(UIView *)v {
+    [self sbs_fgWillRemoveSubview:v];
+    @try { sbs_rescanSchedule(@"rem"); } @catch (__unused NSException *e) {}
 }
 
 // 侦查：display item 创建流
@@ -667,6 +1017,83 @@ static NSUInteger sbs_hookDefiningClasses(Class base, SEL original, SEL replacem
     return hooked;
 }
 
+// ⭐⭐ v1.8.0 辅助 hook 提前安装（本轮最关键修复）
+//   教训（2026-10-05 09:30 日志实证）：辅助 hook 原在 sbs_installAux 里安装，而它要等
+//   UIScreen 就绪（启动后 ~0.5s）才跑 —— 那时 SB 的状态栏 item 早已创建完毕，hook 装好
+//   后再无 canEnableDisplayItem 调用（日志零条）→ 永远拿不到"系统本来是否启用该图标"
+//   的 orig 证据，「只放系统不显示的」判定无从下手。
+//   修：把 canEnable / item / data 三类 hook 提到 ctor 阶段的 sbs_install 里装，
+//   带类等待重试（每 0.1s × 最多 60 次 ≈ 6s），确保赶在状态栏 item 创建之前挂上。
+static BOOL gAuxHooksInstalled = NO;
+static int  gAuxHookTries = 0;
+
+static void sbs_installAuxHooksEarly(void);
+
+static void sbs_installAuxDataHooks(void) {
+    if (!gAuxData) return;
+    Class D = objc_getClass("_UIStatusBarData");
+    if (!D) return;
+    Method m1 = class_getInstanceMethod(D, @selector(applyUpdate:));
+    Method m2 = class_getInstanceMethod(D, @selector(_applyUpdate:keys:));
+    sbs_auxLogOnce(@"sig:applyUpdate", @"安装③ applyUpdate: 签名 = %s",
+                   m1 ? method_getTypeEncoding(m1) : "(无)");
+    sbs_auxLogOnce(@"sig:applyUpdateKeys", @"安装③ _applyUpdate:keys: 签名 = %s",
+                   m2 ? method_getTypeEncoding(m2) : "(无)");
+    if (m2) {
+        BOOL ok = SBSHook(D, @selector(_applyUpdate:keys:), SBSHelper.class,
+                          @selector(sbs_dataApplyUpdateKeys:keys:));
+        sbs_auxLogOnce(@"hook:aug", @"hook _applyUpdate:keys: → %@", ok ? @"已安装" : @"失败");
+    }
+    if (m1) {
+        BOOL ok = SBSHook(D, @selector(applyUpdate:), SBSHelper.class,
+                          @selector(sbs_dataApplyUpdate:));
+        sbs_auxLogOnce(@"hook:aum", @"hook applyUpdate: → %@", ok ? @"已安装" : @"失败");
+    }
+}
+
+static void sbs_installAuxHooksEarly(void) {
+    if (gAuxHooksInstalled || !gAuxEnabled) return;
+    Class IT = objc_getClass("_UIStatusBarItem");
+    Class D  = objc_getClass("_UIStatusBarData");
+    SEL ce = @selector(canEnableDisplayItem:fromData:);
+    Class owner = IT ? sbs_findDefiner(ce, "B32@0:8@16@24") : nil;
+    if (!owner || !IT || !D) {
+        if (gAuxHookTries == 0)
+            sbs_auxLogOnce(@"early-wait",
+                @"辅助 hook 早期安装：等待类就绪（canEnable 实现类=%@ item=%@ data=%@）",
+                owner ? NSStringFromClass(owner) : @"无", IT ? @"有" : @"无", D ? @"有" : @"无");
+        if (gAuxHookTries++ < 60)
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{ sbs_installAuxHooksEarly(); });
+        else
+            sbs_auxLogOnce(@"early-fail", @"辅助 hook 早期安装失败：类等待超时（%d 次）", gAuxHookTries);
+        return;
+    }
+    gAuxHooksInstalled = YES;
+    BOOL ok1 = SBSHook(owner, ce, SBSHelper.class, @selector(sbs_canEnableDisplayItem:fromData:));
+    BOOL ok2 = SBSHook(IT, @selector(viewForIdentifier:), SBSHelper.class,
+                       @selector(sbs_viewForIdentifier:));
+    BOOL ok3 = SBSHook(IT, @selector(createDisplayItemForIdentifier:), SBSHelper.class,
+                       @selector(sbs_createDisplayItemForIdentifier:));
+    sbs_installAuxDataHooks();
+    // ⭐⭐⭐ v1.8.1 真·信号源钩子：`_UIStatusBar` 的显示决策入口。
+    //   装不上也要把**真实签名**打进日志（方便下一轮定位）——故先读 encoding 再挂。
+    Class Bar = objc_getClass("_UIStatusBar");
+    SEL uds = @selector(_updateDisplayedItemsWithData:styleAttributes:extraAnimations:);
+    Method mud = Bar ? class_getInstanceMethod(Bar, uds) : NULL;
+    sbs_auxLogOnce(@"sig:hook-enc",
+        @"信号钩子 _updateDisplayedItemsWithData:styleAttributes:extraAnimations: 签名=%s 目标类=%@",
+        mud ? method_getTypeEncoding(mud) : "(无)", Bar ? @"有" : @"无");
+    BOOL ok4 = SBSHook(Bar, uds, SBSHelper.class,
+                       @selector(sbs_updateDisplayedItemsWithData:styleAttributes:extraAnimations:));
+    sbs_auxLogOnce(@"sig:hook",
+        @"信号源 hook _updateDisplayedItemsWithData:... → %@", ok4 ? @"已安装" : @"失败/签名不符");
+    sbs_auxLogOnce(@"early-ok",
+        @"安装①②③④ 辅助 hook 早期安装完成 canEnable=%@ item=%@/%@ 信号源=%@（第 %d 次尝试）",
+        ok1 ? @"已安装" : @"失败", ok2 ? @"1" : @"0", ok3 ? @"1" : @"0",
+        ok4 ? @"已安装" : @"失败", gAuxHookTries);
+}
+
 // ===========================================================================
 #pragma mark - 辅助图标条（系统字形 + _UIStatusBarData 状态镜像）
 // ===========================================================================
@@ -721,6 +1148,85 @@ static void sbs_auxRelayoutFromData(void) {
             @catch (NSException *e) { sbs_log(@"[exc-auxRD] %@", e); }
         });
     }
+}
+
+// ⭐ v1.8.0 App 前台兜底扫描（许总需求④：主屏 + App 内都要显示）。
+//   根因（2026-10-05 09:45 日志实证）：进入 App 后主屏 fg 被摘窗（`布局拒绝 win=nil
+//   fgW=430`），而 App 内的状态栏 fg 挂在 SBMainSwitcherWindow 上、其首次布局早于 hook
+//   安装 → 两条路径都不会触发我们的布局 → App 内条消失。
+//   修：主动遍历 SB 的窗口，在 MainSwitcher 窗口里找回 fg 并触发布局。
+static void sbs_scanMainSwitcherFG(void) {
+    if (![[[NSProcessInfo processInfo] processName] isEqualToString:@"SpringBoard"]) return;
+    Class FGC = objc_getClass("_UIStatusBarForegroundView");
+    if (!FGC) return;
+    @try {
+        NSArray *wins = [[UIApplication sharedApplication] windows];
+        // ⭐ 取证①：SB 窗口清单（架构真相：类名/隐藏/尺寸/层级/透明度）
+        //   ⚠️ 不截断：分段打印（App 前台时真正的状态栏窗口可能排在数组后段）
+        NSMutableArray<NSString *> *wchunks = [NSMutableArray array];
+        NSMutableString *wcur = [NSMutableString string];
+        for (UIWindow *w in wins) {
+            [wcur appendFormat:@"%@(hid=%d,lv=%.0f,w=%.0f) ", NSStringFromClass(w.class),
+                w.isHidden, w.windowLevel, w.bounds.size.width];
+            if (wcur.length > 420) { [wchunks addObject:[wcur copy]];
+                                     wcur = [NSMutableString string]; }
+        }
+        if (wcur.length) [wchunks addObject:[wcur copy]];
+        NSString *wsig = [NSString stringWithFormat:@"%lu|%@", (unsigned long)wins.count,
+                          wchunks.count ? wchunks[0] : @""];
+        sbs_auxLogOnce([@"winsn:" stringByAppendingString:wsig],
+            @"SB 窗口 %lu 个（%lu 段）", (unsigned long)wins.count,
+            (unsigned long)wchunks.count);
+        for (NSUInteger ci = 0; ci < wchunks.count; ci++)
+            sbs_auxLogOnce([NSString stringWithFormat:@"wins%d:%@", (int)ci, wsig],
+                @"SB窗口段%d: %@", (int)ci, wchunks[ci]);
+        // ⭐ 取证②：窗口树内所有状态栏相关视图（App 内状态栏的真身在哪）
+        NSMutableString *fnd = [NSMutableString string];
+        NSMutableArray *all = [NSMutableArray array];
+        for (UIWindow *w in wins) [all addObject:w];
+        int guard = 0;
+        while (all.count && guard++ < 5000) {
+            UIView *v = all.lastObject;
+            [all removeLastObject];
+            NSString *cn = NSStringFromClass(v.class);
+            if ([cn containsString:@"UIStatusBar"])
+                [fnd appendFormat:@"%@(w=%.0f,win=%@); ", cn, v.bounds.size.width,
+                    v.window ? NSStringFromClass(v.window.class) : @"nil"];
+            for (UIView *c in v.subviews) [all addObject:c];
+        }
+        sbs_auxLogOnce([@"sbfind:" stringByAppendingString:fnd],
+            @"窗口树内状态栏视图: %@",
+            fnd.length ? (fnd.length > 900 ? [fnd substringToIndex:900] : (NSString *)fnd) : @"(无)");
+        // ⭐ 原有逻辑：MainSwitcher 窗口里找 fg 并接回
+        for (UIWindow *w in wins) {
+            NSString *cn = NSStringFromClass(w.class);
+            if (![cn containsString:@"MainSwitcher"]) continue;
+            if (w.isHidden) continue;
+            NSMutableArray *stack = [NSMutableArray arrayWithObject:(id)w];
+            while (stack.count) {
+                UIView *v = stack.lastObject;
+                [stack removeLastObject];
+                if ([v isKindOfClass:FGC]) {
+                    if (v.bounds.size.width > 0) {
+                        gActiveFG = v;
+                        [sbs_seenFGs() addObject:v];
+                        gAuxForceRelayout = YES;
+                        NSMutableString *sv = [NSMutableString string];
+                        for (UIView *c in v.subviews)
+                            [sv appendFormat:@"%@(%.0f) ", NSStringFromClass(c.class),
+                                c.bounds.size.width];
+                        sbs_auxLogOnce([NSString stringWithFormat:@"msw:%@", cn],
+                            @"App 内扫描：MainSwitcher(%@) 中找到 fg=%p fgW=%.0f live=%d 子视图=[%@] → 触发布局",
+                            cn, v, v.bounds.size.width, sbs_fgIsLive(v) ? 1 : 0,
+                            sv.length > 300 ? [sv substringToIndex:300] : (NSString *)sv);
+                        sbs_auxLayoutInFG(v);
+                    }
+                    return;
+                }
+                for (UIView *c in v.subviews) [stack addObject:c];
+            }
+        }
+    } @catch (__unused NSException *e) {}
 }
 
 // ⭐ v1.4.5 定时自愈：兜底所有未知的条丢失场景（App↔主屏切换 fg 不布局、
@@ -784,10 +1290,17 @@ static void sbs_auxSelfHealStart(void) {
                     gAuxForceRelayout = YES;         // 强制跳过节流
                     sbs_auxLayoutInFG(fg);
                 }
+                // ⭐ v1.8.0 App 前台兜底：无条件扫描（函数内按窗口签名去重，只在架构变化时直写），
+                //    避免"自愈把条挂到 UIStatusBarWindow 里不可见的 fg"时永远不触发。
+                sbs_scanMainSwitcherFG();
+                // ⭐ v1.8.4 每秒巡检一次「系统正在显示谁」—— 事件驱动之外的兜底，
+                //    保证任何漏掉变化事件的情况下，抑制状态最多 1 秒内收敛。
+                sbs_rescanSchedule(@"tick");
+                sbs_colorTick();          // ⭐ v1.8.0 配色巡检（每秒，值变化才写）
             } @catch (__unused NSException *e) {}
         });
         dispatch_resume(gHealTimer);
-        sbs_log(@"[aux] 自愈计时器已启动（2s 间隔）");
+        sbs_auxLogOnce(@"heal", @"自愈计时器已启动（1s 间隔）");
     });
 }
 // ⭐ v1.4.2 系统原生图标捕获表：hook viewForIdentifier: 时记下系统自己渲染的
@@ -856,8 +1369,9 @@ static void sbs_captureSysIcon(NSString *ident, UIView *v) {
     NSString *key = ident.lowercaseString;
     if (gSysImages[key]) return;              // 首捕获为准（同 ident 不同状态样式可能不同）
     gSysImages[key] = img;
-    sbs_log(@"[sysIcon] 捕获 %@ (%@ %@x%.0f)", key,
-            NSStringFromClass(v.class), NSStringFromCGSize(img.size), img.scale);
+    sbs_auxLogOnce([@"sys:" stringByAppendingString:key],
+        @"捕获系统图 %@ ← %@ %.0fx%.0f pt", key,
+        NSStringFromClass(v.class), img.size.width, img.size.height);
     // 已建条 → 立即换上系统图（未建条时 sbs_auxEnsureCreated 会优先用捕获图）
     UIImageView *iv = gAuxViews ? gAuxViews[key] : nil;
     if (iv && iv.image != img) {
@@ -866,11 +1380,13 @@ static void sbs_captureSysIcon(NSString *ident, UIView *v) {
 }
 
 static UIImage *sbs_auxImage(NSString *ident) {
+    NSString *lk = ident.lowercaseString;
     // ⭐ v1.4.2 优先级 1：系统自己渲染的同款图（viewForIdentifier: 捕获）
     if (gSysImages) {
-        UIImage *sys = gSysImages[ident.lowercaseString];
+        UIImage *sys = gSysImages[lk];
         if (sys) {
-            sbs_logIdentOnce(@"icon", [NSString stringWithFormat:@"%@ ← 系统捕获图", ident]);
+            sbs_auxLogOnce([@"img:" stringByAppendingString:lk],
+                @"图标 %@ ← 系统捕获图 %.0fx%.0f", ident, sys.size.width, sys.size.height);
             return sys;
         }
     }
@@ -884,30 +1400,45 @@ static UIImage *sbs_auxImage(NSString *ident) {
     for (NSString *n in cars) {
         for (NSBundle *b in bundleCandidates) {
             UIImage *im = [UIImage imageNamed:n inBundle:b compatibleWithTraitCollection:nil];
-            if (im) { sbs_logIdentOnce(@"icon", [NSString stringWithFormat:@"%@ ← car:%@", ident, n]); return im; }
+            if (im) {
+                sbs_auxLogOnce([@"img:" stringByAppendingString:lk],
+                    @"图标 %@ ← car:%@", ident, n);
+                return im;
+            }
         }
     }
     if (sf) {
         UIImage *im = [UIImage systemImageNamed:sf];
-        if (im) { sbs_logIdentOnce(@"icon", [NSString stringWithFormat:@"%@ ← SF:%@", ident, sf]); return im; }
+        if (im) {
+            sbs_auxLogOnce([@"img:" stringByAppendingString:lk],
+                @"图标 %@ ← SF Symbol:%@", ident, sf);
+            return im;
+        }
     }
-    sbs_logIdentOnce(@"icon", [NSString stringWithFormat:@"%@ ← 加载失败", ident]);
+    sbs_auxLogOnce([@"img:" stringByAppendingString:lk],
+        @"图标 %@ ← 加载失败（捕获图/Assets.car/SF 全部无图）", ident);
     return nil;
 }
 
 // 建条：全局只建一次（不挂载——宿主 fg 或其父容器由布局按灵动岛位置决定）
 static void sbs_auxEnsureCreated(void) {
     if (!gAuxEnabled || !gAuxIcons.count || gStrip) return;
+    CGFloat isz = sbs_auxIconSize();
     gStrip = [[UIView alloc] initWithFrame:CGRectZero];
     gStrip.userInteractionEnabled = NO;
     gStrip.backgroundColor = nil;
+    // ⭐ v1.8.0 调试红底：条红底 —— 肉眼判定"条是否真的渲染在屏上"
+    if (gAuxDebug) {
+        gStrip.backgroundColor = [UIColor colorWithRed:1.0 green:0.0 blue:0.0 alpha:1.0];
+        gStrip.clipsToBounds = NO;
+    }
     gAuxViews = [NSMutableDictionary dictionary];
     gAuxKeys  = [NSMutableDictionary dictionary];
     CGFloat x = 0;
     for (NSString *ident in gAuxIcons) {
         UIImage *im = sbs_auxImage(ident);
         UIImageView *iv = [[UIImageView alloc] initWithFrame:
-            CGRectMake(x, 0, kAuxIconSize, kAuxIconSize)];
+            CGRectMake(x, 0, isz, isz)];
         iv.contentMode = UIViewContentModeScaleAspectFit;
         if (im) {
             iv.image = [im imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
@@ -919,9 +1450,11 @@ static void sbs_auxEnsureCreated(void) {
         NSString *entryKey = [ident caseInsensitiveCompare:@"airplane"] == NSOrderedSame
             ? @"airplaneModeEntry" : [NSString stringWithFormat:@"%@Entry", ident];
         gAuxKeys[ident.lowercaseString] = entryKey;
-        x += kAuxIconSize + kAuxGap;
+        x += isz + gAuxGap;
     }
-    sbs_log(@"[aux] 条已创建 icons=%lu size=%.0f", (unsigned long)gAuxViews.count, kAuxIconSize);
+    // ⭐ v1.8.0 直写（原走 sbs_log，设备 verbose=false 时完全不可见）
+    sbs_auxLogOnce(@"created", @"条已创建 icons=%lu 图标边长=%.2fpt (基准%.1f × 缩放%.2f) 间距=%.1f",
+                   (unsigned long)gAuxViews.count, isz, gAuxBaseSize, gAuxScale, gAuxGap);
 }
 
 // 只有"活的"状态栏（有时间文字/电池等内容视图）才托管辅助条。
@@ -1182,19 +1715,525 @@ static BOOL sbs_entryActive(id entry, NSString *ident) {
     return YES;   // 非 nil 但没有布尔键 → 存在即激活
 }
 
+// ⭐⭐⭐ v1.8.1 信号源实现（许总指正后新增）
+// ---------------------------------------------------------------------------
+// 把任意"标识对象"转成可读字符串（`_UIStatusBarItem.identifier` 是 `_UIStatusBarIdentifier`
+// 之类的私有对象，description 形如 `<...: object=_UIStatusBarIndicatorLocationItem>`）。
+static NSString *sbs_identString(id obj) {
+    if (!obj) return nil;
+    if ([obj isKindOfClass:[NSString class]]) return (NSString *)obj;
+    for (NSString *k in (@[@"identifier", @"itemIdentifier", @"_identifier", @"name"])) {
+        @try {
+            id v = [obj valueForKey:k];
+            if ([v isKindOfClass:[NSString class]] && [(NSString *)v length]) return (NSString *)v;
+        } @catch (__unused NSException *e) {}
+    }
+    NSString *d = nil;
+    @try { d = [obj description]; } @catch (__unused NSException *e) {}
+    if (!d.length) return nil;
+    NSRange r = [d rangeOfString:@"item="];
+    if (r.location != NSNotFound) {
+        NSString *t = [d substringFromIndex:r.location + 5];
+        NSRange end = [t rangeOfCharacterFromSet:
+                       [NSCharacterSet characterSetWithCharactersInString:@";> "]];
+        if (end.location != NSNotFound) t = [t substringToIndex:end.location];
+        return t.length ? t : nil;
+    }
+    return d;
+}
+
+// ⭐⭐⭐ v1.8.1 真·item 身份判定：**用 item 的类名**（唯一稳定标识）。
+//   探针实证（2026-10-05）：`_UIStatusBar._items` 的 value 是 `_UIStatusBarItem` 子类，
+//   类名直接就是 item 身份：`_UIStatusBarIndicatorLocationItem` / `..AlarmItem` /
+//   `..QuietModeItem` / `..RotationLockItem` / `_UIStatusBarBluetoothItem` /
+//   `..AirplaneModeItem` / `_UIStatusBarIndicatorVPNItem`。
+static NSString *sbs_itemIdentFromClass(NSString *cls) {
+    if (!cls.length) return nil;
+    static NSDictionary *m = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        m = @{
+            @"_UIStatusBarIndicatorAlarmItem":        @"alarm",
+            @"_UIStatusBarIndicatorLocationItem":     @"location",
+            @"_UIStatusBarIndicatorQuietModeItem":    @"quietmode",
+            @"_UIStatusBarIndicatorRotationLockItem": @"rotationlock",
+            @"_UIStatusBarIndicatorVPNItem":          @"vpn",
+            @"_UIStatusBarBluetoothItem":             @"bluetooth",
+            @"_UIStatusBarIndicatorAirplaneModeItem": @"airplane",
+        };
+    });
+    return m[cls];
+}
+
+// display item 的视图（`_UIStatusBarDisplayItem._view`）
+static UIView *sbs_displayItemView(id di) {
+    if (!di) return nil;
+    for (NSString *k in (@[@"_view", @"view"])) {
+        @try {
+            id v = [di valueForKey:k];
+            if ([v isKindOfClass:[UIView class]]) return (UIView *)v;
+        } @catch (__unused NSException *e) {}
+    }
+    return nil;
+}
+
+// ⭐⭐⭐ v1.8.2 某 item 是否"正被系统显示"（**真信号判据**）
+//   探针实证（2026-10-05 10:58，崩溃前已取到字段面）：
+//     `_UIStatusBarItem ivars(4)`: _needsUpdate _identifier **_displayItems** _statusBar
+//       → item 上**没有 view**（旧实现读 item.view 恒 nil → 信号集恒空，这才是
+//         "信号源没工作"的真相，而不是 hook 没挂上）
+//     `_UIStatusBarDisplayItem ivars(32)`: **_enabled(B)** **_dynamicallyHidden(B)**
+//       **_view** _item _identifier _alpha _viewAlpha …
+//   判据：该 item 的任一 display item 满足 `_enabled==YES && _dynamicallyHidden==NO`
+//         → 系统此刻正在状态栏显示它。
+//   ⚠️ 全程 @try 包裹 + 只用 KVC（绝不 object_getIvar 取非对象 ivar ——
+//      10:58 的 SpringBoard SIGSEGV 就是把 double/bool ivar 当对象 retain 造成的）。
+static BOOL sbs_itemIsDisplayed(id item, NSMutableString *detail) {
+    if (!item) return NO;
+    id dis = nil;
+    @try { dis = [item valueForKey:@"_displayItems"]; } @catch (__unused NSException *e) {}
+    if (![dis isKindOfClass:[NSDictionary class]]) return NO;
+    BOOL any = NO;
+    NSUInteger i = 0;
+    for (id dk in (NSDictionary *)dis) {
+        id di = [(NSDictionary *)dis objectForKey:dk];
+        BOOL en = NO, dyn = NO;
+        @try { en  = [[di valueForKey:@"_enabled"] boolValue]; } @catch (__unused NSException *e) {}
+        @try { dyn = [[di valueForKey:@"_dynamicallyHidden"] boolValue]; } @catch (__unused NSException *e) {}
+        UIView *v = sbs_displayItemView(di);
+        BOOL vis = v && v.window && !v.isHidden && v.alpha > 0.01 && v.frame.size.width > 0.5;
+        if (detail && i < 6)
+            [detail appendFormat:@"[%@ en=%d dyn=%d v=%d vis=%d]", sbs_identString(dk) ?: @"?", en, dyn, v ? 1 : 0, vis];
+        if (en && !dyn) any = YES;
+        i++;
+    }
+    return any;
+}
+
+// ⭐⭐⭐ v1.8.4 从 `_UIStatusBar` 的 item 容器记录 item 级状态（**仅诊断**）。
+//   探针已证（2026-10-05 11:02）：`_UIStatusBarItem` 的 `_displayItems` 里视图是
+//   **预建的**（frame 0x0 / win=nil / en=0，7 个候选全一样）→ item 内部状态
+//   区分不出"系统到底显示没显示"。故本函数只把事实记进日志，**不再据此发布抑制表**；
+//   真正的判据交给 `sbs_rescanFG`（视图树是否真的挂了该图标视图）。
+static void sbs_signalFromBar(id bar, id data) {
+    if (!bar) return;
+    NSMutableString *detail = [NSMutableString string];
+    id items = nil;
+    @try { items = [bar valueForKey:@"_items"]; } @catch (__unused NSException *e) {}
+    NSUInteger itemCount = [items respondsToSelector:@selector(count)] ? [items count] : 0;
+    NSUInteger displayItemCount = 0;
+    if ([items isKindOfClass:[NSDictionary class]]) {
+        for (id key in (NSDictionary *)items) {
+            id item = [(NSDictionary *)items objectForKey:key];
+            NSString *cls = item ? NSStringFromClass([item class]) : nil;
+            NSString *ident = sbs_itemIdentFromClass(cls);
+            id dis = nil;
+            @try { dis = [item valueForKey:@"_displayItems"]; } @catch (__unused NSException *e) {}
+            if ([dis respondsToSelector:@selector(count)]) displayItemCount += [dis count];
+            if (!ident) continue;
+            NSMutableString *dsub = [NSMutableString string];
+            BOOL en = sbs_itemIsDisplayed(item, dsub);
+            [detail appendFormat:@"%@=%d ", ident, en ? 1 : 0];
+            if (dsub.length)
+                sbs_auxLogOnce([@"dl:" stringByAppendingString:ident],
+                    @"displayItems 明细 %@：%@", ident, dsub);
+        }
+    }
+    sbs_auxLogOnce([NSString stringWithFormat:@"itemstat:%lu:%@", (unsigned long)itemCount,
+                    detail],
+        @"【item状态】_items=%lu _displayItems=%lu data=%@ ｜ %@",
+        (unsigned long)itemCount, (unsigned long)displayItemCount,
+        data ? NSStringFromClass([data class]) : @"nil", detail);
+}
+
+// ⭐⭐⭐ v1.8.4 实时重算「系统正在显示哪些候选图标」——扫描 fg 视图树里**真正可见**的图标视图。
+//   · 判据：图标视图已挂窗口、未隐藏、alpha>0、尺寸>0.5，且其图像标识名命中候选关键词。
+//   · 巡检健康 = fg 内存在时间文字/电池视图（说明这棵 fg 是"活的、已渲染完"的），
+//     不健康则只加不减（防过渡态误撤）。
+static BOOL gInRescan = NO;
+static void sbs_rescanFG(UIView *fg, NSString *why) {
+    if (!fg || gInRescan) return;
+    gInRescan = YES;
+    NSMutableSet *names = [NSMutableSet set];
+    BOOL healthy = NO;
+    NSMutableArray *stack = [NSMutableArray arrayWithObject:fg];
+    int guard = 0;
+    while (stack.count && guard++ < 600) {
+        UIView *v = stack.lastObject;
+        [stack removeLastObject];
+        if (v == gStrip) continue;
+        NSString *cn = NSStringFromClass(v.class);
+        if ([cn containsString:@"Battery"] || [cn containsString:@"StringView"]) healthy = YES;
+        if ([v isKindOfClass:[UIImageView class]]) {
+            UIImageView *iv = (UIImageView *)v;
+            // ⭐ v1.8.4 判据放宽（关键修正）：**不做 window 判定**。
+            //   实测（11:05:40）：视图刚 addSubview 时 frame=0×0、window=nil，
+            //   而 layout 稍后才赋 frame —— 用 window/尺寸过滤会把"刚加进来的图标"
+            //   全部滤掉 → 信号集恒空（这正是本轮信号源仍不工作的原因）。
+            //   改为：在 fg 树内 + 未隐藏 + alpha>0 + 有尺寸（尺寸在 0.25s 后的
+            //   二次巡检时已就绪；首次巡检若尺寸为 0 也不影响，第二次能补上）。
+            if (!iv.isHidden && iv.alpha > 0.01) {
+                NSString *ni = nil;
+                @try { ni = iv.image.accessibilityIdentifier; } @catch (__unused NSException *e) {}
+                if (!ni.length)
+                    @try { ni = iv.accessibilityIdentifier; } @catch (__unused NSException *e) {}
+                if (ni.length) [names addObject:[ni lowercaseString]];
+            }
+        }
+        for (UIView *s in v.subviews) [stack addObject:s];
+    }
+    NSMutableSet *now = [NSMutableSet set];
+    for (NSString *ident in gAuxIcons) {
+        NSString *k = ident.lowercaseString;
+        for (NSString *kw in sbs_auxKeyWords(k))
+            for (NSString *n in names)
+                if ([n containsString:kw]) {
+                    [now addObject:k];
+                    [sbs_sysNameHit() addObject:k];    // 命中留痕（日志追溯用，不参与判定）
+                    break;
+                }
+    }
+    if (names.count)
+        sbs_auxLogOnce([NSString stringWithFormat:@"scan:%@", why ?: @"?"],
+            @"巡检%@ 可见图标标识名=%@ 候选命中=%@ 健康=%d",
+            why ?: @"?", [[names.allObjects sortedArrayUsingSelector:@selector(compare:)]
+                          componentsJoinedByString:@","],
+            now.count ? [[now.allObjects sortedArrayUsingSelector:@selector(compare:)]
+                         componentsJoinedByString:@","] : @"(无)",
+            healthy ? 1 : 0);
+    sbs_publishRescan(now, healthy, why);
+    gInRescan = NO;
+}
+
+static int gRescanScheduled = 0;
+
+// ⭐ v1.8.7 执行时从全局强引用 `gActiveFG` 现取 fg 并校验存活 —— 绝不在 block 里捕获视图。
+static void sbs_rescanActive(NSString *why) {
+    UIView *fg = gActiveFG;
+    if (!fg || !fg.window || fg.isHidden) return;
+    sbs_rescanFG(fg, why);
+}
+
+static void sbs_rescanSchedule(NSString *why) {
+    if (gRescanScheduled) return;
+    gRescanScheduled = 1;
+    NSString *w = [why copy] ?: @"?";
+    // ⭐ v1.8.4 两段式：立即一次（图已进树）+ 0.25s 后再一次（frame 已就绪）。
+    //   实测依据：addSubview 时 frame=0×0/window=nil，布局完成后才有尺寸与标识名。
+    //   ⚠️ block 内**只引用字符串**（w 是常量/拷贝），不引用任何 UIView → 无生命周期风险。
+    dispatch_async(dispatch_get_main_queue(), ^{
+        @try { sbs_rescanActive(w); } @catch (__unused NSException *e) {}
+    });
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        @try { sbs_rescanActive([w stringByAppendingString:@"+"]); }
+        @catch (__unused NSException *e) {}
+        gRescanScheduled = 0;
+    });
+}
+
+// ⭐ v1.8.1 一次性信号容器探针：把「信号源到底能不能用」的证据一次性打全。
+//   （许总铁律：改逻辑前先取日志证据；这是取证步骤，不做任何显示写入）
+static void sbs_probeSignal(UIView *fg) {
+    static BOOL done = NO;
+    if (done || !fg) return;
+    done = YES;
+    // 找 `_UIStatusBar`（fg 的父层里）
+    id bar = nil;
+    UIView *v = fg;
+    for (int i = 0; i < 4 && v; i++) {
+        if ([NSStringFromClass(v.class) isEqualToString:@"_UIStatusBar"]) { bar = v; break; }
+        v = v.superview;
+    }
+    if (!bar) { sbs_auxLogOnce(@"psig:nobar", @"信号探针：未找到 _UIStatusBar"); return; }
+    // ① 信号源容器的真实内容（遍历前 14 个 item 的完整字段）
+    id items = nil;
+    @try { items = [bar valueForKey:@"_items"]; } @catch (__unused NSException *e) {}
+    sbs_auxLogOnce(@"psig:items",
+        @"信号探针 _items 类型=%@ count=%lu",
+        items ? NSStringFromClass([items class]) : @"nil",
+        (unsigned long)([items respondsToSelector:@selector(count)] ? [items count] : 0));
+    if ([items isKindOfClass:[NSDictionary class]]) {
+        NSUInteger i = 0;
+        for (id key in (NSDictionary *)items) {
+            id item = [(NSDictionary *)items objectForKey:key];
+            UIView *iv = nil;
+            @try { id vv = [item valueForKey:@"view"];
+                   if ([vv isKindOfClass:[UIView class]]) iv = vv; } @catch (__unused NSException *e) {}
+            sbs_auxLogOnce([NSString stringWithFormat:@"psig:i%lu", (unsigned long)i],
+                @"信号探针 item[%lu] key=<%@> keyCls=%@ ident=%@ itemCls=%@ viewCls=%@ "
+                @"win=%@ hid=%d a=%.2f f=%@ sup=%@",
+                (unsigned long)i, [key description], NSStringFromClass([key class]),
+                sbs_identString(key) ?: @"(nil)",
+                item ? NSStringFromClass([item class]) : @"nil",
+                iv ? NSStringFromClass([iv class]) : @"nil",
+                iv.window ? NSStringFromClass([iv.window class]) : @"nil",
+                iv ? iv.isHidden : -1, iv ? iv.alpha : -1.0,
+                iv ? NSStringFromCGRect(iv.frame) : @"-",
+                iv ? NSStringFromClass([iv.superview class]) : @"-");
+            if (++i >= 14) { sbs_auxLogOnce(@"psig:more", @"信号探针 item 列表截断于 14"); break; }
+        }
+    }
+    // ② `_UIStatusBarItem` 的字段面（判断有没有更直接的"是否显示"标志）
+    Class IC = objc_getClass("_UIStatusBarItem");
+    if (IC) {
+        unsigned int n = 0;
+        Ivar *ivs = class_copyIvarList(IC, &n);
+        NSMutableString *o = [NSMutableString string];
+        for (unsigned int j = 0; j < n; j++)
+            [o appendFormat:@"%s(%s) ", ivar_getName(ivs[j]), ivar_getTypeEncoding(ivs[j])];
+        free(ivs);
+        sbs_auxLogOnce(@"psig:itemivars", @"_UIStatusBarItem ivars(%u): %@", n, o);
+    }
+    // ③ `_UIStatusBarData` 的属性面（确认 Entry 命名，供 §状态源 对齐）
+    Class DC = objc_getClass("_UIStatusBarData");
+    if (DC) {
+        unsigned int pn = 0;
+        objc_property_t *ps = class_copyPropertyList(DC, &pn);
+        NSMutableString *o = [NSMutableString string];
+        for (unsigned int j = 0; j < pn && j < 120; j++) {
+            const char *nm = property_getName(ps[j]);
+            NSString *ns = nm ? @(nm) : @"?";
+            if ([ns rangeOfString:@"Entry"].location != NSNotFound)
+                [o appendFormat:@"%s ", nm];
+        }
+        free(ps);
+        sbs_auxLogOnce(@"psig:dataProps", @"_UIStatusBarData 属性(%u) 含 Entry 者: %@", pn, o);
+    }
+    // ④ `_updateDisplayedItemsWithData:...` 是否真的会被调用（本探针只报"签名+存在性"，
+    //    是否触发由信号日志的 #计数 证明）
+    Method mud = class_getInstanceMethod([bar class],
+        @selector(_updateDisplayedItemsWithData:styleAttributes:extraAnimations:));
+    sbs_auxLogOnce(@"psig:udenc", @"显示决策方法签名=%s（类=%@）",
+        mud ? method_getTypeEncoding(mud) : "(无)", NSStringFromClass([bar class]));
+    // ⑤ 真·显示状态容器（v1.8.1 第二轮取证）：
+    //    `_UIStatusBarItem` 只有 4 个 ivar，**没有 view** —— item 的显示态在
+    //    `_displayItems`（display-identifier → `_UIStatusBarDisplayItem`）；
+    //    条上还有 `_displayItemStates`（display-identifier → 状态对象）。
+    //    本段把这两处的字段面 + 真实值打全，用于确定"系统正在显示"的判据。
+    for (NSString *cn in (@[@"_UIStatusBarDisplayItem", @"_UIStatusBarDisplayItemState"])) {
+        Class C = objc_getClass(cn.UTF8String);
+        if (!C) { sbs_auxLogOnce([@"psig:no" stringByAppendingString:cn],
+                                 @"探针：类 %@ 不存在", cn); continue; }
+        unsigned int n = 0;
+        Ivar *ivs = class_copyIvarList(C, &n);
+        NSMutableString *o = [NSMutableString string];
+        for (unsigned int j = 0; j < n; j++)
+            [o appendFormat:@"%s(%s) ", ivar_getName(ivs[j]), ivar_getTypeEncoding(ivs[j])];
+        free(ivs);
+        sbs_auxLogOnce([@"psig:iv" stringByAppendingString:cn], @"%@ ivars(%u): %@", cn, n, o);
+    }
+    // ⑤b 逐 item 报告 `_displayItems` 数量 + 每个 display item 的关键标志
+    //    ⚠️⚠️ 绝不能对非对象 ivar 调 object_getIvar（10:58 SpringBoard SIGSEGV 实锤：
+    //       `_alpha(d)` 被当指针 `objc_retain` → EXC_BAD_ACCESS@0x3000000000000000）。
+    //       只用 KVC 读已知字段，全程 @try。
+    if ([items isKindOfClass:[NSDictionary class]]) {
+        NSArray *watch = @[@"Alarm", @"Location", @"QuietMode", @"RotationLock",
+                           @"VPN", @"Bluetooth", @"AirplaneMode"];
+        for (id key in (NSDictionary *)items) {
+            id item = [(NSDictionary *)items objectForKey:key];
+            NSString *icls = item ? NSStringFromClass([item class]) : @"nil";
+            BOOL hit = NO;
+            for (NSString *w in watch) if ([icls containsString:w]) { hit = YES; break; }
+            if (!hit) continue;
+            id dis = nil;
+            @try { dis = [item valueForKey:@"_displayItems"]; } @catch (__unused NSException *e) {}
+            NSUInteger dc = [dis respondsToSelector:@selector(count)] ? [dis count] : 0;
+            NSMutableString *o = [NSMutableString stringWithFormat:@"count=%lu ", (unsigned long)dc];
+            if ([dis isKindOfClass:[NSDictionary class]]) {
+                NSUInteger j = 0;
+                for (id dk in (NSDictionary *)dis) {
+                    id di = [(NSDictionary *)dis objectForKey:dk];
+                    BOOL en = NO, dyn = NO;
+                    @try { en  = [[di valueForKey:@"_enabled"] boolValue]; } @catch (__unused NSException *e) {}
+                    @try { dyn = [[di valueForKey:@"_dynamicallyHidden"] boolValue]; } @catch (__unused NSException *e) {}
+                    UIView *v = sbs_displayItemView(di);
+                    [o appendFormat:@"|%@ en=%d dyn=%d v=%@ hid=%d win=%@ a=%.2f f=%@",
+                        sbs_identString(dk) ?: @"?", en, dyn,
+                        v ? NSStringFromClass([v class]) : @"nil",
+                        v ? v.isHidden : -1,
+                        v && v.window ? NSStringFromClass([v.window class]) : @"nil",
+                        v ? v.alpha : -1.0,
+                        v ? NSStringFromCGRect(v.frame) : @"-"];
+                    if (++j >= 6) { [o appendString:@"|…"]; break; }
+                }
+            }
+            sbs_auxLogOnce([@"psig:dis" stringByAppendingString:icls],
+                           @"item %@ 的 _displayItems %@", icls, o);
+        }
+    }
+    // ⑤c 条上 `_displayItemStates` 的前 6 个样本（键 = display-identifier）
+    id states = nil;
+    @try { states = [bar valueForKey:@"_displayItemStates"]; } @catch (__unused NSException *e) {}
+    if ([states isKindOfClass:[NSDictionary class]]) {
+        NSUInteger i = 0;
+        for (id k in (NSDictionary *)states) {
+            id v = [(NSDictionary *)states objectForKey:k];
+            BOOL de = NO, wv = NO;
+            NSString *itemCls = @"?";
+            @try { de = [[v valueForKey:@"_dataEnabled"] boolValue]; } @catch (__unused NSException *e) {}
+            @try { wv = [[v valueForKey:@"_wasVisible"] boolValue]; } @catch (__unused NSException *e) {}
+            @try {
+                id it = [v valueForKey:@"_item"];
+                if (it) itemCls = NSStringFromClass([it class]);
+            } @catch (__unused NSException *e) {}
+            sbs_auxLogOnce([NSString stringWithFormat:@"psig:st%lu", (unsigned long)i],
+                @"displayItemState[%lu] key=<%@> cls=%@ item=%@ dataEnabled=%d wasVisible=%d",
+                (unsigned long)i, [k description],
+                v ? NSStringFromClass([v class]) : @"nil", itemCls, de, wv);
+            if (++i >= 6) { sbs_auxLogOnce(@"psig:stmore", @"displayItemState 截断于 6"); break; }
+        }
+    }
+}
+
+// ⭐ v1.8.0 一次性深度取证：直写 fg 的 ivar 清单与直接子视图清单。
+//   用途：当前"系统显示了哪个 ident"的身份反查三条路全部失败（identifier/item/
+//   可访问性），需要从 fg 自身的内部结构里找 ident↔view 的映射线索。
+static void sbs_auxDeepProbe(UIView *fg) {
+    static BOOL done = NO;
+    if (done || !fg) return;
+    done = YES;
+    @try {
+        unsigned int n = 0;
+        Ivar *ivs = class_copyIvarList([fg class], &n);
+        NSMutableString *o = [NSMutableString stringWithFormat:@"fg=%@ ivars=%u: ",
+                              NSStringFromClass([fg class]), n];
+        for (unsigned int i = 0; i < n; i++) {
+            const char *nm = ivar_getName(ivs[i]);
+            const char *tp = ivar_getTypeEncoding(ivs[i]);
+            id val = nil;
+            // ⚠️ 只对**对象类型** ivar 调 object_getIvar；对 d/B/q 等标量调用会
+            //    把数值当指针 retain → EXC_BAD_ACCESS（10:58 SB 崩溃同一根因）
+            if (tp && tp[0] == '@')
+                @try { val = object_getIvar(fg, ivs[i]); } @catch (__unused NSException *e) {}
+            [o appendFormat:@"%s(%s)=%@ ", nm ?: "?", tp ?: "?",
+                val ? NSStringFromClass([val class]) : @"nil"];
+        }
+        free(ivs);
+        sbs_auxLogOnce(@"deep:fgivars", @"%@",
+                       o.length > 1600 ? [o substringToIndex:1600] : (NSString *)o);
+    } @catch (__unused NSException *e) {}
+    NSMutableString *s = [NSMutableString string];
+    for (UIView *v in fg.subviews)
+        [s appendFormat:@"%@%@; ", NSStringFromClass(v.class), NSStringFromCGRect(v.frame)];
+    sbs_auxLogOnce(@"deep:fgsubs", @"fg 直接子视图 %lu 个: %@",
+                   (unsigned long)fg.subviews.count,
+                   s.length > 1600 ? [s substringToIndex:1600] : (NSString *)s);
+}
+
+// ⭐⭐ v1.8.0「系统是否已在状态栏显示该图标」的运行时判定（行为证据，非配置证据）。
+//   背景（2026-10-05 日志实证）：
+//     ① canEnableDisplayItem 的 orig 判据不可用 —— sbs_installAux 装好 hook 时 SB 的
+//        状态栏 item 早已创建完毕，canEnable 一次都没被调用（日志零条）；
+//     ② CGImage 指针比对也不可用 —— 09:30 实测系统侧明明有 1 个 _UIStatusBarImageView，
+//        但指针比对命中 0（同一张 Assets.car 位图会被包成不同 CGImage 实例）。
+//   ∴ 改用【像素指纹】比对：取 CGImage 的像素数据前缀 + 宽高做指纹，同一张位图必然相同。
+static NSData *sbs_cgFingerprint(CGImageRef cg) {
+    if (!cg) return nil;
+    CGDataProviderRef dp = CGImageGetDataProvider(cg);
+    if (!dp) return nil;
+    CFDataRef d = CGDataProviderCopyData(dp);
+    if (!d) return nil;
+    NSData *all = (__bridge_transfer NSData *)d;
+    NSData *px = (all.length > 8192) ? [all subdataWithRange:NSMakeRange(0, 8192)] : all;
+    // 宽高编进指纹，避免不同尺寸图像前缀巧合相同造成误判
+    uint32_t wh[2] = { (uint32_t)CGImageGetWidth(cg), (uint32_t)CGImageGetHeight(cg) };
+    NSMutableData *m = [NSMutableData dataWithCapacity:px.length + 16];
+    [m appendBytes:wh length:sizeof(wh)];
+    [m appendData:px];
+    return m;
+}
+
+// 收集 fg 子树内所有图标视图的「标识名」与像素指纹（排除辅助条自身）
+static void sbs_collectIconRefs(UIView *v, int depth, NSMutableSet *sysNames,
+                                NSMutableArray<NSData *> *fps, NSMutableSet *classes) {
+    if (!v || depth < 0) return;
+    if (v == gStrip) return;                       // 排除辅助条自身
+    if ([v isKindOfClass:[UIImageView class]]) {
+        UIImageView *iv = (UIImageView *)v;
+        NSData *fp = sbs_cgFingerprint(iv.image.CGImage);
+        if (fp) [fps addObject:fp];
+        NSString *cn = NSStringFromClass(v.class);
+        if (cn) [classes addObject:cn];
+        // ⭐⭐⭐ v1.8.0 身份判定的决定性证据（2026-10-05 09:39 日志实证）：
+        //   系统图标的 UIImage 带 accessibilityIdentifier，其值就是图标标识名 ——
+        //   实测系统显示的定位图标 = imageIdent「location.fill」（label「定位服务」）。
+        //   该命名与 sbs_auxSpec 表里的 SF Symbol 名同源 → 可直接比对判定。
+        NSString *ni = nil;
+        @try { ni = iv.image.accessibilityIdentifier; } @catch (__unused NSException *e) {}
+        if (!ni.length)
+            @try { ni = iv.accessibilityIdentifier; } @catch (__unused NSException *e) {}
+        if (ni.length) [sysNames addObject:ni];
+        sbs_auxLogOnce([NSString stringWithFormat:@"idv:%@:%@:%.0f", cn, ni ?: @"(无)",
+                        round(iv.frame.origin.x / 4.0) * 4.0],
+            @"系统图标视图 %@ frame=%@ img=%.0fx%.0f@%.0fx 标识名=%@ 指纹=%lu B",
+            cn, NSStringFromCGRect(iv.frame), iv.image.size.width, iv.image.size.height,
+            iv.image.scale, ni ?: @"(无)", (unsigned long)(fp ? fp.length : 0));
+    }
+    for (UIView *s in v.subviews) sbs_collectIconRefs(s, depth - 1, sysNames, fps, classes);
+}
+
+// 该 ident 是否正被系统显示：按「图标标识名」比对（候选的 car 字形名 + SF Symbol 名都试）
+// ⭐⭐ v1.8.0 修正（许总反馈定位图标重复）：系统图标的 accessibilityIdentifier
+//   **不是固定值** —— 实测定位图标在 `location.fill` ↔ `location.circle.fill` 之间变化
+//   （2026-10-05 10:37 日志：`标识名=location.circle.fill 指纹=5210 B`，
+//    而 sbs_auxSpec 只列了 `location.fill` → 精确匹配落空 → 重复显示）。
+//   ∴ 增加【关键词包含】匹配（覆盖同族所有变体），精确名比对保留为快速路径。
+static NSArray<NSString *> *sbs_auxKeyWords(NSString *ident) {
+    NSDictionary *m = @{
+        @"alarm":        @[@"alarm"],
+        @"location":     @[@"location"],
+        @"quietmode":    @[@"quiet", @"moon", @"sleep"],
+        @"rotationlock": @[@"rotation"],
+        @"vpn":          @[@"vpn"],
+        @"bluetooth":    @[@"bluetooth"],
+        @"airplane":     @[@"airplane"],
+    };
+    return m[ident.lowercaseString] ?: @[ident.lowercaseString];
+}
+
+// ⛔ v1.8.4 删除 `sbs_identShownBySystem`：许总明确指出「不应该根据图标名称来判断」。
+//    它的角色已由 `sbs_rescanFG`（视图树变化信号）完全取代 —— 后者虽然也要读
+//    图像标识名来做**身份映射**（这是无法回避的：得知道屏幕上那个图标是哪一个候选），
+//    但判定依据是"该视图此刻真的挂在状态栏视图树上"，而不是"名字对得上就永久抑制"。
+//    旧函数的问题是把"名字命中"记忆化 → 与实时状态脱钩（定位图标重复的元凶之一）。
+
 // 读 _UIStatusBarData 各 Entry → 驱动图标显隐
 // ⭐ 被动式：只在 hidden 值真正变化时才写 iv.hidden（防止写操作触发重布局 → 循环）
 static void sbs_auxRefresh(void) {
     if (!gAuxEnabled || !gAuxViews.count) return;
     id data = sbs_gData();
-    if (!data) return;
+    if (!data) {
+        // ⭐ v1.8.0 直写：data 为空 = "条不显示"的头号原因（状态源根本没捕获到）
+        sbs_auxLogOnce(@"noData", @"刷新跳过：_UIStatusBarData 尚未捕获（data=nil）");
+        return;
+    }
+    sbs_auxLogOnce(@"dataOK", @"状态源已捕获 data=%@", NSStringFromClass([data class]));
     for (NSString *ident in gAuxViews) {
         UIImageView *iv = gAuxViews[ident];
         id entry = nil;
         @try { entry = [data valueForKey:gAuxKeys[ident]]; } @catch (__unused NSException *e) {}
         BOOL active = sbs_entryActive(entry, ident);
-        if (iv.hidden == !active) continue;      // 无变化不写
-        iv.hidden = !active;
+        // ⭐ v1.8.0 直写：每个 ident 的「Entry 是否存在 / 是否激活」= 条不显示的定位证据
+        sbs_auxLogOnce([NSString stringWithFormat:@"ent:%@:%d:%d", ident,
+                        entry ? 1 : 0, active ? 1 : 0],
+            @"Entry %@ key=%@ 存在=%d active=%d", ident, gAuxKeys[ident],
+            entry ? 1 : 0, active ? 1 : 0);
+        // ⭐⭐ v1.8.0 修复：显隐 = Entry 激活 **且** 未被"系统已显示"抑制。
+        //   旧实现只写 `iv.hidden = !active` —— 定位开着时 locationEntry 是 active，
+        //   于是即使去重判定为"系统已显示"，这里也会把图标重新显示出来
+        //   （许总实测：日志说去重了、真机仍有定位图标）。
+        //   同时把信号源（gSysRendered）也纳入：系统正在显示 → 隐藏本家副本。
+        BOOL sig = [sbs_sysRendered() containsObject:ident];
+        BOOL suppressed = sig || [sbs_sysShown() containsObject:ident];
+        BOOL hide = (!active) || suppressed;
+        if (iv.hidden == hide) continue;         // 无变化不写
+        iv.hidden = hide;
+        // ⭐⭐ v1.8.0 **效果级日志**（许总指正：决策日志 ≠ 实际显示）：
+        //   记录真正写进视图的 hidden 值 —— 这才是"真机上到底显不显示"的证据。
+        sbs_auxLogOnce([NSString stringWithFormat:@"hide:%@:%d", ident, hide ? 1 : 0],
+            @"图标显隐 %@ hidden=%d（entry激活=%d 被系统显示抑制=%d）",
+            ident, hide, active, suppressed);
     }
 }
 
@@ -1231,8 +2270,65 @@ static BOOL sbs_sbLocked(void) {
     } @catch (__unused NSException *e) { return NO; }
 }
 
+// ⭐ v1.8.0 颜色紧凑打印（诊断：App 内图标"看不见"= 着色与背景同色？）
+static NSString *sbs_cdesc(UIColor *c) {
+    if (!c) return @"nil";
+    CGFloat r = 0, g = 0, b = 0, a = 0;
+    BOOL ok = NO;
+    @try { ok = [c getRed:&r green:&g blue:&b alpha:&a]; } @catch (__unused NSException *e) {}
+    if (!ok) return [c description];
+    return [NSString stringWithFormat:@"%.2f/%.2f/%.2f/%.2f", r, g, b, a];
+}
+
+// ⭐ v1.8.0 配色巡检（许总实机测试用）：自愈定时器每 1s 采一次当前 fg 的
+//   配色来源（窗口 / _UIStatusBar.style / foregroundColor / 时间文字色），
+//   值变化才写一行 —— 保证手动切屏（无布局事件）时也能留下颜色证据。
+static void sbs_colorTick(void) {
+    if (!sbs_isSpringBoard()) return;
+    UIView *fg = gActiveFG;
+    if (!fg || !fg.window || fg.isHidden) {
+        sbs_auxLogOnce(@"ctick-nofg", @"配色巡检：gActiveFG 不可用（fg=%p）", fg);
+        return;
+    }
+    UIColor *fgColor = nil;
+    NSNumber *barStyle = nil;
+    UIColor *tint = nil;
+    UIView *v = fg;
+    for (int i = 0; i < 4 && v; i++) {
+        NSString *cn = NSStringFromClass(v.class);
+        @try {
+            id fc = [v valueForKey:@"foregroundColor"];
+            if (!fgColor && [fc isKindOfClass:[UIColor class]]) fgColor = (UIColor *)fc;
+        } @catch (__unused NSException *e) {}
+        if ([cn isEqualToString:@"_UIStatusBar"]) {
+            @try {
+                id st = [v valueForKey:@"style"];
+                if (!barStyle && [st isKindOfClass:[NSNumber class]]) barStyle = (NSNumber *)st;
+            } @catch (__unused NSException *e) {}
+        }
+        v = v.superview;
+    }
+    for (UIView *s in fg.subviews) {
+        if (!tint && [NSStringFromClass(s.class) containsString:@"StringView"] &&
+            [s respondsToSelector:@selector(textColor)])
+            tint = [(UILabel *)s textColor];
+    }
+    NSString *winCls = NSStringFromClass(fg.window.class);
+    // ⭐ 时间桶（每 5s 一个）：即使配色无变化也留下时间线，便于事后对齐许总的手动测试
+    int bucket = (int)([NSDate date].timeIntervalSince1970 / 5.0);
+    NSString *key = [NSString stringWithFormat:@"ctick:%d:%@:%@:%@:%@", bucket, winCls,
+                     barStyle ?: @"-", sbs_cdesc(fgColor), sbs_cdesc(tint)];
+    sbs_auxLogOnce(key, @"配色巡检 窗=%@ barStyle=%@ fgColor=%@ 时间色=%@",
+                   winCls, barStyle ?: @"-", sbs_cdesc(fgColor), sbs_cdesc(tint));
+}
+
 static void sbs_auxLayoutInFG(UIView *fg) {
-    if (!gAuxEnabled || !gAuxStrip) { if (gStrip && !gStrip.hidden) gStrip.hidden = YES; return; }
+    if (!gAuxEnabled || !gAuxStrip) {
+        if (gStrip && !gStrip.hidden) gStrip.hidden = YES;
+        sbs_auxLogOnce([NSString stringWithFormat:@"off:%d:%d", gAuxEnabled, gAuxStrip],
+                       @"辅助条关闭（auxEnabled=%d auxStrip=%d）", gAuxEnabled, gAuxStrip);
+        return;
+    }
     // ⭐⭐ v1.4.6 门禁按进程分流（第一优先）：
     //    【实测架构（19:40 铁证）】SBMainSwitcherWindow 不是敌人而是【App 前台的正宿主】——
     //    iOS App 内状态栏由 SB 经 MainSwitcher 窗口远程渲染（App 进程 windows=1 且无 fg
@@ -1265,12 +2361,18 @@ static void sbs_auxLayoutInFG(UIView *fg) {
                         fg.bounds.size.width);
             }
         }
+        // ⭐ v1.8.0 直写（去重）：证明"条不显示"是门禁拒绝造成的，并给出窗口类名
+        sbs_auxLogOnce([@"deny:" stringByAppendingString:winCls.length ? winCls : @"nil"],
+            @"布局拒绝 win=%@ winHidden=%d fgHidden=%d fgW=%.0f（SB 只放行 UIStatusBarWindow/MainSwitcher）",
+            winCls.length ? winCls : @"nil", sbWin ? sbWin.isHidden : -1,
+            fg.isHidden, fg.bounds.size.width);
         return;
     }
     // ⭐ v1.4.6 锁屏不显示（许总要求）：SB 进程内读系统锁屏状态，锁屏时条隐藏。
     //    解锁后主屏布局触发 → locked=NO → 条恢复。
     if (sbs_sbLocked()) {
         if (gStrip && !gStrip.hidden) gStrip.hidden = YES;
+        sbs_auxLogOnce(@"locked", @"锁屏 → 条隐藏（许总要求锁屏不显示）");
         return;
     }
     // ⭐ v1.4.6 放行快照（verbose）：直写不限流，与 [deny] 配对重建门禁序列
@@ -1303,35 +2405,160 @@ static void sbs_auxLayoutInFG(UIView *fg) {
     lastRun = now;
     sbs_auxEnsureCreated();
     if (!gStrip) return;
+    sbs_probeAPIs(fg);          // ⭐ v1.8.0 一次性 API 探针（找可靠前景色来源）
     sbs_auxRefresh();
-    // 颜色跟随时间文字（只在色值变化时写）
-    UIColor *tint = nil;
-    for (UIView *v in fg.subviews) {
-        if ([NSStringFromClass(v.class) containsString:@"StringView"]) {
-            UILabel *l = (UILabel *)v;
-            if ([l respondsToSelector:@selector(textColor)]) { tint = l.textColor; break; }
+    // ⭐⭐ v1.8.0 颜色来源修正（App 内图标"消失"根因）：
+    //   探针实证（2026-10-05）：`_UIStatusBar.foregroundColor` / `UIStatusBar_Modern
+    //   .foregroundColor` = 状态栏**真实前景色**；而 `_UIStatusBarStringView.textColor`
+    //   在 App 内会失真（Calculator 渲染白字却报黑 → 条图标被着成黑 → 黑底不可见）。
+    //   ∴ 优先取链上 foregroundColor，textColor 仅作兜底。
+    UIColor *fgColor = nil;
+    NSNumber *barStyle = nil;              // `_UIStatusBar.style`：实测与真实前景一致（Home=1→白）
+    NSMutableString *chainLog = [NSMutableString string];
+    {
+        UIView *v = fg;
+        for (int i = 0; i < 4 && v; i++) {
+            NSString *cn = NSStringFromClass(v.class);
+            id fc = nil, st = nil, lg = nil, cu = nil;
+            @try { fc = [v valueForKey:@"foregroundColor"]; } @catch (__unused NSException *e) {}
+            @try { st = [v valueForKey:@"style"]; }           @catch (__unused NSException *e) {}
+            @try { lg = [v valueForKey:@"legibilityStyle"]; } @catch (__unused NSException *e) {}
+            @try { cu = [v valueForKey:@"currentStyle"]; }    @catch (__unused NSException *e) {}
+            [chainLog appendFormat:@"%@(st=%@,lg=%@,cur=%@,fg=%@) ", cn, st, lg, cu,
+                [fc isKindOfClass:[UIColor class]] ? sbs_cdesc((UIColor *)fc) : @"-"];
+            // ⭐ 只认 `_UIStatusBar`：实测其 style 与真实前景一致
+            //   （Home style=1 → 前景白）。`UIStatusBar_Modern.style` 实测为 0 但前景是白
+            //   → 不可用，故按类名精确匹配，避免误取 ForegroundView/Modern 的 style。
+            if ([cn isEqualToString:@"_UIStatusBar"]) {
+                if (!fgColor && [fc isKindOfClass:[UIColor class]]) fgColor = (UIColor *)fc;
+                if (!barStyle && [st isKindOfClass:[NSNumber class]]) barStyle = (NSNumber *)st;
+            }
+            v = v.superview;
         }
     }
+    // 颜色来源②（兜底）：时间文字色（优先可见的那份）
+    UIColor *tint = nil, *tintFb = nil;
+    UIColor *imgTint = nil;     // 任一 UIImageView 的 tint（系统图标视图）
+    UIColor *batTint = nil;     // 电池视图 tint
+    UIColor *fgTint = fg.tintColor;
+    NSMutableString *svLog = [NSMutableString string];
+    for (UIView *v in fg.subviews) {
+        NSString *cn = NSStringFromClass(v.class);
+        if ([cn containsString:@"StringView"] && [v respondsToSelector:@selector(textColor)]) {
+            UIColor *tc = [(UILabel *)v textColor];
+            [svLog appendFormat:@"%@(hid=%d,a=%.2f,col=%@) ", cn, v.hidden, v.alpha, sbs_cdesc(tc)];
+            if (!tintFb) tintFb = tc;
+            if (!tint && !v.hidden && v.alpha > 0.01) tint = tc;
+        }
+        if (!imgTint && [v isKindOfClass:[UIImageView class]] && ((UIImageView *)v).tintColor)
+            imgTint = ((UIImageView *)v).tintColor;
+        if (!batTint && [cn containsString:@"Battery"])
+            batTint = v.tintColor;
+    }
+    if (!tint) tint = tintFb;
+    // ⭐⭐ 最终选择：① `_UIStatusBar.foregroundColor`（最准）
+    //   ② `_UIStatusBar.style`（1=lightContent→白 / 0=default→黑）
+    //   ③ 时间文字色   ④ 白
+    UIColor *chosen;
+    if (fgColor)       chosen = fgColor;
+    else if (barStyle) chosen = (barStyle.integerValue == 1) ? UIColor.whiteColor
+                                                            : UIColor.blackColor;
+    else if (tint)     chosen = tint;
+    else               chosen = UIColor.whiteColor;
+    // ⭐ v1.8.0 颜色取证（键含 style+选用色 → 值变化时重打，可观察 App 内 style 是否变化）
+    sbs_auxLogOnce([NSString stringWithFormat:@"tint:%@:%@:%@",
+                    fg.window ? NSStringFromClass(fg.window.class) : @"nil",
+                    barStyle ?: @"-", sbs_cdesc(chosen)],
+        @"颜色取证 选用=%@ barStyle=%@ 链=[%@] 时间色=%@ 候选=[%@] 图tint=%@ 电池tint=%@ fg.tint=%@",
+        sbs_cdesc(chosen), barStyle ?: @"nil",
+        chainLog.length ? (NSString *)chainLog : @"(无)",
+        sbs_cdesc(tint), svLog.length ? (NSString *)svLog : @"(无)",
+        sbs_cdesc(imgTint), sbs_cdesc(batTint), sbs_cdesc(fgTint));
     static UIColor *lastTint = nil;
-    if (tint != lastTint) {
-        for (UIImageView *iv in gAuxViews.allValues) iv.tintColor = tint ?: UIColor.whiteColor;
-        lastTint = tint;
+    if (chosen != lastTint) {
+        for (UIImageView *iv in gAuxViews.allValues) iv.tintColor = chosen;
+        lastTint = chosen;
     }
     // 可见图标列表（保持 gAuxIcons 声明顺序）
+    // ⭐⭐ v1.8.0 只放「系统不显示的」：先收集 fg 内所有图标视图的 CGImage，再逐候选
+    //    比对 —— 命中即系统已在状态栏显示 → 辅助条剔除（许总需求：不重复显示）。
     NSMutableArray<NSString *> *vis = [NSMutableArray array];
-    for (NSString *ident in gAuxIcons) {
-        UIImageView *iv = gAuxViews[ident.lowercaseString];
-        if (iv && !iv.hidden) [vis addObject:ident.lowercaseString];
+    NSMutableArray<NSString *> *skipped = [NSMutableArray array];
+    NSMutableSet *sysNames = [NSMutableSet set];
+    NSMutableArray<NSData *> *sysFps = [NSMutableArray array];
+    NSMutableSet *sysClasses = [NSMutableSet set];
+    if (!gSysShownNow) gSysShownNow = [NSMutableSet set];
+    [gSysShownNow removeAllObjects];              // 当次快照：每次布局重新扫描
+    sbs_auxDeepProbe(fg);                         // ⭐ v1.8.0 一次性深度取证
+    sbs_probeSignal(fg);                          // ⭐ v1.8.1 信号容器一次性取证
+    // ⭐ v1.8.6 布局完成时 fg 内图标视图的 frame 已就绪 —— 这是巡检「系统正在显示谁」
+    //   最可靠的时刻（事件触发的那一瞬间 frame 还是 0×0）。同步执行以免再等 1s。
+    //   ⚠️ 只在此处用同步调用（fg 是本函数参数、调用期间必存活）；
+    //      异步路径一律走 `sbs_rescanSchedule`（block 不捕获视图）。
+    if (fg.window && !fg.isHidden) sbs_rescanFG(fg, @"layout");
+    sbs_collectIconRefs(fg, 6, sysNames, sysFps, sysClasses);   // ⭐ 深度 3→6（定位箭头可能更深）
+    if (sysClasses.count) {
+        NSArray *cl = [sysClasses.allObjects sortedArrayUsingSelector:@selector(compare:)];
+        sbs_auxLogOnce([@"syscls:" stringByAppendingString:[cl componentsJoinedByString:@","]],
+            @"fg 内图标视图 %lu 个（类名：%@）",
+            (unsigned long)sysFps.count, [cl componentsJoinedByString:@","]);
     }
+    // ⭐⭐ v1.8.0 去重判定修正（许总：状态栏图标不能重复）：
+    //   扫描时机不可靠 —— 有的布局轮次系统图标视图尚未建立（sysNames 为空），
+    //   若据空快照判"系统没显示"就会把重复图标补回来（实测 10:14:48 location 复现）。
+    //   ∴ 采用【持久抑制表】gSysShown：
+    //     · 本轮命中 → 记入（此后一直抑制，跨场景/跨窗口保持）
+    //     · 不再撤销 —— 因为"功能是否开启"已由 Entry 的 active 判定（见 sbs_auxRefresh，
+    //       功能关闭时 Entry 失活 → iv.hidden → 本来就不会显示），
+    //       所以抑制只需单向累积即可；宁可少显示，也绝不在状态栏重复同一图标。
+    // ⭐⭐⭐ v1.8.4 去重判定（许总指正后的最终形态）
+    //   判据①（唯一主判据）= **状态栏变化信号集** `sbs_sysRendered()`：
+    //     由 fg 视图树增删事件 + 数据更新事件 + 周期巡检实时重算
+    //     （`sbs_rescanFG` → `sbs_publishRescan`，加立即 / 减需 2 次一致）。
+    //   判据②（纯加性兜底）= 像素指纹：本轮快照里出现同一张位图 → 判定系统在画。
+    //     ⚠️ 只在本轮生效，不记忆 —— 记忆化正是旧版"误撤抑制→重复显示"的根源。
+    //   ⛔ 已彻底移除：按图标名的关键词兜底记忆（gSysNameHit 不再参与判定）、
+    //      以及"缺席计数连续 3 次撤销抑制"那套快照逻辑。
+    for (NSString *ident in gAuxIcons) {
+        NSString *k = ident.lowercaseString;
+        UIImageView *iv = gAuxViews[k];
+        if (!iv) continue;
+        BOOL bySignal = [sbs_sysRendered() containsObject:k];
+        BOOL byFp = NO;
+        if (!bySignal) {
+            NSData *myFp = sbs_cgFingerprint(iv.image.CGImage);
+            if (myFp.length) for (NSData *fp in sysFps)
+                if ([fp isEqualToData:myFp]) { byFp = YES; break; }
+        }
+        BOOL shownBySystem = bySignal || byFp;
+        sbs_auxLogOnce([NSString stringWithFormat:@"shw:%@:%d", k, shownBySystem ? 1 : 0],
+            @"系统侧比对 %@：信号=%d 指纹=%d 信号集=%@ 结论=系统已显示:%d",
+            ident, bySignal, byFp,
+            [[sbs_sysRendered().allObjects sortedArrayUsingSelector:@selector(compare:)]
+              componentsJoinedByString:@","],
+            shownBySystem);
+        if (shownBySystem) {
+            // ⭐ v1.8.0 关键修复保留：必须**真正隐藏**（只从 vis 排除不影响绘制）
+            if (!iv.hidden) iv.hidden = YES;
+            [skipped addObject:k]; continue;
+        }
+        if (iv.hidden) continue;      // Entry 未激活 → 本就不显示
+        [vis addObject:k];
+    }
+    if (skipped.count)
+        sbs_auxLogOnce([@"skip:" stringByAppendingString:[skipped componentsJoinedByString:@","]],
+            @"跳过（系统已显示，不重复）：%@", [skipped componentsJoinedByString:@","]);
     CGFloat fgW = fg.bounds.size.width;
     if (!vis.count || fgW <= 0) {
         if (gStrip.superview && !gStrip.hidden) gStrip.hidden = YES;
+        sbs_auxLogOnce(@"empty", @"条隐藏：无可见图标（候选 %lu 个，其中系统已显示 %lu 个）",
+                       (unsigned long)gAuxIcons.count, (unsigned long)sbs_sysShown().count);
         return;
     }
     // —— 单条水平居中：总宽 = n*isz + (n-1)*gap，x = (fgW-w)/2 ——
     NSInteger n = vis.count;
     CGRect island = sbs_islandFrameInFG(fg);
-    CGFloat gap = kAuxGap, isz = kAuxIconSize;
+    CGFloat gap = gAuxGap, isz = sbs_auxIconSize();
     CGFloat w = n * isz + (n - 1) * gap;
     // ⭐ 垂直 = 岛底缘 + 1.5pt；水平 = 屏幕居中
     CGFloat x = (fgW - w) / 2.0;
@@ -1378,8 +2605,15 @@ static void sbs_auxLayoutInFG(UIView *fg) {
         [gStrip removeFromSuperview];
         [host addSubview:gStrip];
     }
-    CGRect unionR = CGRectZero;
+    // ⭐⭐ v1.8.0 修正：种子必须用 CGRectNull（空集）。
+    //   用 CGRectZero 时 CGRectUnion((0,0,0,0), target) 会把包围盒左上角强行
+    //   拉到原点 → 条 frame 退化成 (0,0, x+w, y+h)（起点丢失、尺寸虚大）。
+    //   条原本无背景色（透明）故肉眼不可见，仅 red 调试底/命中测试才会暴露。
+    //   图标本地坐标 = t - unionR.origin，absolute 位置两种种子下一致（视觉中性），
+    //   但 frame 精确化后红底框才能真实反映条的占位。
+    CGRect unionR = CGRectNull;
     for (NSValue *v in targets.objectEnumerator) unionR = CGRectUnion(unionR, v.CGRectValue);
+    if (CGRectIsNull(unionR)) unionR = CGRectZero;
     CGRect hostF = [fg convertRect:unionR toView:host];
     if (!CGRectEqualToRect(gStrip.frame, hostF)) gStrip.frame = hostF;
     if (gStrip.hidden) gStrip.hidden = NO;
@@ -1390,6 +2624,38 @@ static void sbs_auxLayoutInFG(UIView *fg) {
                                  t.origin.y - unionR.origin.y, isz, isz);
         if (!CGRectEqualToRect(iv.frame, want)) iv.frame = want;
     }
+    // ⭐ v1.8.0 直写：条真的显示了 → 可见清单 / 尺寸 / 位置 / 宿主（许总可核对）
+    //    ⭐ 去重键含【宿主窗口类名】：主屏(UIStatusBarWindow)↔App(SBMainSwitcherWindow)
+    //    切换时可见集可能相同，若只按可见集去重会吞掉 App 内"确实显示了"的证据。
+    NSString *hostWinCls = host.window ? NSStringFromClass(host.window.class) : @"nil";
+    NSString *chosenDesc = sbs_cdesc(chosen);
+    sbs_auxLogOnce([NSString stringWithFormat:@"vis:%@:%@:%@:%.2f", hostWinCls,
+                    [vis componentsJoinedByString:@","], chosenDesc, isz],
+        @"条显示 可见=%@ 边长=%.2fpt 起点=(%.1f,%.1f) 总宽=%.1f fgW=%.0f 宿主窗=%@ 颜色=%@ 岛=%@",
+        [vis componentsJoinedByString:@","], isz, x, y, w, fgW,
+        hostWinCls, chosenDesc,
+        NSStringFromCGRect(island));
+    // ⭐ v1.8.0 几何取证：宿主/条的真实 frame、hidden、clipsToBounds、所在窗口
+    sbs_auxLogOnce([@"geo:" stringByAppendingString:hostWinCls],
+        @"几何取证 宿主=%@ f=%@ clip=%d hid=%d | 条 f=%@ hid=%d a=%.2f win=%@ sup=%@ | fg f=%@ b=%@ | fg.sup=%@",
+        NSStringFromClass(host.class), NSStringFromCGRect(host.frame),
+        host.clipsToBounds, host.isHidden,
+        NSStringFromCGRect(gStrip.frame), gStrip.isHidden, gStrip.alpha,
+        gStrip.window ? NSStringFromClass(gStrip.window.class) : @"nil",
+        gStrip.superview ? NSStringFromClass(gStrip.superview.class) : @"nil",
+        NSStringFromCGRect(fg.frame), NSStringFromCGRect(fg.bounds),
+        fg.superview ? NSStringFromClass(fg.superview.class) : @"nil");
+    // ⭐⭐ v1.8.0 **效果核对日志**（许总指正：日志必须反映真机实际显示）：
+    //   逐图标打印【最终 hidden 值】+ 条本体 hidden/frame —— 这才是"屏幕上到底有什么"。
+    NSMutableString *hideLog = [NSMutableString string];
+    for (NSString *ident in gAuxIcons) {
+        UIImageView *iv2 = gAuxViews[ident.lowercaseString];
+        [hideLog appendFormat:@"%@=%d ", ident, iv2.isHidden ? 1 : 0];
+    }
+    sbs_auxLogOnce([NSString stringWithFormat:@"eff:%@:%@", hostWinCls,
+                    [vis componentsJoinedByString:@","]],
+        @"效果核对 条hidden=%d 条frame=%@ 图标hidden[%@]", gStrip.isHidden,
+        NSStringFromCGRect(gStrip.frame), hideLog);
 }
 
 // ⭐ v1.4.6 App 进程 fg 主动扫描：递归遍历 App 窗口树找 _UIStatusBarForegroundView。
@@ -1483,6 +2749,17 @@ static void sbs_install(void) {
     BOOL hiddenOK = SBSHook(FG, @selector(setHidden:),
                             SBSHelper.class, @selector(sbs_fgSetHidden:));
     sbs_logNow(@"[hook] fg setHidden: → %@", hiddenOK ? @"已安装" : @"失败");
+
+    // ⭐⭐⭐ v1.8.4 状态栏变化信号：fg 视图树增删子视图 = 系统显示/隐藏某图标的**事件**
+    //   （许总要求"监听状态栏的变化信号"，而不是事后按图标名嗅探）
+    BOOL addOK = SBSHook(FG, @selector(addSubview:),
+                         SBSHelper.class, @selector(sbs_fgAddSubview:));
+    BOOL insOK = SBSHook(FG, @selector(insertSubview:atIndex:),
+                         SBSHelper.class, @selector(sbs_fgInsertSubview:atIndex:));
+    BOOL remOK = SBSHook(FG, @selector(willRemoveSubview:),
+                         SBSHelper.class, @selector(sbs_fgWillRemoveSubview:));
+    sbs_logNow(@"[hook] 信号源 fg addSubview/insertSubview/willRemoveSubview → %d/%d/%d",
+               addOK, insOK, remOK);
     NSLog(@"[StatusBarScale] core hooks layout=%d transform=%d window=%d superview=%d hidden=%d",
           layoutOK, transformOK, windowOK, superviewOK, hiddenOK);
     NSUInteger layoutSubs = sbs_hookDefiningClasses(FG, @selector(layoutSubviews),
@@ -1521,6 +2798,8 @@ static void sbs_install(void) {
     //    （栈：sbs_ctor → class_getInstanceMethod → initializeNonMetaClass → rethrow）。
     //    ⇒ ctor 中的 GCD 延迟任务和 pthread 在这台真机的注入时期均不可靠。
     //       改用 UIKit 启动完成/进入活跃态通知，此时私有状态栏类已安全初始化。
+    // ⭐⭐ v1.8.0 尽早挂辅助 hook（ctor 阶段，赶在状态栏 item 创建之前 —— 见函数注释）
+    if (gAuxEnabled) sbs_installAuxHooksEarly();
     if (gAuxEnabled) sbs_registerAuxBootstrapObservers();
 }
 
@@ -1638,59 +2917,12 @@ static void sbs_installAux(void) {
             sbs_log(@"%@", o);
         }
         }   // ⭐ v1.4.6 end if (gVerbose) —— 侦查 dump 门控结束
-        SEL ce = @selector(canEnableDisplayItem:fromData:);
-        Class owner = sbs_findDefiner(ce, "B32@0:8@16@24");
-        NSLog(@"[StatusBarScale] auxiliary stage 1 complete: owner=%@",
-              owner ? NSStringFromClass(owner) : @"(none)");
-        sbs_log(@"[canEnable] 实现类 = %@", owner ? NSStringFromClass(owner) : @"(未找到)");
-        if (owner) {
-            BOOL ok = SBSHook(owner, ce, SBSHelper.class,
-                              @selector(sbs_canEnableDisplayItem:fromData:));
-            sbs_log(@"[hook] canEnableDisplayItem:fromData: → %@",
-                    ok ? @"已安装" : @"失败");
-        }
-        // 侦查 hook：item 视图 / display item 创建流
-        Class IT = objc_getClass("_UIStatusBarItem");
-        NSLog(@"[StatusBarScale] auxiliary stage 2: item hooks class=%@",
-              IT ? NSStringFromClass(IT) : @"(none)");
-        if (IT) {
-            BOOL ok1 = SBSHook(IT, @selector(viewForIdentifier:),
-                               SBSHelper.class, @selector(sbs_viewForIdentifier:));
-            BOOL ok2 = SBSHook(IT, @selector(createDisplayItemForIdentifier:),
-                               SBSHelper.class, @selector(sbs_createDisplayItemForIdentifier:));
-            sbs_log(@"[hook] viewFor/createDI → %d/%d", ok1, ok2);
-        }
+        // ⭐⭐ v1.8.0：canEnable / item / data 三类 hook 已在 sbs_install（ctor 阶段）
+        //    提前安装（见 sbs_installAuxHooksEarly 注释）—— 那时装才能赶在状态栏 item
+        //    创建之前，拿到 canEnable 的 orig 证据。这里只做幂等兜底。
+        sbs_installAuxHooksEarly();
 
-        // ⭐ 状态源 hook：_UIStatusBarData 的 applyUpdate 系列。
-        // 这是状态栏数据每次更新的真实入口，必须 hook 它来捕获 data 并驱动辅助条刷新。
-        // （此前只 hook canEnableDisplayItem 但该路径 SpringBoard 不常走 → data 一直为空）
-        // 二分开关 auxData=NO 时跳过（排查内存问题用）
-        if (gAuxData) {
-            Class D = objc_getClass("_UIStatusBarData");
-            NSLog(@"[StatusBarScale] auxiliary stage 3: data hooks class=%@",
-                  D ? NSStringFromClass(D) : @"(none)");
-            if (D) {
-                // 探测签名（applyUpdate: 与 _applyUpdate:keys:）
-                Method m1 = class_getInstanceMethod(D, @selector(applyUpdate:));
-                Method m2 = class_getInstanceMethod(D, @selector(_applyUpdate:keys:));
-                sbs_log(@"[dataU] applyUpdate: 签名 = %s",
-                        m1 ? method_getTypeEncoding(m1) : "(无)");
-                sbs_log(@"[dataU] _applyUpdate:keys: 签名 = %s",
-                        m2 ? method_getTypeEncoding(m2) : "(无)");
-                // 优先 hook 底层 _applyUpdate:keys:（每次状态更新必调，签名 v32@0:8@16@24）
-                if (m2) {
-                    BOOL ok = SBSHook(D, @selector(_applyUpdate:keys:),
-                                      SBSHelper.class, @selector(sbs_dataApplyUpdateKeys:keys:));
-                    sbs_log(@"[hook] _applyUpdate:keys: → %@", ok ? @"已安装" : @"失败");
-                }
-                // 兜底 hook applyUpdate:
-                if (m1) {
-                    BOOL ok = SBSHook(D, @selector(applyUpdate:),
-                                      SBSHelper.class, @selector(sbs_dataApplyUpdate:));
-                    sbs_log(@"[hook] applyUpdate: → %@", ok ? @"已安装" : @"失败");
-                }
-            }
-        }
+        // （状态源 hook 已由 sbs_installAuxHooksEarly 在 ctor 阶段提前安装，此处不重复）
         // ⭐ v1.4.5 启动定时自愈（兜底一切条丢失场景）
         NSLog(@"[StatusBarScale] auxiliary stage 4: self-heal timer");
         sbs_auxSelfHealStart();

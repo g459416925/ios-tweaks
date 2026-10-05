@@ -1,6 +1,6 @@
 # StatusBarScale — 状态栏图标缩放对齐
 
-**包名** `com.xu.statusbarscale` · **版本** 1.7.2 · **宿主** 仅 SpringBoard
+**包名** `com.xu.statusbarscale` · **版本** 1.8.7 · **宿主** 仅 SpringBoard
 
 ## 解决什么问题
 
@@ -46,7 +46,15 @@ transform = Translate(Scale(s, s), 0, dy/s)   // 绕中心缩放 s 倍 + 下移 
 | `auxEnabled` | bool | YES | 辅助条总开关 |
 | `auxStrip` | bool | YES | 辅助条本体二分开关 |
 | `auxData` | bool | YES | applyUpdate 数据钩子二分开关 |
+| `auxBaseSize` | float | 17.0 | ⭐v1.8 系统原图标点尺寸基准 |
+| `auxScale` | float | 0.4 | ⭐v1.8 辅助条图标缩放（许总指定 0.4 → 6.8pt） |
+| `auxGap` | float | 3.0 | ⭐v1.8 图标间距（pt） |
+| `auxDebug` | bool | NO | ⭐v1.8 红底描边调试（直观判定"条是否在屏上"） |
 | `auxIcons` | array | 见下 | 辅助图标标识集合 |
+
+默认 `auxIcons`（只放系统**不**显示的）：
+`alarm` `quietMode` `rotationLock` `location` `vpn` `bluetooth` `airplane`
+——其中 `location` 会在系统自己画出定位箭头时由**信号源**实时剔除。
 
 ⚠️ RootHide 坑：SSH 下部署该文件**必须**走
 `/rootfs/private/var/mobile/Library/Preferences/`（不带前缀的是影子目录，插件读不到）。
@@ -185,3 +193,66 @@ v1.7.2 上线后日志立刻暴露两处误伤：① `timeMaxX=0`（无可视时
 - 0.6 的大小是否合适（`leadScale` 可调）
 - 垂直位置是否需要微调（`leadDy` 默认 0，即不额外位移）
 - App 内状态栏、CC、锁屏等场景是否都正常
+
+---
+
+## v1.8.x — 辅助条「只放系统不显示的」+ 0.4× + 岛下方居中 + **信号驱动去重**
+
+### 需求（许总 2026-10-05）
+1. 只收集**系统不显示**在灵动岛左右的图标（不得与系统重复）；
+2. 图标缩到 **0.4×**（基准 = 系统原图标 ~17pt → 6.8pt）；
+3. 位置 = 灵动岛正下方、屏幕水平居中；
+4. 除锁屏外，所有界面（含 App 内）都随时间一起显示。
+
+### ⭐⭐ 去重机制的演进（本节是重点）
+
+| 版本 | 判据 | 结果 |
+|---|---|---|
+| v1.8.0 | 扫描 fg 内图标的 `accessibilityIdentifier` 精确名比对 | ❌ 标识名会变（`location.fill` ↔ `location.circle.fill`）→ 落空 |
+| v1.8.0 | 加关键词包含 + 抑制表 + **缺席计数 3 次回收** | ❌ 扫描是**时序快照**：某轮没采到就撤销抑制 → 真机**定位图标重复** |
+| v1.8.1/2 | hook `viewForIdentifier:` 当信号 | ❌ 本固件**零回调** |
+| v1.8.2 | hook `_updateDisplayedItemsWithData:…` 读 `_items` | ❌ `_UIStatusBarItem` 只有 4 个 ivar、**没有 view**；其 `_displayItems` 全是预建视图（`frame 0×0 / win=nil / en=0`）→ 区分不出显示与否 |
+| **v1.8.6** | **fg 视图树增删事件 + 数据更新事件 + 每秒巡检 → 实时重算** | ✅ **<5ms 收敛，三场景实测无重复** |
+
+**最终信号源（v1.8.6）**：hook `_UIStatusBarForegroundView` 的
+`addSubview:` / `insertSubview:atIndex:` / `willRemoveSubview:` +
+`_UIStatusBar._updateDisplayedItemsWithData:styleAttributes:extraAnimations:`
+→ 任一事件触发 `sbs_rescanFG`：遍历 fg 子树，取**在树内且未隐藏**的 `UIImageView`
+的 `image.accessibilityIdentifier`，命中候选关键词者 ⇒「系统正在显示它」。
+- **加**：立即生效；**减**：需连续 **3** 次健康巡检一致缺席（防过渡态抖动）。
+- 巡检健康 = fg 内存在时间文字/Battery 视图（证明这棵 fg 已渲染完）。
+- 事件到达瞬间视图 `frame` 还是 `0×0` → 采用**两段式**（立即 + 0.25s 后各一次）
+  ＋ 布局完成后同步巡检，才能稳定采到标识名。
+
+### ⭐ 血泪坑（三条，都在本轮踩到）
+
+1. **非对象 ivar 绝不能 `object_getIvar`**：`_UIStatusBarDisplayItem` 有 32 个 ivar
+   （`_alpha(d)` `_enabled(B)` `_centerOffset(d)`…），把它们当对象 `objc_retain`
+   → `EXC_BAD_ACCESS @0x3000000000000000` → **SpringBoard SIGSEGV**。
+   读 ivar 前必须判 `type_encoding[0] == '@'`，或干脆只用 KVC。
+2. **异步 block 绝不要捕获状态栏视图**（v1.8.7 修复）：早期把 `(UIView *)self`
+   传进 `dispatch_async` → block 捕获 fg 并 `objc_retain`；而
+   `willRemoveSubview:` **会在 fg 自身销毁 / 被复用池回收的过程中触发**
+   → retain 将死对象 → `EXC_BAD_ACCESS@0x20` → SpringBoard SIGSEGV（11:11 连崩两次
+   → ellekit 写安全模式标记 → 插件全停）。
+   修法：block 只捕获**字符串原因**，执行时从全局强引用 `gActiveFG` 现取 fg，
+   并校验 `fg.window && !fg.isHidden`。**代价是零，可靠性是全部。**
+3. **ellekit 安全模式标记在 `/var/mobile/.eksafemode`**，**不是**
+   `/rootfs/private/var/mobile/.eksafemode` —— 后者不存在，删了等于没删，
+   插件会一直不注入（表现为"日志一个字节都没有"）。删对路径 + `sbreload` 即恢复。
+
+### 实机验证（2026-10-05 11:08–11:11，SpringBoard pid 29804/29638）
+
+```
+11:08:54.073 [aux] 巡检layout 可见图标标识名=location.fill 候选命中=location 健康=1
+11:08:54.073 [aux] 【信号】系统正在显示=location ｜ 触发=layout 本次+[location]
+11:08:54.073 [aux] 图标显隐 location hidden=1（entry激活=1 被系统显示抑制=1）   ← 真去重
+11:08:54.075 [aux] 条显示 可见=rotationlock 边长=6.80pt 起点=(211.6,49.5)
+11:08:54.075 [aux] 效果核对 条hidden=0 图标hidden[alarm=1 quietMode=1 rotationLock=0 location=1 vpn=1 bluetooth=1 airplane=1]
+```
+
+| 场景 | 结果 |
+|---|---|
+| 主屏 | 时钟右侧 = 系统自己的定位箭头；岛下方只有闹钟+方向锁定 → **不重复** ✅ |
+| App 内（计算器，纯黑底） | 条显示、图标为白色可读、不重复 ✅（`宿主窗=SBMainSwitcherWindow 颜色=白`） |
+| 锁屏 | 条隐藏 ✅ |
