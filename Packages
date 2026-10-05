@@ -303,7 +303,7 @@ SHA256: 29cbb86ba60f762f63cf9e4c1e5413aa6e619396a5523eb778b3b146799d7883
 
 Package: com.xu.statusbarscale
 Name: StatusBarScale
-Version: 1.8.7
+Version: 1.8.11
 Architecture: iphoneos-arm64e
 Description: 状态栏图标缩放对齐（灵动岛机型）：右侧 信号/WiFi/电池 图标比左侧时间
  略大且重心偏高（实测 14 Pro Max iOS 16.5.1：图标高 13-14px vs 时间 12px，
@@ -320,6 +320,18 @@ Description: 状态栏图标缩放对齐（灵动岛机型）：右侧 信号/Wi
  _updateDisplayedItemsWithData:styleAttributes:extraAnimations:，由状态栏
  视图树增删事件实时重算「系统正在显示谁」——系统自己画出定位箭头时，
  辅助条同一帧内把定位图标剔除，绝不重复（加立即、减需连续 3 次一致）。
+ v1.8.11 判定不再看图标名：改读状态栏自己的 item 模型
+ （_UIStatusBar._items → 每项 _displayItems[]._view 的实时挂载状态；
+  _items 在运行期是字典、启动瞬间是数组，两种形态都接），
+ 与 location.fill / location.circle.fill 这类会变的字形名彻底解耦；
+ 视图树扫描降级为纯日志交叉核对；过渡帧（视图已挂载但 frame=0 / 临时 hidden）
+ 用 1.2s 宽限兜住，杜绝闪烁式重复。
+ v1.8.11 修日志不忠实：原「条显示/条隐藏」是进程内永久去重（同组合只记一次、
+ hidden 的 key 固定故一进程仅一条）→ 改为按状态跃迁记录 + 20s 心跳，任何
+ 显/隐切换必留痕。
+ v1.8.11 修宿主 ping-pong：主屏同时存在两个活 fg（UIStatusBarWindow 与
+ SBMainSwitcherWindow）各以 1s 节奏布局 → 条被来回搬家；现加主/次宿主仲裁，
+ UIStatusBarWindow 存活时 MainSwitcher 让位（App 前台主屏 fg 摘窗后自动放行）。
  transform 不参与布局计算，不影响间距与点击区域判定。
  配置 /var/mobile/Library/Preferences/com.xu.statusbarscale.plist：
  enabled(bool)=YES / scale(float)=0.92 / dy(float)=1.5 / threshold(float)=280 /
@@ -333,9 +345,9 @@ Maintainer: g459416925
 Author: g459416925 (iOS 16.5.1 / RootHide)
 Section: Tweaks
 Depends: mobilesubstrate
-Installed-Size: 188
+Installed-Size: 189
 Tag: purpose::extension
-Filename: ./debs/StatusBarScale_1.8.7_iphoneos-arm64e.deb
-Size: 60394
-MD5sum: 0e6f6eabed57969da6ff121b7e84534e
-SHA256: 058632827b34642d2ff8db4a3a79b0290f4b6541932e39531e623284f271ec7d
+Filename: ./debs/StatusBarScale_1.8.11_iphoneos-arm64e.deb
+Size: 63498
+MD5sum: c008403726ebd12f6aedf6a78ecc618f
+SHA256: 9a0b7cb2aab8d2043c1c7b5974c6244c06ceeca92a312f4d4ebaca9d3a11323b

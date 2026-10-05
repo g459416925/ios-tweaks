@@ -1,6 +1,6 @@
 # StatusBarScale — 状态栏图标缩放对齐
 
-**包名** `com.xu.statusbarscale` · **版本** 1.8.7 · **宿主** 仅 SpringBoard
+**包名** `com.xu.statusbarscale` · **版本** 1.8.11 · **宿主** 仅 SpringBoard
 
 ## 解决什么问题
 
@@ -213,18 +213,52 @@ v1.7.2 上线后日志立刻暴露两处误伤：① `timeMaxX=0`（无可视时
 | v1.8.1/2 | hook `viewForIdentifier:` 当信号 | ❌ 本固件**零回调** |
 | v1.8.2 | hook `_updateDisplayedItemsWithData:…` 读 `_items` | ❌ `_UIStatusBarItem` 只有 4 个 ivar、**没有 view**；其 `_displayItems` 全是预建视图（`frame 0×0 / win=nil / en=0`）→ 区分不出显示与否 |
 | **v1.8.6** | **fg 视图树增删事件 + 数据更新事件 + 每秒巡检 → 实时重算** | ✅ **<5ms 收敛，三场景实测无重复** |
+| **v1.8.11** | **读状态栏自己的 item 模型**：`_UIStatusBar._items` → 每项 `_displayItems[]._view` 的实时挂载状态 | ✅ **与字形名彻底解耦；视图树扫描降级为纯日志核对** |
 
-**最终信号源（v1.8.6）**：hook `_UIStatusBarForegroundView` 的
-`addSubview:` / `insertSubview:atIndex:` / `willRemoveSubview:` +
-`_UIStatusBar._updateDisplayedItemsWithData:styleAttributes:extraAnimations:`
-→ 任一事件触发 `sbs_rescanFG`：遍历 fg 子树，取**在树内且未隐藏**的 `UIImageView`
-的 `image.accessibilityIdentifier`，命中候选关键词者 ⇒「系统正在显示它」。
-- **加**：立即生效；**减**：需连续 **3** 次健康巡检一致缺席（防过渡态抖动）。
-- 巡检健康 = fg 内存在时间文字/Battery 视图（证明这棵 fg 已渲染完）。
-- 事件到达瞬间视图 `frame` 还是 `0×0` → 采用**两段式**（立即 + 0.25s 后各一次）
-  ＋ 布局完成后同步巡检，才能稳定采到标识名。
+**最终信号源（v1.8.11，许总「不应按图标名判断」的落地）**：
 
-### ⭐ 血泪坑（三条，都在本轮踩到）
+1. **主判据 = item 级状态信号**（不看名字）：
+   遍历 `_UIStatusBar._items`，item **类名**即结构身份
+   （`_UIStatusBarIndicatorLocationItem` → `location`，7 个候选类名均已实测确认），
+   再看该项 `_displayItems[]._view` 是否**已挂载**（`superview`/`window` 非空、未隐藏、alpha>0）
+   ⇒ 系统正在显示它。
+   > ⚠️ `_items` 的类型**不稳定**：启动瞬间是 `__NSArrayI`，运行期变 `__NSMutableDictionary`
+   > （key=`_UIStatusBarIdentifier`，value=`_UIStatusBarItem`）——两种形态都必须接
+   > （v1.8.8 首版只判数组 → 全部落空成 `(noItems)`，item 信号一次都没生效）。
+   > ⚠️ 「宽>0.5」**不能**写进判据：过渡帧视图已挂载但 `frame` 仍为 0
+   > （实测 `location=0{v=1(sup)但hidden/alpha}`），会判成"没显示"→ 闪一下的重复。
+   > 已挂载本身即充分判据 + **1.2s 宽限**兜住假阴性。
+2. **纯日志交叉核对**（不参与判定）：`sbs_rescanFG` 扫 fg 子树的
+   `image.accessibilityIdentifier`，只打印对比用。
+3. **纯加性兜底**：像素指纹（同一位图本轮出现在系统树）。
+4. **触发时机仍是变化信号**：hook `_UIStatusBarForegroundView` 的
+   `addSubview:` / `insertSubview:atIndex:` / `willRemoveSubview:` +
+   `_UIStatusBar._updateDisplayedItemsWithData:styleAttributes:extraAnimations:`
+   → 任一事件触发重算。
+
+**触发（v1.8.6 起保留）**：事件到达瞬间视图 `frame` 还是 `0×0` → 采用**两段式**
+（立即 + 0.25s 后各一次）＋ 布局完成后同步巡检，才能稳定采到标识名。
+
+### ⭐⭐ 日志不忠实（v1.8.11 修，直接导致"按日志修复"无从下手）
+
+`条显示 / 条隐藏 / 效果核对` 原用 `sbs_auxLogOnce` —— 那是**进程内永久去重集**
+（`sbs_auxSeen()` 只增不减）：
+- `条显示` 的 key 含「宿主窗 + 可见集 + 颜色 + 尺寸」，**同组合只记一次**；
+- `条隐藏` 的 key 固定为 `"empty"`，**一个 SB 进程只记一条**。
+
+⇒ 11:15:00 之后再无「条显示」，**并不能证明条没显示，只证明组合没变**。
+修法：改用 `sbs_auxLogState` —— **任何状态跃迁必留痕** + 同类目 **20s 心跳**兜底
+（可证明"此刻仍是这个状态"）。
+
+### ⭐⭐ 宿主 ping-pong（v1.8.11 修，条"时隐时现"的真凶）
+
+日志实证（11:25:20~23）：主屏上**同时存在两个活 fg** —— `UIStatusBarWindow` 与
+`SBMainSwitcherWindow`，二者各以 ~1s 节奏各自走布局 → 单例 `gStrip` 被**来回搬家**
+→ `条显示 宿主窗=` 在两条日志间交替 ⇒ 条有近一半时间挂在非当前显示的那个状态栏上。
+修法：主/次宿主仲裁 —— `UIStatusBarWindow` 的 fg 只要存活就让 MainSwitcher 让位
+（App 前台时主屏 fg 被摘窗 → 自然放行，App 内继续由 MainSwitcher 承载）。
+
+### ⭐ 血泪坑（四条，都在本轮踩到）
 
 1. **非对象 ivar 绝不能 `object_getIvar`**：`_UIStatusBarDisplayItem` 有 32 个 ivar
    （`_alpha(d)` `_enabled(B)` `_centerOffset(d)`…），把它们当对象 `objc_retain`
@@ -240,6 +274,16 @@ v1.7.2 上线后日志立刻暴露两处误伤：① `timeMaxX=0`（无可视时
 3. **ellekit 安全模式标记在 `/var/mobile/.eksafemode`**，**不是**
    `/rootfs/private/var/mobile/.eksafemode` —— 后者不存在，删了等于没删，
    插件会一直不注入（表现为"日志一个字节都没有"）。删对路径 + `sbreload` 即恢复。
+4. **判据别写死容器的类型 / 别要求过渡帧的几何**（v1.8.8→1.8.11 两连坑）：
+   `_UIStatusBar._items` 启动瞬间是数组、运行期是字典；`_view` 在过渡帧
+   「已挂载但 `frame=0` / 临时 `hidden`」。凡是把这两点写死进判据的做法，
+   都会得到"要么全落空、要么闪一下"的结果。**认结构身份 + 认挂载状态，不认类型/尺寸。**
+
+### ⭐ 方法论：日志必须先忠实，才谈得上"按日志修复"
+
+许总铁律「日志先行」的前提是**日志本身不能骗人**。本轮真正的第一性缺陷不是判定逻辑，
+而是 `sbs_auxLogOnce` 的**永久去重**让关键状态"只记一次"。任何"状态类"日志都应当是
+**跃迁即记 + 心跳兜底**，而不是 once。
 
 ### 实机验证（2026-10-05 11:08–11:11，SpringBoard pid 29804/29638）
 
@@ -256,3 +300,26 @@ v1.7.2 上线后日志立刻暴露两处误伤：① `timeMaxX=0`（无可视时
 | 主屏 | 时钟右侧 = 系统自己的定位箭头；岛下方只有闹钟+方向锁定 → **不重复** ✅ |
 | App 内（计算器，纯黑底） | 条显示、图标为白色可读、不重复 ✅（`宿主窗=SBMainSwitcherWindow 颜色=白`） |
 | 锁屏 | 条隐藏 ✅ |
+
+### 实机验证（2026-10-05 11:24–11:27，v1.8.11，SpringBoard pid 30270 / 30412）
+
+item 级信号生效（**没有再读图标名做判定**）：
+
+```
+11:27:00.021 [aux] 系统侧比对 airplane：item信号=0(即时0/宽限0) 指纹=0 ｜ 名扫描=0（仅核对，不判定）
+                   ｜ item集=[rotationlock=0{-} vpn=0{-} bluetooth=0{-} quietmode=0{-}
+                              location=1{sup=_UIStatusBarForegroundView win=UIStatusBarWindow
+                                         f={{98.07, 24.13}, {10.20, 10.40}}}
+                              alarm=0{-} airplane=0{-}] 名集=location ⇒ 系统已显示:0
+11:27:05.199 [aux] 系统侧比对 location：item信号=1(即时0/宽限1) … ⇒ 系统已显示:1   ← 宽限兜住过渡假阴性
+```
+
+- `location=1{sup=… win=UIStatusBarWindow f=非零}`：定位项的 `_view` 真的挂在状态栏上
+  ⇒ 系统在显示 → 辅助条剔除。**与 `location.fill`/`location.circle.fill` 无关。**
+- `alarm=0{-}` / `rotationlock=0{-}`：这两项**根本没有 `_view`** ⇒ 系统没显示
+  ⇒ 辅助条收下它们（正是需求）。
+- 宿主仲裁（ping-pong 消失）：
+  `宿主仲裁：MainSwitcher fg(0x832a38960) 让位于存活的 UIStatusBarWindow fg(0x832a234f0)`，
+  `条显示 宿主窗=` 全部为 `UIStatusBarWindow`（此前为两窗交替）。
+- 日志忠实性：80 KB 日志里 `条显示/条隐藏` 仅 4 条（跃迁 + 20s 心跳），
+  无 ping-pong 噪声；`exc`/`deny` 计数 0；无新 `.ips`，无 `.eksafemode`。
