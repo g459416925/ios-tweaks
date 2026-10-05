@@ -15,5 +15,9 @@ src/**/*.plist.bak
 src/**/*.broken*
 *.ips
 
+# 设置面板 bundle 的二进制产物（build_prefs.sh 生成，签名后不提交）
+src/StatusBarScalePrefs/StatusBarScalePrefs
+src/StatusBarScalePrefs/StatusBarScalePrefs.unsigned
+
 # 日志
 *.log

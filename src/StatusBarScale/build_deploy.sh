@@ -46,16 +46,25 @@ echo "==> 4/6 拉回校验 CodeDirectory"
 scp -q iphone:$REMOTE_TMP/$PKG.dylib ./$PKG.signed.dylib
 codesign -dvvv ./$PKG.signed.dylib 2>&1 | grep -E "CodeDirectory|Hash type|hashes" || true
 
-echo "==> 5/6 打包 RootHide DEB"
+echo "==> 5/7 编译并签名设置面板（PreferenceBundle）"
+if [ -x ../StatusBarScalePrefs/build_prefs.sh ]; then
+  ( cd ../StatusBarScalePrefs && ./build_prefs.sh )
+else
+  echo "    ⚠️ 未找到 ../StatusBarScalePrefs/build_prefs.sh —— 将跳过设置面板打包"
+fi
+
+echo "==> 6/7 打包 RootHide DEB（插件 + 设置面板）"
 python3 build_deb.py
 DEB=$(ls -t "${PKG}"_*_iphoneos-arm64e.deb | head -1)
 test -n "$DEB"
 
-echo "==> 6/6 通过 dpkg 部署到设备（禁止 root cp 直写 TweakInject）"
+echo "==> 7/7 通过 dpkg 部署到设备（禁止 root cp 直写 TweakInject）"
 scp -q "$DEB" iphone:$REMOTE_TMP/$PKG.deb
 ssh iphone-root "dpkg -i $REMOTE_TMP/$PKG.deb
 echo '    落地:'
-ls -la /Library/MobileSubstrate/DynamicLibraries/$PKG.dylib /Library/MobileSubstrate/DynamicLibraries/$PKG.plist"
+ls -la /Library/MobileSubstrate/DynamicLibraries/$PKG.dylib
+ls -la /Library/PreferenceBundles/StatusBarScalePrefs.bundle/
+ls -la /Library/PreferenceLoader/Preferences/$PKG.plist"
 
 echo "==> 完成。生效需 respring（sbreload）；已通过 dpkg 触发 RootHide 完整 patch 流程。"
 echo "==> 配置：/rootfs/private/var/mobile/Library/Preferences/com.xu.statusbarscale.plist（SSH 部署必须走 /rootfs 前缀！）"

@@ -46,7 +46,7 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 
-#define SBS_VERSION @"1.8.13"
+#define SBS_VERSION @"1.9.0"
 #define SBS_LOG_PATH @"/var/mobile/Documents/sbs_log.txt"
 
 static BOOL    gEnabled = YES;
@@ -329,8 +329,32 @@ static void sbs_loadConfig(void) {
         if ((n = d[@"auxGap"])      && [n isKindOfClass:[NSNumber class]]) gAuxGap      = n.floatValue;
         // ⭐ v1.8.0 调试红底（默认 NO；开=条红底描边，肉眼判定"条是否真的在屏上"）
         if ((n = d[@"auxDebug"])    && [n isKindOfClass:[NSNumber class]]) gAuxDebug    = n.boolValue;
-        NSArray *arr = d[@"auxIcons"];
-        if ([arr isKindOfClass:[NSArray class]] && arr.count) {
+        // ⭐ v1.9.0 设置面板逐图标开关（auxIcon_<ident>）优先：
+        //   面板任一 auxIcon_* 键出现 ⇒ 以这组布尔为准重建名单；
+        //   面板从未写过且配置里也没有 auxIcons 数组 ⇒ 同样用这组（默认全开，
+        //   结果与 v1.8.x 内置默认名单一致）；只有"显式写了数组但没用面板"
+        //   才回落数组，保证老配置零行为变化。
+        NSArray *pairs = @[@[@"auxIcon_alarm",        @"alarm"],
+                           @[@"auxIcon_quietMode",    @"quietMode"],
+                           @[@"auxIcon_rotationLock", @"rotationLock"],
+                           @[@"auxIcon_location",     @"location"],
+                           @[@"auxIcon_vpn",          @"vpn"],
+                           @[@"auxIcon_bluetooth",    @"bluetooth"],
+                           @[@"auxIcon_airplane",     @"airplane"]];
+        NSMutableArray *fromUI = [NSMutableArray array];
+        BOOL uiKeys = NO;
+        for (NSArray *p in pairs) {
+            NSNumber *iv  = d[p[0]];
+            BOOL      has = (iv && [iv isKindOfClass:[NSNumber class]]);
+            if (has) uiKeys = YES;
+            BOOL on = has ? iv.boolValue : YES;      // 未设置的项默认收纳
+            if (on) [fromUI addObject:p[1]];
+        }
+        NSArray *arr   = d[@"auxIcons"];
+        BOOL     hasArr = ([arr isKindOfClass:[NSArray class]] && arr.count > 0);
+        if (uiKeys || !hasArr) {
+            gAuxIcons = fromUI;
+        } else {
             NSMutableArray *m = [NSMutableArray array];
             for (id e in arr)
                 if ([e isKindOfClass:[NSString class]] && [(NSString *)e length])
@@ -3148,6 +3172,52 @@ static void sbs_installAux(void) {
     }
 }
 
+// ═══════════════ v1.9.0 配置热重载（设置面板改参数后无需 respring）═══════════════
+// 面板保存时 post Darwin 通知 `com.xu.statusbarscale/prefsChanged`；
+// 这里重读配置，把新参数就地应用到当前活动 fg（右侧缩放 / leading 缩放 / 辅助条）。
+// ⚠️ 通知回调可能来自任意线程 → 一律 dispatch 到主队列；
+//     block 内**只引用全局量**，执行时才取 gActiveFG 并校验存活
+//     （绝不捕获任何 UIView —— 见技能 §8「异步 block 捕获视图」崩溃指纹）。
+static void sbs_prefsChanged(CFNotificationCenterRef center, void *observer,
+                             CFStringRef name, const void *object,
+                             CFDictionaryRef userInfo) {
+    (void)center; (void)observer; (void)name; (void)object; (void)userInfo;
+    sbs_logNow(@"[prefs] 收到设置面板变更通知");
+    dispatch_async(dispatch_get_main_queue(), ^{
+        @try {
+            sbs_loadConfig();
+            gAuxForceRelayout = YES;            // 跳过节流，强制按新尺寸重排
+            sbs_rescanActive(@"prefs");         // 重算「系统此刻在显示谁」
+            sbs_auxRelayoutFromData();          // 按新尺寸/间距重排辅助条
+            UIView *fg = gActiveFG;             // 执行时现取 + 存活校验
+            if (fg && fg.window && !fg.isHidden) sbs_apply(fg);
+            gAuxForceRelayout = NO;
+            sbs_logNow(@"[prefs] 热重载完成 enabled=%d scale=%.3f dy=%.2f thr=%.0f "
+                       @"lead=%d/%.2f/%.1f aux=%d scale=%.2f base=%.1f gap=%.1f icons=%lu",
+                       gEnabled, gScale, gDy, gThr,
+                       gLeadEnabled, gLeadScale, gLeadDy,
+                       gAuxEnabled, gAuxScale, gAuxBaseSize, gAuxGap,
+                       (unsigned long)gAuxIcons.count);
+        } @catch (NSException *e) {
+            gAuxForceRelayout = NO;
+            sbs_logNow(@"[prefs] 热重载异常: %@", e);
+        }
+    });
+}
+
+static void sbs_registerPrefsObserver(void) {
+    static BOOL done = NO;
+    if (done) return;
+    done = YES;
+    // 纯 CoreFoundation，不碰 UIKit ⇒ 可在构造函数里安全调用（技能 §2.2）
+    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
+                                    NULL,
+                                    sbs_prefsChanged,
+                                    CFSTR("com.xu.statusbarscale/prefsChanged"),
+                                    NULL,
+                                    CFNotificationSuspensionBehaviorDeliverImmediately);
+}
+
 __attribute__((constructor))
 static void sbs_ctor(void) {
     // v1.5.0 防御性白名单：即使用户残留了旧版 Classes=UIApplication 过滤文件，
@@ -3155,6 +3225,7 @@ static void sbs_ctor(void) {
     if (![[[NSProcessInfo processInfo] processName] isEqualToString:@"SpringBoard"])
         return;
     sbs_loadConfig();
+    sbs_registerPrefsObserver();   // ⭐ v1.9.0 监听设置面板的配置变更（热重载）
     NSLog(@"[StatusBarScale] v%@ loaded in SpringBoard; aux=%d verbose=%d",
           SBS_VERSION, gAuxEnabled, gVerbose);
     sbs_log(@"[载入] v%@ proc=%@ pid=%d enabled=%d scale=%.3f dy=%.2f thr=%.0f lead=%d/%.2f",
