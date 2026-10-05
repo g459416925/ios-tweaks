@@ -68,8 +68,8 @@
     </tr>
     <tr>
       <td><code>com.xu.statusbarscale</code></td>
-      <td>1.4.6</td>
-      <td>StatusBarScale — 状态栏右侧图标缩放对齐 + 系统辅助图标条（灵动岛正下方居中）</td>
+      <td>1.7.3</td>
+      <td>StatusBarScale — 状态栏图标缩放对齐（右侧 0.92 / 时间右侧 0.6）+ 系统辅助图标条（灵动岛正下方居中）</td>
     </tr>
   </table>
 
@@ -99,7 +99,12 @@
   <ol>
     <li>灵动岛右侧图标比时间<b>大一号且重心偏高 1.66px</b> —— 本插件缩放对齐</li>
     <li>hook <code>_UIStatusBarForegroundView -layoutSubviews</code>，对右侧图标施加
-        <b>绕中心缩放 0.92 + 下移 1.7pt</b>（实测重心差 −1.66 → −0.07px）</li>
+        <b>绕中心缩放 0.92 + 下移 1.5pt</b>（实测重心差 −1.66 → −0.07px）</li>
+    <li><b>v1.7.3 新增：时间右侧（灵动岛左侧）图标缩放 0.6</b> —— 这批图标（实测类名
+        <code>_UIStatusBarImageView</code>）无法按标识枚举，改为运行时按 fg 坐标系
+        <b>frame 区间</b>发现（时间右缘 → 岛左缘）并单独缩到 0.6；带三道场景门禁
+        （只处理全屏宽度 fg / 无可视时间跳过 / 岛左缘合理），日志实证
+        <code>transform.a 1.000 → 0.600</code></li>
     <li>transform 不参与布局 → <b>间距与点击区域不受影响</b>；灵动岛展开自动跟随</li>
     <li><b>系统辅助图标</b>：用系统原生字形（hook 捕获系统 item 视图渲染图，
         兜底 Assets.car 的 Black_* 字形），状态源为 <code>_UIStatusBarData</code>，
@@ -115,10 +120,13 @@
         实测主屏/App 内/锁屏/快速切换全链路通过</li>
     <li>配置
       <code>/var/mobile/Library/Preferences/com.xu.statusbarscale.plist</code>
-      （enabled / scale / dy / threshold / auxEnabled / auxIcons，改后 respring）</li>
+      （enabled / scale / dy / threshold / leadEnabled / leadScale / leadDy /
+      diag / verbose / auxEnabled / auxIcons，改后 respring）</li>
   </ol>
   <p class="sub" style="margin-top:14px">
-    注入全部 UIKit App + SpringBoard，主屏与 App 内状态栏观感一致。
+    ⚠️ 自 v1.5.0 起<b>仅注入 SpringBoard</b>（<code>Filter.Bundles = com.apple.springboard</code>）——
+    普通 App / WebKit / PosterBoard 不再加载本插件；App 内状态栏由 SpringBoard 远程渲染，
+    观感一致。
   </p>
 
   <h2>索引文件</h2>

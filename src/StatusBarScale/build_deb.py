@@ -27,18 +27,21 @@ OUT      = os.path.join(HERE, "%s_%s_%s.deb" % (PKG, VERSION, ARCH))
 
 INSTALL_DIR = "Library/MobileSubstrate/DynamicLibraries"
 
-DESC = ("状态栏右侧图标缩放对齐：iPhone 灵动岛机型上右侧\n"
-        " 信号/WiFi/电池 图标比左侧时间略大且重心偏高（实测 14 Pro Max\n"
-        " iOS 16.5.1：图标高 13-14px vs 时间 12px，重心偏高 1.66px），\n"
-        " 本插件 hook _UIStatusBarForegroundView -layoutSubviews，在每次布局后\n"
-        " 对灵动岛右侧(x>=280)的图标视图施加 绕中心缩放(默认0.92)+下移(默认1.7pt)，\n"
-        " 使其与时间高度/重心对齐，观感更接近 iPad 的简洁状态栏。\n"
+DESC = ("状态栏图标缩放对齐（灵动岛机型）：右侧 信号/WiFi/电池 图标比左侧时间\n"
+        " 略大且重心偏高（实测 14 Pro Max iOS 16.5.1：图标高 13-14px vs 时间 12px，\n"
+        " 重心偏高 1.66px），本插件 hook _UIStatusBarForegroundView -layoutSubviews，\n"
+        " 每次布局后对灵动岛右侧(x>=312)图标施加 绕中心缩放(默认0.92)+下移(默认1.5pt)，\n"
+        " 与时间高度/重心对齐，观感更接近 iPad 的简洁状态栏。\n"
+        " v1.7.0 新增：时间右侧、灵动岛左侧的图标（闹钟/定位/录屏等，无法按标识枚举）\n"
+        " 改为运行时按 frame 区间发现，单独缩放 0.6 倍（leadScale）。\n"
         " transform 不参与布局计算，不影响间距与点击区域判定。\n"
         " 配置 /var/mobile/Library/Preferences/com.xu.statusbarscale.plist：\n"
-        " enabled(bool)=YES / scale(float)=0.92 / dy(float)=1.7 /\n"
-        " threshold(float)=280 / verbose(bool)=NO，改后 respring 生效。\n"
-        " 注入到全部 UIKit App + SpringBoard（Filter.Classes = UIApplication），\n"
-        " 主屏与 App 内状态栏观感一致。\n"
+        " enabled(bool)=YES / scale(float)=0.92 / dy(float)=1.5 /\n"
+        " threshold(float)=312 / leadEnabled(bool)=YES / leadScale(float)=0.60 /\n"
+        " leadDy(float)=0 / verbose(bool)=NO，改后 respring 生效。\n"
+        " 仅注入 SpringBoard（Filter.Bundles = com.apple.springboard），\n"
+        " 普通 App/WebKit/PosterBoard 不再加载本插件；辅助条在主屏和 App 前台均显示，\n"
+        " 默认镜像闹钟/专注模式/旋转锁/VPN/蓝牙/飞行模式，排除系统两侧已有项目。\n"
         " 适用 iOS 16.x / RootHide (arm64e)。")
 
 CONTROL = "\n".join([

@@ -16,7 +16,7 @@ https://g459416925.github.io/ios-tweaks/
 |---|---|---|
 | `com.xu.compactorfix` | 1.0.0 | **CompactorFix** — 把系统 UI 字体整体换成 Apple Watch 的 SF Compact |
 | `com.xu.screentimelocker16` | 5.2.0 | **ScreenTimeLocker16** — 让「屏幕使用时间」的 App 限额真正锁得住 |
-| `com.xu.statusbarscale` | 1.4.6 | **StatusBarScale** — 状态栏右侧图标缩放对齐 + 系统辅助图标条（灵动岛正下方居中） |
+| `com.xu.statusbarscale` | 1.7.3 | **StatusBarScale** — 状态栏图标缩放对齐（右侧 0.92 / 时间右侧 0.6）+ 灵动岛下方辅助状态条 |
 
 ### CompactorFix
 
@@ -46,18 +46,35 @@ https://g459416925.github.io/ios-tweaks/
 灵动岛机型状态栏右侧图标与左侧时间不对齐（14 Pro Max / iOS 16.5.1 实测：
 图标墨迹高 13–14px vs 时间 12px，重心偏高 1.66px）。本插件 hook
 `_UIStatusBarForegroundView -layoutSubviews`，对灵动岛右侧图标施加
-**绕中心缩放 0.92 + 下移 1.7pt**：
+**绕中心缩放 0.92 + 下移 1.5pt**：
 
 - 实测：图标高度 13→12（=时间），重心差 **−1.66 → −0.07px**
 - `transform` 不参与 frame 布局 → 间距、点击区域完全不受影响
 - 灵动岛展开/收起自动跟随（每次布局后重设，幂等）
 - 配置 `/var/mobile/Library/Preferences/com.xu.statusbarscale.plist`：
-  `enabled` / `scale` / `dy` / `threshold` / `auxEnabled` / `auxIcons`（改后 respring）
-- 注入全部 UIKit App + SpringBoard（`Filter.Classes = ["UIApplication"]`）
+  `enabled` / `scale` / `dy` / `threshold` / `leadEnabled` / `leadScale` / `leadDy` /
+  `diag` / `verbose` / `auxEnabled` / `auxStrip` / `auxData` / `auxIcons`（改后 respring）
+- 仅注入 SpringBoard（`Filter.Bundles = ["com.apple.springboard"]`）；App 内状态栏由
+  SpringBoard 远程渲染，无需向普通 App、WebKit 或 PosterBoard 注入
 - ⚠️ RootHide 坑：SSH 部署该配置**必须**走
   `/rootfs/private/var/mobile/Library/Preferences/`（不带前缀是影子目录）
 
-**v1.1–1.4 新增：系统辅助图标**
+**时间右侧（灵动岛左侧）图标缩放 —— v1.7.3**
+
+原实现只处理 `minX >= threshold`（岛右侧），**时间右侧、灵动岛左侧**那批图标
+（实测类名 `_UIStatusBarImageView`）被整体漏掉。它们无法按标识枚举，故改为
+**运行时按 fg 坐标系 frame 区间发现**（时间右缘 → 岛左缘），单独缩放 **0.6**：
+
+- 判定：非 StringView + class 含 StatusBar/Battery + 3pt≤宽高且宽<200pt
+  + `minX > timeMaxX` 且 `maxX ≤ leadLimit`（岛左缘，实测 152.0）；递归深度 3 +
+  `convertRect:toView:` 换算，防深层嵌套用错坐标系
+- **三道场景门禁**（1.7.2 实机日志暴露的误伤，必须保留）：① 只处理全屏宽度 fg
+  （CC/Spotlight 迷你状态栏宽 361/370，否则左侧信号/WiFi 被误缩）；
+  ② 无可视时间（`timeMaxX=0`）跳过；③ 岛左缘须落在 60~200
+- 日志确证：`[leadApply] 缩放前 a=1.000 → 后 a=0.600`；门禁修复前后对比
+  **误缩信号/WiFi 10 次 → 0 次**
+
+**系统辅助图标条（v1.5.1 默认启用）**
 
 - 图标 = **系统原生字形**：优先用 hook `viewForIdentifier:` 捕获的系统 item 视图
   渲染图（与系统 100% 同款），兜底 UIKitCore `Artwork.bundle/Assets.car` 的
@@ -98,7 +115,7 @@ ios-tweaks/
 │   └── docs/                           # 各版本改动与实机验证记录
 ├── src/ScreenTimeLocker16/             # 屏幕使用时间锁（宿主 SpringBoard）
 ├── src/CompactorFix/                   # 系统字体换 SF Compact（宿主 全 UIKit App）
-├── src/StatusBarScale/                 # 状态栏图标缩放对齐（宿主 全 UIKit App）
+├── src/StatusBarScale/                 # 状态栏图标缩放对齐（宿主仅 SpringBoard）
 └── tools/gen_repo.py                   # 扫描 debs/ 重建 APT 索引
 ```
 
@@ -168,3 +185,20 @@ git add -A && git commit -m "release: <包名> <版本>" && git push
   另修两个工程坑：日志多进程互踩（限流统计 atomically 覆盖写 → 改 append）；
   ctor 内 [hook] 日志被限流吞（install 改 sbs_logNow 直写）。实测：主屏/App 内/
   锁屏不显示/解锁恢复/快速切换自愈 1s 内全链路通过
+
+- **v1.5.0–1.5.1**（稳定性）：注入过滤由 `Classes=UIApplication` 收缩为
+  `Bundles=com.apple.springboard`（普通 App / WebKit / PosterBoard 不再加载本插件）；
+  构造函数加 SpringBoard 进程白名单；辅助条恢复为默认核心功能（仅 SB 内运行）；
+  `verbose=NO` 时禁用文件日志
+
+- **v1.7.1**：修复**诊断日志回归** —— v1.5.0 误给"关键事件直写"函数 `sbs_logNow`
+  也加上了 `if (!gVerbose) return;`，导致设备 `verbose=false` 时**日志一个字节都不写**，
+  故障完全无法定位（这正是"图标无法枚举 / 问题定位不了"的元凶）。
+  现拆为两级：`diag`(默认 YES) 管关键事件直写，`verbose`(默认 NO) 管高频批量
+
+- **v1.7.3**：新增**时间右侧（灵动岛左侧）图标缩放 0.6**（详见上文），
+  并修三处问题：① 1.7.2 上线日志暴露的误伤（CC/Spotlight 迷你状态栏被扫 + 无时间基准时
+  区间退化 → 误缩左侧信号/WiFi，加三道门禁后 10 次 → 0 次）；
+  ② `build_deploy.sh` 私有符号检查正则 bug —— 旧写法 `_OBJC_CLASS_$_(UI|...)`
+  会误判公共类 `$_UIApplication` / `$_UIView` / `$_UIScreen`，导致脚本无条件 `exit 1`、
+  部署永远走不完；③ README/注释与代码不一致的默认值（dy 1.5、threshold 312）

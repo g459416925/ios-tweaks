@@ -1,4 +1,4 @@
-// StatusBarScale.m —— 状态栏右侧图标缩放对齐 v1.0.0
+// StatusBarScale.m —— 状态栏图标缩放对齐 v1.7.3
 //
 // 问题：iPhone 14 Pro Max (iOS 16.5.1) 灵动岛右侧图标与时间不对齐
 //   实测基线（_sb_measure.py，1x points）：时间 高12 上沿24 下沿35 重心29.38
@@ -11,17 +11,29 @@
 //   ⚠️ UIView.transform 是绕 anchorPoint(0.5,0.5)=中心 变换；
 //      CGAffineTransformTranslate(Scale(s,s),0,dys) 的屏幕位移 = s*dys → dys = dy/s。
 //
-// 配置 /var/mobile/Library/Preferences/com.xu.statusbarscale.plist（改后需 respring）：
-//   enabled(bool,默认YES)  scale(float,默认0.92)  dy(float,默认1.7)
-//   threshold(float,默认312)  verbose(bool,默认NO)
+// ⭐ v1.7.0 新增：leading 区（时间右侧、灵动岛左侧）图标独立缩放
+//   许总反馈原实现漏掉这批图标（它们无法按标识枚举）→ 改为运行时按
+//   fg 坐标系 frame 区间发现（非 StringView + (时间右缘, 灵动岛左缘)），
+//   单独缩放 0.6。命中清单直写 [lead] 日志供核对，详见 sbs_applyLead。
 //
-// 日志：/var/mobile/Documents/sbs_log.txt（含首次布局层级 dump —— 即探针产物）
+// 配置 /var/mobile/Library/Preferences/com.xu.statusbarscale.plist（改后需 respring）：
+//   enabled(bool,默认YES)  scale(float,默认0.92)  dy(float,默认1.5)
+//   threshold(float,默认312)  verbose(bool,默认NO)
+//   leadEnabled(bool,默认YES)  leadScale(float,默认0.60)  leadDy(float,默认0)
+//   diag(bool,默认YES) —— 关键事件直写（v1.7.1 起独立于 verbose，默认开）
+//
+// 日志：/var/mobile/Documents/sbs_log.txt
+//   diag=YES：关键事件（[hook]/[lead]/[move]/[heal]/[scan]）直写落盘；
+//   verbose=YES：额外输出高频诊断（[pass]/[deny]/层级 dump）
+//
+// ⚠️ v1.7.1 修复的回归：v1.5.0 曾把 sbs_logNow 也挂上 `if (!gVerbose) return;`，
+//   导致设备 verbose=NO 时【完全无日志】—— 故障无法定位（"图标无法枚举"的元凶）。
 
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 
-#define SBS_VERSION @"1.4.6"
+#define SBS_VERSION @"1.7.3"
 #define SBS_LOG_PATH @"/var/mobile/Documents/sbs_log.txt"
 
 static BOOL    gEnabled = YES;
@@ -29,8 +41,16 @@ static CGFloat gScale   = 0.92f;
 static CGFloat gDy      = 1.5f;
 static CGFloat gThr     = 312.0f;
 static BOOL    gVerbose = NO;
+// ⭐ v1.7.1 修复回归：v1.5.0 给 sbs_logNow 加了 `if (!gVerbose) return;`，
+//   把"关键事件直写"通道整个关死 → verbose=NO（设备默认）时日志一个字节都不写，
+//   直接导致"图标无法枚举/问题无法定位"。现拆分语义：
+//     gDiag    = 关键事件直写（[hook]/[lead]/[move]/[heal]/[scan]，默认 YES）
+//     gVerbose = 高频/批量诊断（[pass]/[deny]/dump 层，默认 NO）
+static BOOL    gDiag    = YES;
 static int     gDidDump = 0;
 // 辅助图标（系统原生 item 强制启用，参照电话助手排列）
+// v1.5.1：辅助条是核心功能。仅在 SpringBoard 内运行，同时覆盖主屏
+// UIStatusBarWindow 与 App 前台 SBMainSwitcherWindow；绝不注入普通 App/WebKit。
 static BOOL         gAuxEnabled = YES;
 static NSArray<NSString *> *gAuxIcons = nil;   // 标识集合（小写）
 static BOOL         gAuxStrip = YES;              // 二分开关：条+岛扫描
@@ -41,15 +61,33 @@ static const CGFloat kAuxGap      = 4.0;        // 图标间距
 
 // 受管图标视图的弱引用集合：系统/动画改动它们的 transform 时会被 setTransform: hook 拦截
 static NSHashTable *gManaged = nil;   // weak objects
+// ── v1.7.0 ⭐ leading 区（时间右侧、灵动岛左侧）图标缩放 ──
+// 许总反馈：原实现只缩放了灵动岛【右侧】（minX >= threshold）的图标，
+// 漏掉了【时间右侧、灵动岛左侧】的那批图标（闹钟/定位/录屏/麦克风等），
+// 这批图标无法按标识枚举，必须靠运行时按 frame 区间发现。
+static BOOL         gLeadEnabled = YES;   // leading 区缩放总开关
+static CGFloat      gLeadScale   = 0.60f; // 许总指定：单独缩小为 0.6 倍
+static CGFloat      gLeadDy      = 0.0f;  // 额外下移量（待实机确认，默认不位移）
+static NSHashTable *gManagedLead = nil;   // leading 受管视图（与 gManaged 分开，变换值不同）
 
 static CGAffineTransform sbs_targetTransform(void) {
     return CGAffineTransformTranslate(
         CGAffineTransformMakeScale(gScale, gScale), 0, gDy / gScale);
 }
 
+// leading 图标的目标变换：绕中心缩放 gLeadScale（+ 可选下移 gLeadDy pt）
+// 注：Translate(Scale(s,s),0,dys) 的屏幕位移 = s*dys → dys = dy/s（同 sbs_targetTransform）
+static CGAffineTransform sbs_leadTransform(void) {
+    CGFloat s = (gLeadScale > 0.05f && gLeadScale < 1.0f) ? gLeadScale : 0.60f;
+    return CGAffineTransformTranslate(CGAffineTransformMakeScale(s, s), 0, gLeadDy / s);
+}
+
 static void sbs_log(NSString *fmt, ...) NS_FORMAT_FUNCTION(1, 2);
 static void sbs_logNow(NSString *fmt, ...) NS_FORMAT_FUNCTION(1, 2);   // v1.4.6 前向声明
 static void sbs_log(NSString *fmt, ...) {
+    // 正常运行不做任何文件 I/O。旧版即使 verbose=NO 仍会让所有 UIKit 宿主
+    // 读写 /var/mobile/Documents/sbs_log.txt，造成持续 Sandbox deny 和日志风暴。
+    if (!gVerbose) return;
     static NSDateFormatter *df = nil;
     static dispatch_once_t dfOnce;
     dispatch_once(&dfOnce, ^{
@@ -112,6 +150,7 @@ static void sbs_log(NSString *fmt, ...) {
 //   这四类事件本身低频（每次 App 切换至多十几条），直写安全。
 static void sbs_logNow(NSString *fmt, ...) NS_FORMAT_FUNCTION(1, 2);
 static void sbs_logNow(NSString *fmt, ...) {
+    if (!gDiag) return;   // ⭐ v1.7.1：改用独立诊断开关（原为 gVerbose，把直写通道关死了）
     va_list ap; va_start(ap, fmt);
     NSString *body = [[NSString alloc] initWithFormat:fmt arguments:ap];
     va_end(ap);
@@ -144,12 +183,19 @@ static void sbs_loadConfig(void) {
         if ((n = d[@"dy"])        && [n isKindOfClass:[NSNumber class]]) gDy      = n.floatValue;
         if ((n = d[@"threshold"]) && [n isKindOfClass:[NSNumber class]]) gThr     = n.floatValue;
         if ((n = d[@"verbose"])   && [n isKindOfClass:[NSNumber class]]) gVerbose = n.boolValue;
+        // ⭐ v1.7.0 leading 区（时间右侧、灵动岛左侧）图标
+        if ((n = d[@"leadEnabled"]) && [n isKindOfClass:[NSNumber class]]) gLeadEnabled = n.boolValue;
+        if ((n = d[@"leadScale"])   && [n isKindOfClass:[NSNumber class]]) gLeadScale   = n.floatValue;
+        if ((n = d[@"leadDy"])      && [n isKindOfClass:[NSNumber class]]) gLeadDy      = n.floatValue;
+        // ⭐ v1.7.1 诊断直写开关（默认 YES：关键事件始终落盘，便于定位）
+        if ((n = d[@"diag"])        && [n isKindOfClass:[NSNumber class]]) gDiag        = n.boolValue;
     }
     if (gScale < 0.3f || gScale > 2.0f) gScale = 0.92f;   // 防呆
+    if (gLeadScale < 0.2f || gLeadScale > 1.0f) gLeadScale = 0.60f;   // 防呆
     // 辅助图标配置：默认 = 系统状态栏【没有】原生显示的项。
     // ⚠️ location 不放默认集：系统已在时间旁渲染原生定位箭头，重复显示（许总反馈）。
-    if (!gAuxIcons) gAuxIcons = @[@"alarm", @"quietMode",
-                                  @"rotationLock", @"vpn", @"bluetooth"];
+    if (!gAuxIcons) gAuxIcons = @[@"alarm", @"quietMode", @"rotationLock",
+                                  @"vpn", @"bluetooth", @"airplane"];
     if (d) {
         NSNumber *n;
         if ((n = d[@"auxEnabled"]) && [n isKindOfClass:[NSNumber class]])
@@ -205,11 +251,15 @@ static void sbs_dumpOnChange(UIView *fg) {
 
 static void sbs_auxLayoutInFG(UIView *fg);   // 辅助图标条布局（定义见后）
 static void sbs_auxRelayoutFromData(void);    // ⭐ v1.4.4 data 驱动重排（定义见后）
+static void sbs_applyLead(UIView *fg);        // ⭐ v1.7.0 leading 区图标缩放（定义见后）
+static CGRect sbs_islandFrameInFG(UIView *fg); // ⭐ v1.7.0 leading 判定要用（定义见后）
 // ⭐ v1.4.4/5 全局状态（必须定义在 SBSHelper @implementation 之前，
 //   hook 方法 sbs_fgDidMoveToWindow 内要用 gAuxForceRelayout）
 static UIView *gActiveFG = nil;                          // 当前活动 fg（强引用，CC 动画期间不失效）
 static BOOL gAuxForceRelayout = NO;                      // data/自愈驱动时跳过节流
 static dispatch_source_t gHealTimer = nil;               // v1.4.5 定时自愈
+static CFRunLoopTimerRef gAuxBootstrapTimer = NULL;       // 等待 UIScreen 真正就绪
+static BOOL gAuxInstallBegan = NO;                       // 生命周期回调串行一次性门闩
 // ⭐ v1.4.6 见过的合法 fg 表（弱引用）：快速切换后 gActiveFG 可能是已进池的
 //   App fg（fgLegal=NO → 自愈失效），从表里找回仍在 UIStatusBarWindow 的 fg
 static NSHashTable *gSeenFGs = nil;
@@ -245,6 +295,8 @@ static void sbs_apply(UIView *fg) {
             if (!CGAffineTransformEqualToTransform(v.transform, t)) v.transform = t;
         }
     }
+    // ⭐ v1.7.0 leading 区（时间右侧、灵动岛左侧）图标独立缩放 0.6 —— 与右侧互斥
+    @try { sbs_applyLead(fg); } @catch (NSException *e) { sbs_logNow(@"[exc-lead] %@", e); }
     @try { sbs_auxLayoutInFG(fg); } @catch (NSException *e) { sbs_log(@"[exc-auxL] %@", e); }
 }
 
@@ -269,6 +321,11 @@ static id   sbs_gData(void);
 static void sbs_setGData(id d);
 static void sbs_auxRefresh(void);
 static void sbs_captureSysIcon(NSString *ident, UIView *v);   // v1.4.2 系统图捕获
+static void sbs_installAux(void);
+static void sbs_startAuxIfNeeded(void);
+static void sbs_registerAuxBootstrapObservers(void);
+static void sbs_auxBootstrapTimerFired(CFRunLoopTimerRef timer, void *info);
+static void sbs_auxLifecycleTrigger(NSString *source);
 
 static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
     if (!target) return NO;
@@ -300,10 +357,49 @@ static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
 @interface SBSHelper : NSObject
 @end
 @implementation SBSHelper
+- (BOOL)sbs_backlightScreenIsOn {
+    BOOL on = [self sbs_backlightScreenIsOn];
+    @try { sbs_auxLifecycleTrigger(@"SBBacklightController screenIsOn"); }
+    @catch (NSException *e) {
+        NSLog(@"[StatusBarScale] backlight readiness trigger failed: %@", e);
+    }
+    return on;
+}
+
+- (void)sbs_applicationDidFinishLaunching:(id)arg {
+    [self sbs_applicationDidFinishLaunching:arg];
+    @try { sbs_auxLifecycleTrigger(@"SpringBoard2 applicationDidFinishLaunching:"); }
+    @catch (NSException *e) {
+        NSLog(@"[StatusBarScale] launch readiness trigger failed: %@", e);
+    }
+}
+
+- (void)sbs_statusBarDidFinishPost {
+    [self sbs_statusBarDidFinishPost];
+    @try { sbs_auxLifecycleTrigger(@"SBStatusBarStateProvider _didFinishPost"); }
+    @catch (NSException *e) {
+        NSLog(@"[StatusBarScale] status post readiness trigger failed: %@", e);
+    }
+}
+
+// SpringBoard 的实际状态栏实例由子类覆写布局/搬移方法，基类 hook
+// 在 1.6.3 实时日志中未触发。UIApplication sendEvent: 是用户交互的稳定
+// 就绪点；先调原实现，再用 UIScreen 实际数据决定是否安装辅助模块。
+- (void)sbs_applicationSendEvent:(UIEvent *)event {
+    [self sbs_applicationSendEvent:event];
+    @try { sbs_auxLifecycleTrigger(@"UIApplication sendEvent:"); }
+    @catch (NSException *e) {
+        NSLog(@"[StatusBarScale] sendEvent readiness trigger failed: %@", e);
+    }
+}
+
 // 交换后：此选择子挂在目标类上指向【原实现】；先调原布局，再做缩放
 - (void)sbs_fgLayoutSubviews {
     [self sbs_fgLayoutSubviews];          // 原实现
     @try {
+        // ctor 期间 dispatch_after 在 SpringBoard 冷启动中存在不执行的时序。
+        // 首次真实状态栏布局说明 UIKit 已就绪，此时安装辅助模块最稳定。
+        sbs_auxLifecycleTrigger(@"layoutSubviews");
         // ⛔ dump 探针仅 verbose 模式（v1.3.0 血泪教训：控制中心动画时 subviews
         //    每帧变化 → dump 风暴 → 日志 150MB + SB 内存 5.5GB → Jetsam 循环重启）
         if (gVerbose) {
@@ -322,14 +418,17 @@ static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
 // 就把系统改动的 transform 立即改回我们的缩放值，消除「复原→二次缩放」空窗。
 - (void)sbs_viewSetTransform:(CGAffineTransform)t {
     [self sbs_viewSetTransform:t];        // 原实现
-    if (!gEnabled || !gManaged) return;
+    if (!gEnabled) return;
+    if (!gManaged && !gManagedLead) return;
     @try {
         UIView *v = (UIView *)self;
-        if ([gManaged containsObject:v]) {
-            CGAffineTransform want = sbs_targetTransform();
-            if (!CGAffineTransformEqualToTransform(t, want)) {
-                v.transform = want;       // 重新走 setTransform（值已等于 want，不会死循环）
-            }
+        CGAffineTransform want;
+        // ⭐ v1.7.0 leading 图标（0.6）与右侧图标（0.92）分属不同受管表
+        if (gManaged && [gManaged containsObject:v])           want = sbs_targetTransform();
+        else if (gManagedLead && [gManagedLead containsObject:v]) want = sbs_leadTransform();
+        else return;
+        if (!CGAffineTransformEqualToTransform(t, want)) {
+            v.transform = want;       // 重新走 setTransform（值已等于 want，不会死循环）
         }
     } @catch (NSException *e) {
         sbs_log(@"[exc] %@", e);
@@ -340,6 +439,7 @@ static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
 - (void)sbs_fgDidMoveToWindow {
     [self sbs_fgDidMoveToWindow];         // 原实现
     @try {
+        sbs_auxLifecycleTrigger(@"didMoveToWindow");
         if (gVerbose) sbs_log(@"[didMove] self=%@ win=%@",
             NSStringFromClass(((UIView *)self).class),
             ((UIView *)self).window ? @"有" : @"nil");
@@ -373,6 +473,7 @@ static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
 - (void)sbs_fgDidMoveToSuperview {
     [self sbs_fgDidMoveToSuperview];      // 原实现
     @try {
+        sbs_auxLifecycleTrigger(@"didMoveToSuperview");
         if (gVerbose) sbs_logNow(@"[dmsup] fg=%p super=%@",
             self, ((UIView *)self).superview ?
             NSStringFromClass(((UIView *)self).superview.class) : @"nil");
@@ -399,6 +500,7 @@ static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
     BOOL wasHidden = ((UIView *)self).hidden;
     [self sbs_fgSetHidden:h];             // 原实现
     @try {
+        sbs_auxLifecycleTrigger(@"setHidden:");
         if (wasHidden && !h) {            // YES→NO = 上场
             if (gVerbose) sbs_logNow(@"[unhide] fg=%p", self);
             for (int i = 0; i < 4; i++) {
@@ -494,16 +596,9 @@ static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
 // ⚠️ 设备上存在同名不同签名的干扰方法（如 UIKeyboardCandidateViewStyle 的 v@: 版本），
 //    必须按 encoding 过滤，否则 hook 到错误方法直接 SKIP。
 static Class sbs_findDefiner(SEL sel, const char *wantEnc) {
-    // 1) 先试已知候选类（确定性好）
-    for (NSString *name in (@[@"_UIStatusBarManager", @"_UIStatusBar",
-                              @"UIStatusBar", @"_UIStatusBarData"])) {
-        Class c = objc_getClass(name.UTF8String);
-        if (!c) continue;
-        Method m = class_getInstanceMethod(c, sel);
-        if (m && method_getTypeEncoding(m) &&
-            strcmp(method_getTypeEncoding(m), wantEnc) == 0) return c;
-    }
-    // 2) 全类扫描兜底
+    // class_getInstanceMethod 可能触发任意类 +initialize。1.6.0 真机日志证实
+    // 这会在 SpringBoard 启动期触发 mainScreen=nil，随后被 watchdog 终止。
+    // class_copyMethodList 只读类自身的元数据，既不走继承也不触发初始化。
     int num = objc_getClassList(NULL, 0);
     if (num <= 0) return nil;
     Class *classes = (Class *)malloc(sizeof(Class) * num);
@@ -512,16 +607,64 @@ static Class sbs_findDefiner(SEL sel, const char *wantEnc) {
     for (int i = 0; i < num; i++) {
         Class c = classes[i];
         if (!c) continue;
-        Method m = class_getInstanceMethod(c, sel);
-        if (!m) continue;
-        const char *enc = method_getTypeEncoding(m);
-        if (!enc || strcmp(enc, wantEnc) != 0) continue;   // 签名不符 → 跳过
-        Class sup = class_getSuperclass(c);
-        Method mSup = sup ? class_getInstanceMethod(sup, sel) : NULL;
-        if (m != mSup) { found = c; break; }               // 自己定义了该方法
+        unsigned int count = 0;
+        Method *methods = class_copyMethodList(c, &count);
+        for (unsigned int j = 0; j < count; j++) {
+            Method m = methods[j];
+            const char *enc = method_getTypeEncoding(m);
+            if (method_getName(m) == sel && enc && strcmp(enc, wantEnc) == 0) {
+                found = c;
+                break;
+            }
+        }
+        free(methods);
+        if (found) break;
     }
     free(classes);
     return found;
+}
+
+// 只基于 class_copyMethodList 的元数据找出真正覆写 selector 的类。
+// base!=Nil 时仅限 base 子类；base==Nil 时仅限 SB* 类。
+static NSUInteger sbs_hookDefiningClasses(Class base, SEL original, SEL replacement,
+                                           const char *encoding, NSString *tag) {
+    int num = objc_getClassList(NULL, 0);
+    if (num <= 0) return 0;
+    Class *classes = (Class *)malloc(sizeof(Class) * num);
+    num = objc_getClassList(classes, num);
+    NSUInteger hooked = 0;
+    for (int i = 0; i < num; i++) {
+        Class c = classes[i];
+        if (!c || c == base) continue;
+        if (base) {
+            BOOL isSubclass = NO;
+            for (Class p = class_getSuperclass(c); p; p = class_getSuperclass(p)) {
+                if (p == base) { isSubclass = YES; break; }
+            }
+            if (!isSubclass) continue;
+        } else {
+            const char *cn = class_getName(c);
+            if (!cn || strncmp(cn, "SB", 2) != 0) continue;
+        }
+        unsigned int count = 0;
+        Method *methods = class_copyMethodList(c, &count);
+        BOOL defines = NO;
+        for (unsigned int j = 0; j < count; j++) {
+            Method m = methods[j];
+            const char *enc = method_getTypeEncoding(m);
+            if (method_getName(m) == original && enc && strcmp(enc, encoding) == 0) {
+                defines = YES;
+                break;
+            }
+        }
+        free(methods);
+        if (!defines) continue;
+        BOOL ok = SBSHook(c, original, SBSHelper.class, replacement);
+        NSLog(@"[StatusBarScale] %@ definer=%s hook=%d", tag, class_getName(c), ok);
+        if (ok) hooked++;
+    }
+    free(classes);
+    return hooked;
 }
 
 // ===========================================================================
@@ -541,7 +684,8 @@ static void sbs_setGData(id d) {
     if (old && old != d) {
         NSInteger oldN = 0, newN = 0;
         for (NSString *k in (@[@"alarmEntry", @"locationEntry", @"quietModeEntry",
-                               @"rotationLockEntry", @"vpnEntry", @"bluetoothEntry"])) {
+                               @"rotationLockEntry", @"vpnEntry", @"bluetoothEntry",
+                               @"airplaneModeEntry"])) {
             @try { if ([old valueForKey:k]) oldN++; } @catch (__unused NSException *e) {}
             @try { if ([d valueForKey:k]) newN++; } @catch (__unused NSException *e) {}
         }
@@ -771,7 +915,10 @@ static void sbs_auxEnsureCreated(void) {
         iv.hidden = YES;
         [gStrip addSubview:iv];
         gAuxViews[ident.lowercaseString] = iv;
-        gAuxKeys[ident.lowercaseString]  = [NSString stringWithFormat:@"%@Entry", ident];
+        // 系统数据键大多为 <identifier>Entry；飞行模式是 airplaneModeEntry。
+        NSString *entryKey = [ident caseInsensitiveCompare:@"airplane"] == NSOrderedSame
+            ? @"airplaneModeEntry" : [NSString stringWithFormat:@"%@Entry", ident];
+        gAuxKeys[ident.lowercaseString] = entryKey;
         x += kAuxIconSize + kAuxGap;
     }
     sbs_log(@"[aux] 条已创建 icons=%lu size=%.0f", (unsigned long)gAuxViews.count, kAuxIconSize);
@@ -845,6 +992,170 @@ static CGRect sbs_islandFrameInFG(UIView *fg) {
     cached = found; at = now; cachedFG = fg;
     sbs_logIdentOnce(@"island", NSStringFromCGRect(found));
     return found;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ⭐ v1.7.0 leading 区（时间右侧、灵动岛左侧）图标缩放 + 运行时发现探针
+//
+// 许总反馈：原实现只缩放 minX >= threshold(312，灵动岛右侧) 的图标，
+// 【时间右侧、灵动岛左侧】的那批图标被整体漏掉，且它们无法按标识枚举。
+// 本模块改为按【fg 坐标系下的 frame 区间】发现它们，并把每次命中直写日志，
+// 使"命中清单"可被许总实机核对（不允许凭猜测定类名）。
+//
+// 区间定义（统一换算到 fg 坐标系，points）：
+//   timeMaxX  = 时间视图右缘（所有可见 StringView 的最大 maxX；无时间则 0）
+//   leadLimit = 灵动岛左缘（sbs_islandFrameInFG().origin.x，兜底 152）
+//   候选 = 非 StringView + 非 Background + class 含 StatusBar/Battery
+//          + 宽高 >= 3pt 且宽 < 200pt（排除全宽容器/legibility 背景）
+//          + timeMaxX < maxX 区间落在 (timeMaxX, leadLimit)
+// ═══════════════════════════════════════════════════════════════════════════
+
+static NSMutableSet *sbs_leadSeen(void) {
+    static NSMutableSet *s;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ s = [NSMutableSet set]; });
+    return s;
+}
+
+// 去重直写一条提示（同 key 只写一次）—— 用于记录"为何跳过"，使许总能核对判定。
+static void sbs_leadNote(NSString *key, NSString *msg) {
+    NSMutableSet *seen = sbs_leadSeen();
+    if ([seen containsObject:key]) return;
+    [seen addObject:key];
+    sbs_logNow(@"[lead] %@", msg);
+}
+
+// 时间视图右缘（leading 参照起点）；取所有可见 StringView 的最大右缘
+static CGFloat sbs_timeMaxX(UIView *fg) {
+    CGFloat mx = 0;
+    for (UIView *v in fg.subviews) {
+        NSString *cn = NSStringFromClass(v.class);
+        if ([cn containsString:@"StringView"] && !v.hidden)
+            mx = MAX(mx, CGRectGetMaxX([v convertRect:v.bounds toView:fg]));
+    }
+    return mx;
+}
+
+// 候选判定（坐标一律换算到 fg 坐标系，避免深层嵌套时用到父容器坐标）
+static BOOL sbs_isLeadCandidate(UIView *v, UIView *fg, CGFloat timeMaxX, CGFloat leadLimit) {
+    NSString *cn = NSStringFromClass(v.class);
+    if ([cn containsString:@"StringView"])  return NO;   // 时间是参照物，本身不缩
+    if ([cn containsString:@"Background"])  return NO;
+    BOOL isItem = [cn containsString:@"StatusBar"] || [cn containsString:@"Battery"];
+    if (!isItem) return NO;
+    CGRect f = [v convertRect:v.bounds toView:fg];
+    if (f.size.width < 3.0 || f.size.height < 3.0) return NO;
+    if (f.size.width >= 200.0) return NO;                // 全宽容器/背景
+    CGFloat minX = CGRectGetMinX(f);
+    return (minX > timeMaxX + 0.5) && (CGRectGetMaxX(f) <= leadLimit + 0.5);
+}
+
+// 递归收集候选（灵动岛机型 leading item 可能嵌在容器里而非 fg 直接子视图；深度上限 3）
+static void sbs_collectLead(UIView *v, UIView *fg, int depth,
+                            CGFloat timeMaxX, CGFloat leadLimit,
+                            NSMutableArray<UIView *> *out) {
+    if (!v || depth > 3) return;
+    if (sbs_isLeadCandidate(v, fg, timeMaxX, leadLimit)) [out addObject:v];
+    for (UIView *s in v.subviews)
+        sbs_collectLead(s, fg, depth + 1, timeMaxX, leadLimit, out);
+}
+
+// 发现探针：把"边界参数 + 每个候选的真实类名/帧/父类"直写日志。
+// ⚠️ 双重防护（v1.3.0 Jetsam 事故：每帧写日志 → 150MB → 内存爆 → 重启循环）：
+//    ① 去重键 = 类名 + 帧坐标量化到 4pt 网格（防动画期逐帧抖动产生无限新键）；
+//    ② 每 0.3s 最多直写 1 条。
+static void sbs_leadReport(UIView *fg, NSArray<UIView *> *cands,
+                           CGFloat timeMaxX, CGFloat leadLimit) {
+    NSMutableSet *seen = sbs_leadSeen();
+    static NSTimeInterval lastWrite = 0;
+    NSTimeInterval now = [NSDate date].timeIntervalSince1970;
+    BOOL canWrite = (now - lastWrite >= 0.3);
+
+    NSMutableDictionary<NSString *, NSString *> *uniq = [NSMutableDictionary dictionary];
+    uniq[[NSString stringWithFormat:@"b|%.1f|%.1f|%.1f",
+          timeMaxX, leadLimit, fg.bounds.size.width]] =
+        [NSString stringWithFormat:@"边界 timeMaxX=%.1f leadLimit=%.1f fgW=%.1f",
+         timeMaxX, leadLimit, fg.bounds.size.width];
+    for (UIView *v in cands) {
+        CGRect f = [v convertRect:v.bounds toView:fg];
+        NSString *key = [NSString stringWithFormat:@"i|%@|%.0f|%.0f|%.0f|%.0f",
+                         NSStringFromClass(v.class),
+                         round(f.origin.x / 4.0) * 4.0, round(f.origin.y / 4.0) * 4.0,
+                         round(f.size.width / 4.0) * 4.0, round(f.size.height / 4.0) * 4.0];
+        uniq[key] = [NSString stringWithFormat:
+            @"%@ x=%.1f y=%.1f w=%.1f h=%.1f hidden=%d alpha=%.2f super=%s",
+            NSStringFromClass(v.class), f.origin.x, f.origin.y, f.size.width, f.size.height,
+            v.hidden, v.alpha, v.superview ? class_getName(v.superview.class) : "nil"];
+    }
+    for (NSString *key in uniq) {
+        if ([seen containsObject:key]) continue;
+        if (!canWrite) break;                 // 本轮配额用完，剩余留到下帧继续报
+        [seen addObject:key];
+        sbs_logNow(@"[lead] %@", uniq[key]);
+        lastWrite = [NSDate date].timeIntervalSince1970;
+        canWrite = NO;
+    }
+}
+
+// leading 区主流程：发现 → 上报 → 施加 0.6 变换
+static void sbs_applyLead(UIView *fg) {
+    if (!gLeadEnabled || !fg || fg.subviews.count == 0) return;
+    // 一次性直写：确证 leading 模块真的执行（避免"无日志当成功"）
+    static BOOL announced = NO;
+    if (!announced) {
+        announced = YES;
+        sbs_logNow(@"[lead] 模块生效 v%@ leadEnabled=%d leadScale=%.2f leadDy=%.2f proc=%@",
+                   SBS_VERSION, gLeadEnabled, gLeadScale, gLeadDy,
+                   [[NSProcessInfo processInfo] processName]);
+    }
+    // ⭐⭐ v1.7.3 三道门禁 —— 由 2026-10-05 实机日志实证的必要修复：
+    //   ① 只处理【全屏宽度】fg：CC/Spotlight 的迷你状态栏 fg 宽 361/370，
+    //      其左侧信号/WiFi（日志实测 _UIStatusBarCellularSignalView x=6.0、
+    //      _UIStatusBarWifiSignalView x=110.1）会被误判为"时间右侧图标"缩到 0.6。
+    //   ② 无时间基准（timeMaxX=0，日志实测出现）时不缩：否则区间退化成 (0, leadLimit)，
+    //      整条左半屏的 item 全部命中。
+    //   ③ 灵动岛左缘必须落在合理区间（真岛实测 152）。
+    CGFloat scrW = UIScreen.mainScreen.bounds.size.width;
+    if (scrW > 0 && fabs(fg.bounds.size.width - scrW) > 1.0) {
+        sbs_leadNote(@"skipFg", [NSString stringWithFormat:
+            @"跳过：非全屏 fg（宽 %.0f ≠ 屏宽 %.0f）—— CC/Spotlight 迷你状态栏",
+            fg.bounds.size.width, scrW]);
+        return;
+    }
+    CGFloat timeMaxX = sbs_timeMaxX(fg);
+    if (timeMaxX <= 0.5) {
+        sbs_leadNote(@"skipTime", @"跳过：无可视时间视图（timeMaxX=0），无判定基准");
+        return;
+    }
+    CGRect island = sbs_islandFrameInFG(fg);
+    CGFloat leadLimit = CGRectIsEmpty(island) ? 152.0 : island.origin.x;
+    if (leadLimit < 60.0 || leadLimit > 200.0) {
+        sbs_leadNote(@"skipIsland", [NSString stringWithFormat:
+            @"跳过：灵动岛左缘异常（%.1f 不在 60~200）", leadLimit]);
+        return;
+    }
+
+    NSMutableArray<UIView *> *cands = [NSMutableArray array];
+    for (UIView *s in fg.subviews)
+        sbs_collectLead(s, fg, 0, timeMaxX, leadLimit, cands);
+
+    sbs_leadReport(fg, cands, timeMaxX, leadLimit);     // 探针（去重 + 节流，安全）
+
+    if (cands.count == 0) return;
+    if (!gManagedLead) gManagedLead = [NSHashTable weakObjectsHashTable];
+    CGAffineTransform lt = sbs_leadTransform();
+    for (UIView *v in cands) {
+        BOOL isNew = ![gManagedLead containsObject:v];
+        [gManagedLead addObject:v];
+        CGAffineTransform before = v.transform;
+        if (!CGAffineTransformEqualToTransform(before, lt)) v.transform = lt;
+        // ⭐ v1.7.2 施加确证：打印【同一个可观测值】transform.a 的前后变化
+        //   （a=缩放系数）。只对新登记的视图写一次，避免刷屏。
+        if (isNew) {
+            sbs_logNow(@"[leadApply] %s 缩放前 a=%.3f → 后 a=%.3f（期望 %.3f）",
+                       class_getName(v.class), before.a, v.transform.a, lt.a);
+        }
+    }
 }
 
 // Entry → 是否激活。
@@ -1128,51 +1439,164 @@ static void sbs_appScanFG(int round) {
     }
 }
 
-static void sbs_installAux(void);   // 辅助模块延迟安装（见 sbs_install 内注释）
-
 static void sbs_install(void) {
+    static BOOL installed = NO;
+    static int classWaitAttempt = 0;
+    if (installed) return;
     Class FG = objc_getClass("_UIStatusBarForegroundView");
-    if (!FG) { sbs_logNow(@"[hook] FAIL _UIStatusBarForegroundView 不存在"); return; }
-    BOOL ok = SBSHook(FG, @selector(layoutSubviews),
-                      SBSHelper.class, @selector(sbs_fgLayoutSubviews));
+    if (!FG) {
+        // SpringBoard 冷启动时 ctor 可能早于 UIKit 私有状态栏类注册。旧代码在这里
+        // 永久返回，导致辅助条和缩放 hook 整次启动都不生效。有限重试等待类出现。
+        if (classWaitAttempt == 0)
+            NSLog(@"[StatusBarScale] waiting for _UIStatusBarForegroundView");
+        if (classWaitAttempt++ < 10) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
+                                         (int64_t)(0.5 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{ sbs_install(); });
+        } else {
+            NSLog(@"[StatusBarScale] status bar class unavailable after retries");
+        }
+        return;
+    }
+    installed = YES;
+    NSLog(@"[StatusBarScale] status bar class ready; installing core hooks");
+    BOOL layoutOK = SBSHook(FG, @selector(layoutSubviews),
+                            SBSHelper.class, @selector(sbs_fgLayoutSubviews));
     // ⭐ v1.4.6 直写：ctor 里 [载入] 后 50ms 内的 [hook] 行全被限流吞掉，
     //    App 内 hook 是否装上无法从日志判断 —— install 是一次性的，直写安全
-    sbs_logNow(@"[hook] layoutSubviews → %@", ok ? @"已安装" : @"失败");
+    sbs_logNow(@"[hook] layoutSubviews → %@", layoutOK ? @"已安装" : @"失败");
 
     // 全局 hook UIView.setTransform: 拦截受管图标被系统重置（关键修复）
-    ok = SBSHook([UIView class], @selector(setTransform:),
-                 SBSHelper.class, @selector(sbs_viewSetTransform:));
-    sbs_logNow(@"[hook] UIView.setTransform: → %@", ok ? @"已安装" : @"失败");
+    BOOL transformOK = SBSHook([UIView class], @selector(setTransform:),
+                               SBSHelper.class, @selector(sbs_viewSetTransform:));
+    sbs_logNow(@"[hook] UIView.setTransform: → %@", transformOK ? @"已安装" : @"失败");
 
-    ok = SBSHook(FG, @selector(didMoveToWindow),
-                 SBSHelper.class, @selector(sbs_fgDidMoveToWindow));
-    sbs_logNow(@"[hook] didMoveToWindow → %@", ok ? @"已安装" : @"失败");
+    BOOL windowOK = SBSHook(FG, @selector(didMoveToWindow),
+                            SBSHelper.class, @selector(sbs_fgDidMoveToWindow));
+    sbs_logNow(@"[hook] didMoveToWindow → %@", windowOK ? @"已安装" : @"失败");
 
     // ⭐ v1.4.6 快速切换补漏：fg 进出场的另外两条必经路径
-    ok = SBSHook(FG, @selector(didMoveToSuperview),
-                 SBSHelper.class, @selector(sbs_fgDidMoveToSuperview));
-    sbs_logNow(@"[hook] didMoveToSuperview → %@", ok ? @"已安装" : @"失败");
+    BOOL superviewOK = SBSHook(FG, @selector(didMoveToSuperview),
+                               SBSHelper.class, @selector(sbs_fgDidMoveToSuperview));
+    sbs_logNow(@"[hook] didMoveToSuperview → %@", superviewOK ? @"已安装" : @"失败");
 
-    ok = SBSHook(FG, @selector(setHidden:),
-                 SBSHelper.class, @selector(sbs_fgSetHidden:));
-    sbs_logNow(@"[hook] fg setHidden: → %@", ok ? @"已安装" : @"失败");
+    BOOL hiddenOK = SBSHook(FG, @selector(setHidden:),
+                            SBSHelper.class, @selector(sbs_fgSetHidden:));
+    sbs_logNow(@"[hook] fg setHidden: → %@", hiddenOK ? @"已安装" : @"失败");
+    NSLog(@"[StatusBarScale] core hooks layout=%d transform=%d window=%d superview=%d hidden=%d",
+          layoutOK, transformOK, windowOK, superviewOK, hiddenOK);
+    NSUInteger layoutSubs = sbs_hookDefiningClasses(FG, @selector(layoutSubviews),
+        @selector(sbs_fgLayoutSubviews), method_getTypeEncoding(class_getInstanceMethod(FG, @selector(layoutSubviews))), @"layout subclass");
+    NSUInteger windowSubs = sbs_hookDefiningClasses(FG, @selector(didMoveToWindow),
+        @selector(sbs_fgDidMoveToWindow), method_getTypeEncoding(class_getInstanceMethod(FG, @selector(didMoveToWindow))), @"window subclass");
+    NSUInteger superSubs = sbs_hookDefiningClasses(FG, @selector(didMoveToSuperview),
+        @selector(sbs_fgDidMoveToSuperview), method_getTypeEncoding(class_getInstanceMethod(FG, @selector(didMoveToSuperview))), @"superview subclass");
+    NSUInteger hiddenSubs = sbs_hookDefiningClasses(FG, @selector(setHidden:),
+        @selector(sbs_fgSetHidden:), method_getTypeEncoding(class_getInstanceMethod(FG, @selector(setHidden:))), @"hidden subclass");
+    NSLog(@"[StatusBarScale] status bar subclass hooks layout=%lu window=%lu superview=%lu hidden=%lu",
+          (unsigned long)layoutSubs, (unsigned long)windowSubs,
+          (unsigned long)superSubs, (unsigned long)hiddenSubs);
+
+    BOOL eventOK = SBSHook(UIApplication.class, @selector(sendEvent:),
+                           SBSHelper.class, @selector(sbs_applicationSendEvent:));
+    NSLog(@"[StatusBarScale] readiness hook UIApplication sendEvent=%d", eventOK);
+    Class springBoard2 = objc_getClass("safemode_ui.SpringBoard2");
+    BOOL launchOK = SBSHook(springBoard2, @selector(applicationDidFinishLaunching:),
+                            SBSHelper.class, @selector(sbs_applicationDidFinishLaunching:));
+    Class statusProvider = objc_getClass("SBStatusBarStateProvider");
+    BOOL postOK = SBSHook(statusProvider, @selector(_didFinishPost),
+                          SBSHelper.class, @selector(sbs_statusBarDidFinishPost));
+    // screenIsOn 只走定义类扫描这一条路径；禁止先指定类 hook
+    // 再扫描 hook，否则同一 Method 交换两次会在首次调用时递归。
+    NSUInteger screenDefiners = sbs_hookDefiningClasses(nil, @selector(screenIsOn),
+        @selector(sbs_backlightScreenIsOn), "B16@0:8", @"screenIsOn");
+    NSLog(@"[StatusBarScale] readiness hooks launch=%d statusPost=%d",
+          launchOK, postOK);
+    NSLog(@"[StatusBarScale] screenIsOn defining-class hooks=%lu",
+          (unsigned long)screenDefiners);
 
     // —— 辅助图标：强制启用系统原生 item ——
     // ⛔ 崩溃教训（v1.1.0，2026-10-04 16:25 SIGABRT）：构造期对任意类调
     //    class_getInstanceMethod 会触发该类 +initialize，早期启动时会抛异常
     //    （栈：sbs_ctor → class_getInstanceMethod → initializeNonMetaClass → rethrow）。
-    //    ⇒ 整个辅助模块延迟到主队列 3 秒后（UIKit 完全就绪）再装。
-    if (gAuxEnabled) {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{
-                           sbs_installAux();
-                       });
-        sbs_log(@"[aux] 已排定 3s 后安装（避开构造期类初始化）");
+    //    ⇒ ctor 中的 GCD 延迟任务和 pthread 在这台真机的注入时期均不可靠。
+    //       改用 UIKit 启动完成/进入活跃态通知，此时私有状态栏类已安全初始化。
+    if (gAuxEnabled) sbs_registerAuxBootstrapObservers();
+}
+
+static void sbs_registerAuxBootstrapObservers(void) {
+    NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+    NSArray<NSNotificationName> *names = @[
+        UIApplicationDidFinishLaunchingNotification,
+        UIApplicationDidBecomeActiveNotification
+    ];
+    for (NSNotificationName name in names) {
+        [center addObserverForName:name object:nil queue:nil
+                        usingBlock:^(NSNotification *note) {
+            NSLog(@"[StatusBarScale] auxiliary bootstrap notification: %@", note.name);
+            sbs_startAuxIfNeeded();
+        }];
     }
+    NSLog(@"[StatusBarScale] auxiliary bootstrap observers registered");
+    // 不根据延迟时间猜测 UIKit 是否就绪。用主 RunLoop 定时探针读取
+    // UIScreen.screens，只有实际出现 screen 后才安装辅助模块。
+    if (!gAuxBootstrapTimer) {
+        CFRunLoopTimerContext ctx = {0, NULL, NULL, NULL, NULL};
+        gAuxBootstrapTimer = CFRunLoopTimerCreate(kCFAllocatorDefault,
+                                                  CFAbsoluteTimeGetCurrent() + 0.1,
+                                                  0.5, 0, 0,
+                                                  sbs_auxBootstrapTimerFired, &ctx);
+        CFRunLoopAddTimer(CFRunLoopGetMain(), gAuxBootstrapTimer, kCFRunLoopCommonModes);
+        CFRunLoopWakeUp(CFRunLoopGetMain());
+        NSLog(@"[StatusBarScale] UIScreen readiness probe registered");
+    }
+}
+
+static void sbs_auxBootstrapTimerFired(CFRunLoopTimerRef timer, __unused void *info) {
+    static NSUInteger tick = 0;
+    tick++;
+    @try {
+        NSUInteger screenCount = UIScreen.screens.count;
+        if (tick == 1 || screenCount > 0)
+            NSLog(@"[StatusBarScale] UIScreen readiness tick=%lu screens=%lu",
+                  (unsigned long)tick, (unsigned long)screenCount);
+        if (screenCount == 0) return;
+        CFRunLoopTimerInvalidate(timer);
+        if (gAuxBootstrapTimer) {
+            CFRelease(gAuxBootstrapTimer);
+            gAuxBootstrapTimer = NULL;
+        }
+        sbs_startAuxIfNeeded();
+    } @catch (NSException *e) {
+        NSLog(@"[StatusBarScale] UIScreen readiness probe failed: %@", e);
+    }
+}
+
+static void sbs_startAuxIfNeeded(void) {
+    if (!gAuxEnabled || gAuxInstallBegan) return;
+    @try {
+        if (UIScreen.screens.count == 0) {
+            NSLog(@"[StatusBarScale] auxiliary install deferred: no UIScreen yet");
+            return;
+        }
+    } @catch (NSException *e) {
+        NSLog(@"[StatusBarScale] auxiliary readiness check failed: %@", e);
+        return;
+    }
+    gAuxInstallBegan = YES;
+    NSLog(@"[StatusBarScale] starting auxiliary hook install");
+    sbs_installAux();
+}
+
+static void sbs_auxLifecycleTrigger(NSString *source) {
+    if (!gAuxEnabled || gAuxInstallBegan) return;
+    NSLog(@"[StatusBarScale] auxiliary lifecycle trigger: %@", source);
+    sbs_startAuxIfNeeded();
 }
 
 static void sbs_installAux(void) {
     @try {
+        NSLog(@"[StatusBarScale] auxiliary stage 1: runtime discovery");
         // —— API 面侦查：状态数据从哪来 ——
         // ⭐ v1.4.6：侦查 dump 挂 verbose 门控（每个 App 首次启动都打 ~80 行，
         //    会把限流窗口占满、挤掉关键时序日志；侦查结论已固化在注释里）
@@ -1216,6 +1640,8 @@ static void sbs_installAux(void) {
         }   // ⭐ v1.4.6 end if (gVerbose) —— 侦查 dump 门控结束
         SEL ce = @selector(canEnableDisplayItem:fromData:);
         Class owner = sbs_findDefiner(ce, "B32@0:8@16@24");
+        NSLog(@"[StatusBarScale] auxiliary stage 1 complete: owner=%@",
+              owner ? NSStringFromClass(owner) : @"(none)");
         sbs_log(@"[canEnable] 实现类 = %@", owner ? NSStringFromClass(owner) : @"(未找到)");
         if (owner) {
             BOOL ok = SBSHook(owner, ce, SBSHelper.class,
@@ -1225,6 +1651,8 @@ static void sbs_installAux(void) {
         }
         // 侦查 hook：item 视图 / display item 创建流
         Class IT = objc_getClass("_UIStatusBarItem");
+        NSLog(@"[StatusBarScale] auxiliary stage 2: item hooks class=%@",
+              IT ? NSStringFromClass(IT) : @"(none)");
         if (IT) {
             BOOL ok1 = SBSHook(IT, @selector(viewForIdentifier:),
                                SBSHelper.class, @selector(sbs_viewForIdentifier:));
@@ -1239,6 +1667,8 @@ static void sbs_installAux(void) {
         // 二分开关 auxData=NO 时跳过（排查内存问题用）
         if (gAuxData) {
             Class D = objc_getClass("_UIStatusBarData");
+            NSLog(@"[StatusBarScale] auxiliary stage 3: data hooks class=%@",
+                  D ? NSStringFromClass(D) : @"(none)");
             if (D) {
                 // 探测签名（applyUpdate: 与 _applyUpdate:keys:）
                 Method m1 = class_getInstanceMethod(D, @selector(applyUpdate:));
@@ -1262,6 +1692,7 @@ static void sbs_installAux(void) {
             }
         }
         // ⭐ v1.4.5 启动定时自愈（兜底一切条丢失场景）
+        NSLog(@"[StatusBarScale] auxiliary stage 4: self-heal timer");
         sbs_auxSelfHealStart();
 
         // ⭐⭐ v1.4.6 App 进程主动扫描 fg（App 内条显示的生命线）：
@@ -1282,16 +1713,26 @@ static void sbs_installAux(void) {
                 });
             }
         }
+        // 一次性 unified log 健康标记，不写文件、不在布局热路径执行。
+        NSLog(@"[StatusBarScale] v%@ auxiliary status bar ready (home + app hosts)",
+              SBS_VERSION);
     } @catch (NSException *e) {
+        NSLog(@"[StatusBarScale] auxiliary install failed: %@", e);
         sbs_log(@"[exc-aux] %@", e);
     }
 }
 
 __attribute__((constructor))
 static void sbs_ctor(void) {
+    // v1.5.0 防御性白名单：即使用户残留了旧版 Classes=UIApplication 过滤文件，
+    // 也绝不在 Aweme/WebKit/PosterBoard/普通 App 中安装任何全局 swizzle。
+    if (![[[NSProcessInfo processInfo] processName] isEqualToString:@"SpringBoard"])
+        return;
     sbs_loadConfig();
-    sbs_log(@"[载入] v%@ proc=%@ pid=%d enabled=%d scale=%.3f dy=%.2f thr=%.0f",
+    NSLog(@"[StatusBarScale] v%@ loaded in SpringBoard; aux=%d verbose=%d",
+          SBS_VERSION, gAuxEnabled, gVerbose);
+    sbs_log(@"[载入] v%@ proc=%@ pid=%d enabled=%d scale=%.3f dy=%.2f thr=%.0f lead=%d/%.2f",
             SBS_VERSION, [[NSProcessInfo processInfo] processName], getpid(),
-            gEnabled, gScale, gDy, gThr);
+            gEnabled, gScale, gDy, gThr, gLeadEnabled, gLeadScale);
     sbs_install();
 }
