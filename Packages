@@ -425,3 +425,36 @@ Filename: ./debs/StatusBarScale_1.8.13_iphoneos-arm64e.deb
 Size: 63602
 MD5sum: c7ac8a0d023aa0f13ee45268ee77b209
 SHA256: 08fe8079eade9286bfae487e065f19a098fbd13704ba7968b22e211a80e81bd8
+
+Package: com.xu.statusbarscale
+Name: StatusBarScale
+Version: 1.9.0
+Architecture: iphoneos-arm64e
+Description: 状态栏图标缩放对齐 + 辅助图标条（灵动岛机型），含可视化设置面板。
+ 需求：iPhone 14 Pro Max 灵动岛右侧（信号/WiFi/电池）图标比左侧时间略大、
+ 重心偏高。本插件 hook _UIStatusBarForegroundView -layoutSubviews，每次布局后
+ 对灵动岛右侧图标施加 绕中心缩放(默认0.92)+下移(默认1.5pt)，与时间高度/重心对齐。
+ v1.7.0 新增时间右侧、灵动岛左侧图标（闹钟/定位/录屏等，无法按标识枚举）的
+ 运行时按位置发现 + 单独缩放（默认 0.6 倍）。
+ v1.8.0 新增「辅助图标条」：把系统未在灵动岛左右显示的图标（闹钟/专注/旋转锁/
+ 定位/VPN/蓝牙/飞行模式）收拢到灵动岛正下方一行居中显示，默认缩至 0.4 倍
+ （基准 17pt → 6.8pt），主屏与 App 内跟随时间显示，锁屏隐藏。
+ ⭐ v1.9.0 新增「设置」App 可视化面板：
+ · 分组展示全部可调参数，滑块拖动实时预览、松手即保存；
+ · 开关类：总开关 / 时间旁缩放 / 辅助条 / 辅助条逐个图标收纳 / 日志级别；
+ · 数值类：右侧缩放·垂直微调 / 时间旁缩放·微调 / 辅助条大小·基准尺寸·间距；
+ · 操作类：恢复默认值、重启桌面；
+ · 改动即时生效（Darwin 通知热重载，无需 respring）。
+ 配置域 com.xu.statusbarscale（/var/mobile/Library/Preferences/）。
+ 仅注入 SpringBoard（Filter.Bundles = com.apple.springboard）。
+ 适用 iOS 16.x / RootHide (arm64e)。
+Maintainer: g459416925
+Author: g459416925 (iOS 16.5.1 / RootHide)
+Section: Tweaks
+Depends: mobilesubstrate, preferenceloader
+Installed-Size: 205
+Tag: purpose::extension
+Filename: ./debs/StatusBarScale_1.9.0_iphoneos-arm64e.deb
+Size: 82220
+MD5sum: 65393a3df1a8bc1a9a559a99878077d7
+SHA256: 89530b1ade683ef417af7f9a81349102cdbb9c5976e5dc4411c2e4d21eefc603

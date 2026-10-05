@@ -16,7 +16,7 @@ https://g459416925.github.io/ios-tweaks/
 |---|---|---|
 | `com.xu.compactorfix` | 1.0.0 | **CompactorFix** — 把系统 UI 字体整体换成 Apple Watch 的 SF Compact |
 | `com.xu.screentimelocker16` | 5.2.0 | **ScreenTimeLocker16** — 让「屏幕使用时间」的 App 限额真正锁得住 |
-| `com.xu.statusbarscale` | 1.8.11 | **StatusBarScale** — 状态栏图标缩放对齐（右侧 0.92 / 时间右侧 0.6）+ 灵动岛下方辅助状态条（0.4×，**item 级信号去重**、不看图标名） |
+| `com.xu.statusbarscale` | 1.9.0 | **StatusBarScale** — 状态栏图标缩放对齐（右侧 0.92 / 时间右侧 0.6）+ 灵动岛下方辅助状态条（0.4×）+ **设置 App 可视化面板（滑块实时预览、改动热生效免 respring）** |
 
 ### CompactorFix
 
@@ -51,12 +51,23 @@ https://g459416925.github.io/ios-tweaks/
 - 实测：图标高度 13→12（=时间），重心差 **−1.66 → −0.07px**
 - `transform` 不参与 frame 布局 → 间距、点击区域完全不受影响
 - 灵动岛展开/收起自动跟随（每次布局后重设，幂等）
-- 配置 `/var/mobile/Library/Preferences/com.xu.statusbarscale.plist`：
+- 配置 `/var/mobile/Library/Preferences/com.xu.statusbarscale.plist`（⭐ v1.9.0 起推荐直接在
+  **设置 → Tweaks → 状态栏缩放** 面板里改，滑块拖动实时预览、松手即存、**热生效免 respring**）：
   `enabled` / `scale` / `dy` / `threshold` / `leadEnabled` / `leadScale` / `leadDy` /
-  `diag` / `verbose` / `auxEnabled` / `auxStrip` / `auxData` / `auxIcons`（改后 respring）
+  `diag` / `verbose` / `auxEnabled` / `auxStrip` / `auxData` / `auxIcons`，
+  以及 v1.9.0 新增的逐图标开关 `auxIcon_alarm|quietMode|rotationLock|location|vpn|bluetooth|airplane`
+  （任一出现即优先于 `auxIcons` 数组；未出现的键默认收纳）
+- ⭐ v1.9.0 设置面板（PreferenceBundle）：`设置 → Tweaks → 状态栏缩放`，含全部参数
+  滑块/开关、辅助条逐图标收纳、恢复默认值、重启桌面；保存后发 Darwin 通知
+  `com.xu.statusbarscale/prefsChanged`，插件监听后热重载
+- ⚠️⭐ RootHide 双目录坑（面板因此不能用 CFPreferences）：「设置」App 的
+  CFPreferences 读写落在**影子目录** `/var/mobile/Library/Preferences/`（内容可能是旧快照），
+  而插件读硬编码 `/var/mobile/...` 实际解析到**真实文件**
+  `/rootfs/private/var/mobile/Library/Preferences/` —— 两份不是同一文件。
+  面板因此**直写真实路径**（`/rootfs/...` 前缀优先 + 影子路径兜底双写）
 - 仅注入 SpringBoard（`Filter.Bundles = ["com.apple.springboard"]`）；App 内状态栏由
   SpringBoard 远程渲染，无需向普通 App、WebKit 或 PosterBoard 注入
-- ⚠️ RootHide 坑：SSH 部署该配置**必须**走
+- ⚠️ RootHide 坑：SSH 手工部署该配置**必须**走
   `/rootfs/private/var/mobile/Library/Preferences/`（不带前缀是影子目录）
 
 **时间右侧（灵动岛左侧）图标缩放 —— v1.7.3**

@@ -27,24 +27,33 @@ def _rounded(x, y, w, h, r, W, H):
 def render(size):
     W = H = size * SS
     img = _px(W, H)
-    radius = W * 0.2237
-    for y in range(H):
-        t = y / max(1, H - 1)
+    # ⚠️ 图形内容只占画布中央 84%、四周留 8% 透明边距 —— 设置列表的图标槽自带内边距，
+    #    全出血圆角方块会显得比其他插件图标大一圈（实测 2026-10-05）。
+    m = int(W * 0.08)
+    bw = W - 2 * m
+    radius = bw * 0.2237
+    for y in range(m, H - m):
+        t = (y - m) / max(1, bw - 1)
         col = tuple(int(BG_TOP[i] + (BG_BOT[i] - BG_TOP[i]) * t) for i in range(3))
-        for x in range(W):
-            if _rounded(x, y, W, H, radius, W, H):
+        for x in range(m, W - m):
+            lx, ly = x - m, y - m
+            if _rounded(lx, ly, bw, bw, radius, bw, bw):
                 img[y][x] = (col[0], col[1], col[2], 255)
 
-    def fill_round(x0, y0, x1, y1, r, alpha):
-        X0, Y0, X1, Y1 = int(x0 * W), int(y0 * H), int(x1 * W), int(y1 * H)
-        rr = r * W
+    def fill_round(nx0, ny0, nx1, ny1, r, alpha):
+        """归一化坐标相对中央背景区域（0..1 = 圆角方块内）"""
+        X0 = m + int(nx0 * bw)
+        Y0 = m + int(ny0 * bw)
+        X1 = m + int(nx1 * bw)
+        Y1 = m + int(ny1 * bw)
+        rr = r * bw
         for y in range(Y0, Y1):
             for x in range(X0, X1):
                 if x < 0 or y < 0 or x >= W or y >= H:
                     continue
-                cx = min(max(x, rr), (X1 - X0) - rr)
-                cy = min(max(y, rr), (Y1 - Y0) - rr)
-                dx, dy = x - cx, y - cy
+                cx = min(max(x - X0, rr), (X1 - X0) - rr)
+                cy = min(max(y - Y0, rr), (Y1 - Y0) - rr)
+                dx, dy = (x - X0) - cx, (y - Y0) - cy
                 if dx * dx + dy * dy > rr * rr:
                     continue
                 bg = img[y][x]
