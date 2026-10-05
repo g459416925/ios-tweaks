@@ -46,6 +46,29 @@ Size: 19506
 MD5sum: 2cd312981023753806ead7914715b187
 SHA256: fe3ffb054169151c6aaaf4122c70a81d05fba38cf9a0f32ca4b9dce7978abe97
 
+Package: com.xu.screentimelocker16
+Name: ScreenTimeLocker16
+Version: 5.2.1
+Architecture: iphoneos-arm64e
+Description: 把「屏幕使用时间」的 App 限额变成一把真正的锁。
+ 完整还原原版 DisableOneMoreMinute 的四层实现：
+ ① 数据层 — 禁止「再使用一分钟」；
+ ② 设置页 — 允许设定 0 小时 0 分钟的限额；
+ ③ 拦截页 — 认证优先走 Face ID，用不了时回落屏幕使用时间密码；
+ ④ 菜单弹窗 — 保持原样，不注入任何额外选项。
+ 不隐藏任何原生按钮（「请求更多使用时间」照常保留）。
+ 适用 iOS 16.x / RootHide (arm64e)，宿主进程 SpringBoard。
+Maintainer: g459416925
+Author: g459416925 (iOS 16.5.1 / RootHide 重写版)
+Section: Tweaks
+Depends: mobilesubstrate
+Installed-Size: 94
+Tag: purpose::extension
+Filename: ./debs/ScreenTimeLocker16_5.2.1_iphoneos-arm64e.deb
+Size: 19628
+MD5sum: 19595eeb5b5e8e1975f7134542f3c246
+SHA256: 35bb1ab01d7fcf75f292cd78233435d87d9dd5e128baa11589dfe0ad646acc51
+
 Package: com.xu.statusbarscale
 Name: StatusBarScale
 Version: 1.0.1
@@ -351,3 +374,54 @@ Filename: ./debs/StatusBarScale_1.8.11_iphoneos-arm64e.deb
 Size: 63498
 MD5sum: c008403726ebd12f6aedf6a78ecc618f
 SHA256: 9a0b7cb2aab8d2043c1c7b5974c6244c06ceeca92a312f4d4ebaca9d3a11323b
+
+Package: com.xu.statusbarscale
+Name: StatusBarScale
+Version: 1.8.13
+Architecture: iphoneos-arm64e
+Description: 状态栏图标缩放对齐（灵动岛机型）：右侧 信号/WiFi/电池 图标比左侧时间
+ 略大且重心偏高（实测 14 Pro Max iOS 16.5.1：图标高 13-14px vs 时间 12px，
+ 重心偏高 1.66px），本插件 hook _UIStatusBarForegroundView -layoutSubviews，
+ 每次布局后对灵动岛右侧图标施加 绕中心缩放(默认0.92)+下移(默认1.5pt)，
+ 与时间高度/重心对齐。
+ v1.7.0 新增：时间右侧、灵动岛左侧的图标（闹钟/定位/录屏等，无法按标识枚举）
+ 改为运行时按 frame 区间发现，单独缩放 0.6 倍（leadScale）。
+ v1.8.0 新增「辅助图标条」：把系统不显示在灵动岛左右的图标（闹钟/专注/
+ 旋转锁/定位/VPN/蓝牙/飞行模式）收拢到灵动岛正下方一行显示，缩放 0.4 倍
+ （基准 17pt → 6.8pt），主屏与 App 内跟随时间显示，锁屏隐藏。
+ v1.8.6 去重改为「状态栏变化信号」驱动：hook _UIStatusBarForegroundView 的
+ addSubview:/insertSubview:/willRemoveSubview: + _UIStatusBar 的
+ _updateDisplayedItemsWithData:styleAttributes:extraAnimations:，由状态栏
+ 视图树增删事件实时重算「系统正在显示谁」——系统自己画出定位箭头时，
+ 辅助条同一帧内把定位图标剔除，绝不重复（加立即、减需连续 3 次一致）。
+ v1.8.11 判定不再看图标名：改读状态栏自己的 item 模型
+ （_UIStatusBar._items → 每项 _displayItems[]._view 的实时挂载状态；
+  _items 在运行期是字典、启动瞬间是数组，两种形态都接），
+ 与 location.fill / location.circle.fill 这类会变的字形名彻底解耦；
+ 视图树扫描降级为纯日志交叉核对；过渡帧（视图已挂载但 frame=0 / 临时 hidden）
+ 用 1.2s 宽限兜住，杜绝闪烁式重复。
+ v1.8.11 修日志不忠实：原「条显示/条隐藏」是进程内永久去重（同组合只记一次、
+ hidden 的 key 固定故一进程仅一条）→ 改为按状态跃迁记录 + 20s 心跳，任何
+ 显/隐切换必留痕。
+ v1.8.11 修宿主 ping-pong：主屏同时存在两个活 fg（UIStatusBarWindow 与
+ SBMainSwitcherWindow）各以 1s 节奏布局 → 条被来回搬家；现加主/次宿主仲裁，
+ UIStatusBarWindow 存活时 MainSwitcher 让位（App 前台主屏 fg 摘窗后自动放行）。
+ transform 不参与布局计算，不影响间距与点击区域判定。
+ 配置 /var/mobile/Library/Preferences/com.xu.statusbarscale.plist：
+ enabled(bool)=YES / scale(float)=0.92 / dy(float)=1.5 / threshold(float)=280 /
+ leadEnabled(bool)=YES / leadScale(float)=0.60 / leadDy(float)=0 /
+ auxEnabled(bool)=YES / auxScale(float)=0.4 / auxBaseSize(float)=17 /
+ auxGap(float)=3 / auxDebug(bool)=NO / diag(bool)=YES / verbose(bool)=NO，
+ 改后 respring 生效。
+ 仅注入 SpringBoard（Filter.Bundles = com.apple.springboard）。
+ 适用 iOS 16.x / RootHide (arm64e)。
+Maintainer: g459416925
+Author: g459416925 (iOS 16.5.1 / RootHide)
+Section: Tweaks
+Depends: mobilesubstrate
+Installed-Size: 189
+Tag: purpose::extension
+Filename: ./debs/StatusBarScale_1.8.13_iphoneos-arm64e.deb
+Size: 63602
+MD5sum: c7ac8a0d023aa0f13ee45268ee77b209
+SHA256: 08fe8079eade9286bfae487e065f19a098fbd13704ba7968b22e211a80e81bd8

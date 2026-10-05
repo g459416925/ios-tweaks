@@ -46,7 +46,7 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 
-#define SBS_VERSION @"1.8.11"
+#define SBS_VERSION @"1.8.13"
 #define SBS_LOG_PATH @"/var/mobile/Documents/sbs_log.txt"
 
 static BOOL    gEnabled = YES;
@@ -575,7 +575,10 @@ static void sbs_auxLogOnce(NSString *key, NSString *fmt, ...) {
 //   反映真机；也是"按日志修复"无从下手的原因）。
 //   新语义（按类目分桶）：
 //     · **任何跃迁必留痕**（stateKey 变化 → 立即写）；
-//     · 状态未变 → 心跳兜底，同类目最长静默 20s 写一条（可证明"此刻仍是这个状态"）。
+//     · 状态未变 → 心跳兜底，同类目最长静默 60s 写一条（可证明"此刻仍是这个状态"）。
+//   ⭐ v1.8.13 心跳 20s → 60s：20s × 每类目 ⇒ 稳态仍有 ~13 行/分钟（≈1.9 万行/天）
+//      的纯"无变化"噪声。跃迁是精确的，心跳只用于证明"仍在态"，60s 足够。
+#define SBS_STATE_HEARTBEAT 60.0
 static NSMutableDictionary<NSString *, NSString *> *gStateLastKey = nil;
 static NSMutableDictionary<NSString *, NSNumber *> *gStateLastT   = nil;
 static void sbs_auxLogState(NSString *cat, NSString *stateKey, NSString *fmt, ...)
@@ -588,7 +591,7 @@ static void sbs_auxLogState(NSString *cat, NSString *stateKey, NSString *fmt, ..
     NSString *prev = gStateLastKey[cat];
     NSTimeInterval pt = [gStateLastT[cat] doubleValue];
     BOOL changed = ![stateKey isEqualToString:prev];
-    if (!changed && now - pt < 20.0) return;      // 状态未变 → 仅心跳（≤20s 一条）
+    if (!changed && now - pt < SBS_STATE_HEARTBEAT) return;   // 状态未变 → 仅心跳
     gStateLastKey[cat] = [stateKey copy];
     gStateLastT[cat]   = @(now);
     va_list ap; va_start(ap, fmt);
@@ -1927,10 +1930,21 @@ static void sbs_rescanFG(UIView *fg, NSString *why) {
                               componentsJoinedByString:@","];
         NSString *hitStr = now.count ? [[now.allObjects sortedArrayUsingSelector:@selector(compare:)]
                                         componentsJoinedByString:@","] : @"(无)";
-        sbs_auxLogState(@"scan",
-            [NSString stringWithFormat:@"%@:%@:%@:%d", why ?: @"?", namesStr, hitStr, healthy ? 1 : 0],
-            @"巡检%@ 可见图标标识名=%@ 候选命中=%@ 健康=%d（名扫描仅核对，判定走 item 信号）",
-            why ?: @"?", namesStr.length ? namesStr : @"(空)", hitStr, healthy ? 1 : 0);
+        // ⭐ v1.8.13 二审：v1.8.12 只去掉 namesStr 仍然泛洪 —— 实测 60 s 窗口
+        //   `巡检tick`/`巡检tick+` 各 55 行，且**状态字段完全一致**（location/1）。
+        //   真因：`stateKey` 里还带着 `why`，而一次巡检会被 `sbs_rescanSchedule`
+        //   拆成「立即(tick) + 0.25s 后(tick+)」两次 ⇒ 两个 key 永远互不相等
+        //   ⇒ 每次都判为"跃迁"，20s 心跳形同虚设。
+        //   再加两道保险（对 healthy/hitStr 在过渡帧抖动的场景也免疫）：
+        //     ① stateKey 彻底不含 `why`（只留判决量 hitStr:healthy，why 仅进正文）；
+        //     ② **只记录权威那一遍**（调度器的第二遍，why 以 '+' 结尾）——
+        //        第一遍是为"尽早发布抑制"服务的过渡取样，不应作为状态证据。
+        if ([why hasSuffix:@"+"]) {
+            sbs_auxLogState(@"scan",
+                [NSString stringWithFormat:@"%@:%d", hitStr, healthy ? 1 : 0],
+                @"巡检%@ 可见图标标识名=%@ 候选命中=%@ 健康=%d（名扫描仅核对，判定走 item 信号）",
+                why ?: @"?", namesStr.length ? namesStr : @"(空)", hitStr, healthy ? 1 : 0);
+        }
     }
     sbs_publishRescan(now, healthy, why);
     gInRescan = NO;
@@ -2452,12 +2466,15 @@ static void sbs_colorTick(void) {
             tint = [(UILabel *)s textColor];
     }
     NSString *winCls = NSStringFromClass(fg.window.class);
-    // ⭐ 时间桶（每 5s 一个）：即使配色无变化也留下时间线，便于事后对齐许总的手动测试
+    // ⭐ v1.8.12 同修泛洪：旧版把「5s 时间桶」编进去重键 ⇒ 每 5s 必写一条
+    //   （≈1.7 万行/天，且与状态无关）。改为：**去重键 = 配色元组本身**
+    //   （窗 / barStyle / fgColor / 时间色），跃迁即记 + 同状态心跳；
+    //   时间桶只留在正文里，供许总把日志与手动操作时间线对齐。
     int bucket = (int)([NSDate date].timeIntervalSince1970 / 5.0);
-    NSString *key = [NSString stringWithFormat:@"ctick:%d:%@:%@:%@:%@", bucket, winCls,
+    NSString *key = [NSString stringWithFormat:@"%@:%@:%@:%@", winCls,
                      barStyle ?: @"-", sbs_cdesc(fgColor), sbs_cdesc(tint)];
-    sbs_auxLogOnce(key, @"配色巡检 窗=%@ barStyle=%@ fgColor=%@ 时间色=%@",
-                   winCls, barStyle ?: @"-", sbs_cdesc(fgColor), sbs_cdesc(tint));
+    sbs_auxLogState(@"ctick", key, @"配色巡检 窗=%@ barStyle=%@ fgColor=%@ 时间色=%@ 桶=%ds",
+                    winCls, barStyle ?: @"-", sbs_cdesc(fgColor), sbs_cdesc(tint), bucket * 5);
 }
 
 // ⭐ v1.8.10 主宿主（UIStatusBarWindow 的 fg）缓存：用于 MainSwitcher 让位仲裁
