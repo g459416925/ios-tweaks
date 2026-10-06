@@ -46,7 +46,7 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 
-#define SBS_VERSION @"1.10.0"
+#define SBS_VERSION @"1.10.1"
 #define SBS_LOG_PATH @"/var/mobile/Documents/sbs_log.txt"
 
 static BOOL    gEnabled = YES;
@@ -461,11 +461,13 @@ static void sbs_auxRelayoutFromData(void);    // ⭐ v1.4.4 data 驱动重排（
 static void sbs_applyLead(UIView *fg);        // ⭐ v1.7.0 leading 区图标缩放（定义见后）
 static CGRect sbs_islandFrameInFG(UIView *fg); // ⭐ v1.7.0 leading 判定要用（定义见后）
 static void sbs_dumpScaled(UIView *fg, NSString *by);  // ⭐ v1.9.1 探针（定义见后）
+static BOOL sbs_bluetoothPoweredOn(void);              // ⭐ v1.10.1 蓝牙轮询要用（定义见后）
 // ⭐ v1.4.4/5 全局状态（必须定义在 SBSHelper @implementation 之前，
 //   hook 方法 sbs_fgDidMoveToWindow 内要用 gAuxForceRelayout）
 static UIView *gActiveFG = nil;                          // 当前活动 fg（强引用，CC 动画期间不失效）
 static BOOL gAuxForceRelayout = NO;                      // data/自愈驱动时跳过节流
 static dispatch_source_t gHealTimer = nil;               // v1.4.5 定时自愈
+static dispatch_source_t gBtTimer   = nil;               // ⭐ v1.10.1 蓝牙开关轮询（外部状态，无事件可挂）
 static CFRunLoopTimerRef gAuxBootstrapTimer = NULL;       // 等待 UIScreen 真正就绪
 static BOOL gAuxInstallBegan = NO;                       // 生命周期回调串行一次性门闩
 // ⭐ v1.4.6 见过的合法 fg 表（弱引用）：快速切换后 gActiveFG 可能是已进池的
@@ -1433,6 +1435,44 @@ static void sbs_auxSelfHealStart(void) {
         sbs_auxLogOnce(@"heal", @"自愈计时器已启动（1s 间隔）");
     });
 }
+
+// ⭐⭐ v1.10.1 蓝牙开关**主动轮询**（许总实测：关/开蓝牙后要等几秒图标才变）。
+//   根因：自愈定时器只在"条丢失/挂错窗口"时重排，**不做状态同步**；而蓝牙开关**不在
+//   系统状态栏 data 里**（我们查的是 `BluetoothManager.powered`），系统没有任何事件可挂
+//   ⇒ 事件驱动完全覆盖不到，只能等下一次 fg 布局（故"几秒后"才刷新）。
+//   做法：0.4s 一次，**只在值变化时**才刷新 + 重排；稳态开销 = 一次 objc 消息 + BOOL 比较。
+#define SBS_BT_POLL_INTERVAL 0.4
+static void sbs_auxBtPollStart(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        gBtTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0,
+                                          dispatch_get_main_queue());
+        dispatch_source_set_timer(gBtTimer,
+            dispatch_time(DISPATCH_TIME_NOW, (int64_t)(SBS_BT_POLL_INTERVAL * NSEC_PER_SEC)),
+            (uint64_t)(SBS_BT_POLL_INTERVAL * NSEC_PER_SEC),
+            (int64_t)(0.1 * NSEC_PER_SEC));
+        dispatch_source_set_event_handler(gBtTimer, ^{
+            @try {
+                if (!gAuxEnabled || !gStrip) return;
+                static BOOL inited = NO, last = NO;
+                BOOL now = sbs_bluetoothPoweredOn();
+                if (!inited) { inited = YES; last = now; return; }
+                if (now == last) return;
+                last = now;
+                sbs_logNow(@"[bt] 蓝牙开关 → %d，立即刷新辅助条", now);
+                sbs_auxRefresh();                        // 显隐（内部无变化不写）
+                UIView *fg = gActiveFG;
+                if (fg && fg.window && !fg.isHidden) {
+                    gAuxForceRelayout = YES;             // 可见集变了 → 跳过 33ms 节流重排居中
+                    sbs_auxLayoutInFG(fg);
+                }
+            } @catch (__unused NSException *e) {}
+        });
+        dispatch_resume(gBtTimer);
+        sbs_auxLogOnce(@"btpoll", @"蓝牙开关轮询已启动（%.2fs，仅变化时刷新）", SBS_BT_POLL_INTERVAL);
+    });
+}
+
 // ⭐ v1.4.2 系统原生图标捕获表：hook viewForIdentifier: 时记下系统自己渲染的
 //   item 视图 image（CC 迷你状态栏/锁屏等场景系统会创建这些视图）。
 //   许总要求"用系统自身的图标，参考 CC 状态栏那个"——捕获到的系统图 100% 同款，
@@ -1918,32 +1958,39 @@ static void sbs_applyLead(UIView *fg) {
 //   许总要的是「开关开着就显示」⇒ 另取蓝牙管理器的**电源状态**；
 //   取不到则回落「已连接」语义（= 与系统行为一致），绝不误显示。
 #import <objc/message.h>
+// ⭐ v1.10.1 缓存单例与"电源状态"选择子 —— 本函数会被 0.4s 轮询调用，避免每次重复查找。
+static id   gBtInst = nil;
+static SEL  gBtSel  = NULL;
 static BOOL sbs_bluetoothPoweredOn(void) {
-    static BOOL logged = NO;
-    Class BM = objc_getClass("BluetoothManager");
-    if (!BM) {
-        if (!logged) { logged = YES;
-            sbs_logNow(@"[bt] 本进程无 BluetoothManager → 回落「已连接」语义（与系统一致）"); }
-        return NO;
-    }
-    @try {
-        id inst = ((id (*)(id, SEL))objc_msgSend)((id)BM, @selector(sharedInstance));
-        if (!inst) return NO;
-        for (NSString *sn in (@[@"powered", @"isPoweredOn", @"enabled",
-                                @"isEnabled", @"powerState"])) {
-            SEL s = NSSelectorFromString(sn);
-            if (![inst respondsToSelector:s]) continue;
-            NSMethodSignature *sig = [inst methodSignatureForSelector:s];
-            if (!sig || sig.numberOfArguments != 2) continue;
-            BOOL on = ((BOOL (*)(id, SEL))objc_msgSend)(inst, s);
-            if (!logged) { logged = YES;
-                sbs_logNow(@"[bt] BluetoothManager 可用：%@ → powered=%d", sn, on); }
-            return on;
+    static BOOL tried = NO;
+    if (!tried) {
+        tried = YES;
+        Class BM = objc_getClass("BluetoothManager");
+        if (!BM) {
+            sbs_logNow(@"[bt] 本进程无 BluetoothManager → 回落「已连接」语义（与系统一致）");
+        } else {
+            @try {
+                gBtInst = ((id (*)(id, SEL))objc_msgSend)((id)BM, @selector(sharedInstance));
+                if (gBtInst) {
+                    for (NSString *sn in (@[@"powered", @"isPoweredOn", @"enabled",
+                                            @"isEnabled", @"powerState"])) {
+                        SEL s = NSSelectorFromString(sn);
+                        if (![gBtInst respondsToSelector:s]) continue;
+                        NSMethodSignature *sig = [gBtInst methodSignatureForSelector:s];
+                        if (!sig || sig.numberOfArguments != 2) continue;
+                        gBtSel = s;
+                        break;
+                    }
+                }
+                sbs_logNow(@"[bt] BluetoothManager %@ → 电源选择子=%@",
+                           gBtInst ? @"可用" : @"sharedInstance 为空",
+                           gBtSel ? NSStringFromSelector(gBtSel) : @"(无 → 回落「已连接」语义)");
+            } @catch (__unused NSException *e) {}
         }
-        if (!logged) { logged = YES;
-            sbs_logNow(@"[bt] BluetoothManager 无电源状态方法 → 回落「已连接」语义"); }
-    } @catch (__unused NSException *e) {}
-    return NO;
+    }
+    if (!gBtInst || !gBtSel) return NO;
+    @try { return ((BOOL (*)(id, SEL))objc_msgSend)(gBtInst, gBtSel); }
+    @catch (__unused NSException *e) { return NO; }
 }
 
 static BOOL sbs_entryActive(id entry, NSString *ident) {
@@ -3385,6 +3432,8 @@ static void sbs_installAux(void) {
         // ⭐ v1.4.5 启动定时自愈（兜底一切条丢失场景）
         NSLog(@"[StatusBarScale] auxiliary stage 4: self-heal timer");
         sbs_auxSelfHealStart();
+        // ⭐ v1.10.1 蓝牙开关主动轮询（它不在系统状态栏 data 里 → 事件驱动覆盖不到）
+        sbs_auxBtPollStart();
 
         // ⭐⭐ v1.4.6 App 进程主动扫描 fg（App 内条显示的生命线）：
         //    【实测 19:38 铁证】App 内 fg 的创建/挂窗/首布局全部发生在 ctor 之前
