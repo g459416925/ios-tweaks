@@ -46,7 +46,7 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 
-#define SBS_VERSION @"1.9.7"
+#define SBS_VERSION @"1.9.8"
 #define SBS_LOG_PATH @"/var/mobile/Documents/sbs_log.txt"
 
 static BOOL    gEnabled = YES;
@@ -2561,14 +2561,25 @@ static void sbs_auxRefresh(void) {
         //   同时把信号源（gSysRendered）也纳入：系统正在显示 → 隐藏本家副本。
         BOOL sig = [sbs_sysRendered() containsObject:ident];
         BOOL suppressed = sig || [sbs_sysShown() containsObject:ident];
-        BOOL hide = (!active) || suppressed;
-        if (iv.hidden == hide) continue;         // 无变化不写
-        iv.hidden = hide;
-        // ⭐⭐ v1.8.0 **效果级日志**（许总指正：决策日志 ≠ 实际显示）：
-        //   记录真正写进视图的 hidden 值 —— 这才是"真机上到底显不显示"的证据。
-        sbs_auxLogOnce([NSString stringWithFormat:@"hide:%@:%d", ident, hide ? 1 : 0],
-            @"图标显隐 %@ hidden=%d（entry激活=%d 被系统显示抑制=%d）",
-            ident, hide, active, suppressed);
+        // ⭐⭐ v1.9.8 许总指正后的显隐规则：**只由"系统是否已显示"决定**。
+        //    旧实现 `hide = (!active) || suppressed` —— Entry 未启用就隐藏，于是
+        //    "面板里勾选了却不显示"（2026-10-06 日志实证：bluetooth/vpn/airplane 的
+        //    active=0 ⇒ 条里只剩 alarm/quietmode/rotationlock，与面板语义矛盾）。
+        //    许总要求：除"系统已在灵动岛左侧/右侧显示"的以外，其余**全部**显示在辅助条里；
+        //    收纳范围只由面板勾选（gAuxIcons）决定，Entry 只用来区分"启用/未启用"的观感。
+        //    未启用者以**半透明**呈现：既"都显示"，又不会把"关着的开关"误读成"开着"。
+        BOOL hide = suppressed;
+        CGFloat wantA = active ? 1.0 : 0.45;
+        BOOL hiddenChanged = (iv.hidden != hide);
+        BOOL alphaChanged  = (fabs(iv.alpha - wantA) > 0.01);
+        if (!hiddenChanged && !alphaChanged) continue;        // 无变化不写
+        if (hiddenChanged) iv.hidden = hide;
+        if (alphaChanged)  iv.alpha  = wantA;
+        // ⭐ 效果级日志改为「跃迁即记 + 60s 心跳」（旧版永久去重 → 状态变了也不再记录）
+        sbs_auxLogState([@"vis:" stringByAppendingString:ident],
+            [NSString stringWithFormat:@"%@:%d:%d", ident, hide ? 1 : 0, active ? 1 : 0],
+            @"图标显隐 %@ hidden=%d alpha=%.2f（entry激活=%d 被系统显示抑制=%d）",
+            ident, hide, iv.alpha, active, suppressed);
     }
 }
 
