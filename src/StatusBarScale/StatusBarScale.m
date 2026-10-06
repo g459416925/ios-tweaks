@@ -46,7 +46,7 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 
-#define SBS_VERSION @"1.10.1"
+#define SBS_VERSION @"1.10.3"
 #define SBS_LOG_PATH @"/var/mobile/Documents/sbs_log.txt"
 
 static BOOL    gEnabled = YES;
@@ -2580,6 +2580,16 @@ static NSString *sbs_itemClassToKey(NSString *cls) {
 static NSMutableDictionary<NSString *, NSNumber *> *gItemShownAt = nil;
 
 // 返回「系统此刻正在显示」的候选键集合；detail 输出逐项证据（供日志）。
+// ⭐⭐ v1.10.2 名单成员判定。⚠️ `gAuxIcons` 是**混合大小写**（`quietMode` / `rotationLock` …），
+//   而 item 侧 key 一律小写 ⇒ 必须逐项小写化比较，否则 `quietmode` 永远匹配不上，
+//   "辅助条独占"的压制会**静默失效**（第一次实现没生效的原因）。
+static BOOL sbs_inAuxList(NSString *keyLower) {
+    if (!keyLower.length) return NO;
+    for (NSString *e in gAuxIcons)
+        if ([[e lowercaseString] isEqualToString:keyLower]) return YES;
+    return NO;
+}
+
 static NSSet<NSString *> *sbs_itemShownSet(NSMutableString *detail) {
     NSMutableSet *out = [NSMutableSet set];
     UIView *fg = gActiveFG;
@@ -2625,6 +2635,21 @@ static NSSet<NSString *> *sbs_itemShownSet(NSMutableString *detail) {
                     //   实测未显示的 item 其 displayItem._view 直接为 nil（`alarm=0{-}`），
                     //   ∴ **"已挂载"本身就是充分判据**；尺寸只写进证据串。
                     if (!dv.isHidden && dv.alpha > 0.01) {
+                        // ⭐⭐ v1.10.2 名单内的状态改由**辅助条独占显示**（治"一闪一闪"）。
+                        //   许总实测：系统在同一个槽位（时间右侧 x≈100）**轮播** location/quietmode
+                        //   —— 两个 view 同时存在、系统交替把其中一个置 hidden ⇒ 旧判定
+                        //   「系统已显示就跳过」跟着翻转 ⇒ 辅助条里的图标一闪一闪。
+                        //   做法：把名单内的系统 item 视图**主动压制**（无变化不写），于是
+                        //     ①不重复 ②辅助条稳定常显 ③系统若要重置，下一轮会被压回。
+                        if (sbs_inAuxList(key)) {
+                            if (!dv.hidden) {
+                                dv.hidden = YES;
+                                sbs_logNow(@"[own] 压制系统 %@ 视图 %p → hidden=YES（辅助条独占）",
+                                           key, (__bridge void *)dv);
+                            }
+                            ev = @"已压制(辅助条独占)";
+                            break;                     // 不计入"系统已显示"
+                        }
                         shown = YES;
                         ev = [NSString stringWithFormat:@"sup=%@ win=%@ f=%@",
                               dv.superview ? NSStringFromClass(dv.superview.class) : @"nil",
@@ -2653,6 +2678,33 @@ static NSSet<NSString *> *sbs_itemShownSet(NSMutableString *detail) {
 //    但判定依据是"该视图此刻真的挂在状态栏视图树上"，而不是"名字对得上就永久抑制"。
 //    旧函数的问题是把"名字命中"记忆化 → 与实时状态脱钩（定位图标重复的元凶之一）。
 
+// ⭐ v1.10.2 一次性：dump `_UIStatusBarData` 的**全部字段**（有/nil），
+//   用于确认"还有哪些状态位可以收纳"（如许总问的"静音"图标对应哪个 entry）。
+static void sbs_dumpDataOnce(id data) {
+    if (!data) return;
+    static BOOL done = NO;
+    if (done) return;
+    done = YES;
+    NSMutableString *o = [NSMutableString string];
+    for (Class c = [data class]; c && c != [NSObject class]; c = class_getSuperclass(c)) {
+        unsigned int n = 0;
+        Ivar *ivs = class_copyIvarList(c, &n);
+        for (unsigned i = 0; i < n; i++) {
+            const char *nm = ivar_getName(ivs[i]);
+            if (!nm) continue;
+            NSString *k = @(nm);
+            if ([k hasPrefix:@"_"]) k = [k substringFromIndex:1];
+            id v = nil;
+            @try { v = [data valueForKey:k]; } @catch (__unused NSException *e) {}
+            [o appendFormat:@"%s=%@ ", nm, v ? ([v isKindOfClass:[NSNumber class]]
+                                               ? (id)[NSString stringWithFormat:@"%@", v] : @"<obj>")
+                                            : @"nil"];
+        }
+        free(ivs);
+    }
+    sbs_logNow(@"[dataDump] %@：%@", NSStringFromClass([data class]), o);
+}
+
 // 读 _UIStatusBarData 各 Entry → 驱动图标显隐
 // ⭐ 被动式：只在 hidden 值真正变化时才写 iv.hidden（防止写操作触发重布局 → 循环）
 static void sbs_auxRefresh(void) {
@@ -2664,6 +2716,7 @@ static void sbs_auxRefresh(void) {
         return;
     }
     sbs_auxLogOnce(@"dataOK", @"状态源已捕获 data=%@", NSStringFromClass([data class]));
+    sbs_dumpDataOnce(data);           // ⭐ v1.10.2 一次性列出全部状态位
     for (NSString *ident in gAuxViews) {
         UIImageView *iv = gAuxViews[ident];
         id entry = nil;
@@ -2680,8 +2733,12 @@ static void sbs_auxRefresh(void) {
         //   于是即使去重判定为"系统已显示"，这里也会把图标重新显示出来
         //   （许总实测：日志说去重了、真机仍有定位图标）。
         //   同时把信号源（gSysRendered）也纳入：系统正在显示 → 隐藏本家副本。
+        // ⭐⭐ v1.10.2 名单内的状态由**辅助条独占**（系统那份已被 sbs_itemShownSet 压制）：
+        //    系统的"显示意图/信号"不再参与抑制判定 —— 否则信号一翻转图标就闪
+        //    （许总实测：勿扰/静音图标一会儿有一会儿没）。
+        BOOL inList = sbs_inAuxList(ident.lowercaseString);
         BOOL sig = [sbs_sysRendered() containsObject:ident];
-        BOOL suppressed = sig || [sbs_sysShown() containsObject:ident];
+        BOOL suppressed = !inList && (sig || [sbs_sysShown() containsObject:ident]);
         // ⭐⭐ v1.9.9 许总澄清后的最终规则：**只显示"已开启"的状态**（实时）。
         //    `hide = !active || suppressed`：
         //      · active     = 该功能此刻**真的开着**（取 BoolEntry.boolValue，见 sbs_entryActive）
@@ -3031,7 +3088,12 @@ static void sbs_auxLayoutInFG(UIView *fg) {
             if (myFp.length) for (NSData *fp in sysFps)
                 if ([fp isEqualToData:myFp]) { byFp = YES; break; }
         }
-        BOOL shownBySystem = byItem || byFp;
+        // ⭐⭐ v1.10.2 名单内的状态**由辅助条独占**：系统那份已被 sbs_itemShownSet 压制，
+        //    这里不再因"系统已显示"而跳过 —— 否则系统在同一个槽位轮播 location/quietMode 时，
+        //    本函数的 vis 集跟着翻转，辅助条图标就一闪一闪（许总实测）。
+        //    byItem / byFp 仅保留在下方日志里作交叉核对。
+        BOOL shownBySystem = NO;
+        (void)byItem; (void)byFp;
         sbs_auxLogState([@"dedup:" stringByAppendingString:k],
             [NSString stringWithFormat:@"%@:%d:%d:%d:%d", k, shownBySystem ? 1 : 0,
              byItemNow ? 1 : 0, byItemGrace ? 1 : 0, byName ? 1 : 0],
