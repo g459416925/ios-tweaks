@@ -27,9 +27,9 @@ def _rounded(x, y, w, h, r, W, H):
 def render(size):
     W = H = size * SS
     img = _px(W, H)
-    # ⚠️ 图形内容只占画布中央 84%、四周留 8% 透明边距 —— 设置列表的图标槽自带内边距，
-    #    全出血圆角方块会显得比其他插件图标大一圈（实测 2026-10-05）。
-    m = int(W * 0.08)
+    # ⭐ v1.9.7 恢复**全出血**（m=0）：此前留 8% 透明边距是为了给"尺寸错了 2 倍"打补丁，
+    #    尺寸修正回 29/58/87 后必须与其他插件一致 —— 它们都是全出血圆角方块（圆角比例 22.37%）。
+    m = 0
     bw = W - 2 * m
     radius = bw * 0.2237
     for y in range(m, H - m):
@@ -100,7 +100,12 @@ def write_png(path, w, h, rows):
 
 
 def main():
-    for name, size in (("icon.png", 58), ("icon@2x.png", 116), ("icon@3x.png", 174)):
+    # ⭐ v1.9.7 尺寸修正（许总反馈"图标比别人大、左侧不对齐"）：
+    #   此前生成 58/116/174 —— 整整是标准的 **2 倍**，@3x 那张被按 58pt 渲染，
+    #   图标槽（29pt）装不下 → 大一倍且左边缘溢出。
+    #   对照设备上正常插件（FakeTweakPrefs / airpodscompanionprefs / iosmcpprefs）
+    #   全部为 29×29 / 58×58 / 87×87 ⇒ 按此规范生成。
+    for name, size in (("icon.png", 29), ("icon@2x.png", 58), ("icon@3x.png", 87)):
         rows = render(size)
         p = os.path.join(HERE, name)
         write_png(p, size, size, rows)
