@@ -46,7 +46,7 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 
-#define SBS_VERSION @"1.9.0"
+#define SBS_VERSION @"1.9.4"
 #define SBS_LOG_PATH @"/var/mobile/Documents/sbs_log.txt"
 
 static BOOL    gEnabled = YES;
@@ -117,6 +117,47 @@ static CGAffineTransform sbs_leadTransform(void) {
 
 static void sbs_log(NSString *fmt, ...) NS_FORMAT_FUNCTION(1, 2);
 static void sbs_logNow(NSString *fmt, ...) NS_FORMAT_FUNCTION(1, 2);   // v1.4.6 前向声明
+
+// ⭐⭐ v1.9.2 撤销/复核（治「状态栏 item 视图被复用池拿去渲染别的东西后，
+//    我们的变换还黏在同一对象上」）。2026-10-06 锁屏日志实证：
+//      `_UIStatusBarStringView` 既用于【时间】(左, x≈57)，也用于【电池百分比/运营商名】
+//      (右, x≥280)。右侧那份被主缩放登记+缩到 0.848 后，视图进入 SBStatusBarReusePoolWindow
+//      复用池，随后被拿去渲染【时间】—— 对象没变、变换还在，`sbs_viewSetTransform:` 还会
+//      把系统的复原动作强行改回 0.848 ⇒ 主屏时间正常、进 App/锁屏「时间被缩放」。
+//    判据一律取视图**此刻**的状态（类名/frame/窗口/可见性），不依赖任何历史 fg 归属，
+//    因此跨窗口、跨进程复用的场景同样能纠正。
+//    连续 SBS_RV_GRACE 秒不合格才撤销 —— 防"布局尚未完成的瞬间（frame=0）"被误还原。
+#define SBS_RV_GRACE 1.5
+static void sbs_revalidateManaged(CGAffineTransform want) {
+    if (!gManaged || gManaged.count == 0) return;
+    static NSMutableDictionary *stamp = nil;      // 视图地址 → 首次不合格时刻
+    if (!stamp) stamp = [NSMutableDictionary dictionary];
+    if (stamp.count > 400) [stamp removeAllObjects];
+    NSTimeInterval now = [NSDate date].timeIntervalSince1970;
+    for (UIView *v in gManaged.allObjects) {
+        NSString *cn = NSStringFromClass(v.class);
+        BOOL isItem = ([cn containsString:@"StatusBar"] || [cn containsString:@"Battery"])
+                      && ![cn containsString:@"StringView"];      // 文字视图永不参与
+        // ⚠️ 判据只用「类名 + 自身尺寸 + 父坐标系位置」，**绝不看 window/hidden**：
+        //    主屏 fg 在 App 前台会被系统摘窗（实测 window=nil），若据此判不合格，
+        //    App 切换瞬间会把右侧图标误还原（22:52:03 实测 minX=305~361 仍被判"不合格"），
+        //    切回来又重缩 → 每切一次图标闪一下。位置/尺寸足以表达"是否还在右侧"。
+        BOOL ok = isItem && v.bounds.size.width > 0.5 && CGRectGetMinX(v.frame) >= gThr;
+        NSString *k = [NSString stringWithFormat:@"%p", (__bridge void *)v];
+        if (ok) { [stamp removeObjectForKey:k]; continue; }
+        NSNumber *f = stamp[k];
+        if (!f) { stamp[k] = @(now); continue; }                  // 首个不合格轮 → 只记时间
+        if (now - f.doubleValue < SBS_RV_GRACE) continue;
+        [stamp removeObjectForKey:k];
+        // ⚠️ 必须【先摘登记、再还原】：否则 sbs_viewSetTransform: 会立刻把值改回来
+        [gManaged removeObject:v];
+        if (CGAffineTransformEqualToTransform(v.transform, want))
+            v.transform = CGAffineTransformIdentity;              // 只还原"确实是我们设的值"
+        sbs_logNow(@"[undo] %@ %p minX=%.1f 已不合格 → 还原变换（防复用黏连）",
+                   cn, (__bridge void *)v, CGRectGetMinX(v.frame));
+    }
+}
+
 static void sbs_log(NSString *fmt, ...) {
     // 正常运行不做任何文件 I/O。旧版即使 verbose=NO 仍会让所有 UIKit 宿主
     // 读写 /var/mobile/Documents/sbs_log.txt，造成持续 Sandbox deny 和日志风暴。
@@ -404,6 +445,7 @@ static void sbs_colorTick(void);              // ⭐ v1.8.0 配色巡检（定�
 static void sbs_auxRelayoutFromData(void);    // ⭐ v1.4.4 data 驱动重排（定义见后）
 static void sbs_applyLead(UIView *fg);        // ⭐ v1.7.0 leading 区图标缩放（定义见后）
 static CGRect sbs_islandFrameInFG(UIView *fg); // ⭐ v1.7.0 leading 判定要用（定义见后）
+static void sbs_dumpScaled(UIView *fg, NSString *by);  // ⭐ v1.9.1 探针（定义见后）
 // ⭐ v1.4.4/5 全局状态（必须定义在 SBSHelper @implementation 之前，
 //   hook 方法 sbs_fgDidMoveToWindow 内要用 gAuxForceRelayout）
 static UIView *gActiveFG = nil;                          // 当前活动 fg（强引用，CC 动画期间不失效）
@@ -433,19 +475,26 @@ static void sbs_apply(UIView *fg) {
         }
     }
     if (!gEnabled) return;
+    sbs_dumpScaled(fg, @"apply");     // ⭐ v1.9.1 探针：此刻 fg 内谁带着缩放过（1s 节流）
     CGAffineTransform t = sbs_targetTransform();
     if (!gManaged) gManaged = [NSHashTable weakObjectsHashTable];
     for (UIView *v in fg.subviews) {
         // 按类名过滤：只缩放状态栏 item 视图（含辅助图标），
         // 不碰全宽 legibility 象限背景（普通 UIView）
         NSString *cn = NSStringFromClass(v.class);
-        BOOL isItem = [cn containsString:@"StatusBar"] || [cn containsString:@"Battery"];
+        // ⭐⭐ v1.9.2 根因修复：文字视图（`_UIStatusBarStringView`）不参与主缩放。
+        //    它同时承担【时间】(左) 与【电池百分比/运营商名】(右, x≥280) 两种身份，
+        //    被登记后一旦被复用池拿去渲染时间，就会「缩时间」（锁屏日志实证 a=0.848）。
+        BOOL isItem = ([cn containsString:@"StatusBar"] || [cn containsString:@"Battery"])
+                      && ![cn containsString:@"StringView"];
         if (isItem && CGRectGetMinX(v.frame) >= gThr) {
             // 登记为受管视图（弱引用，view 销毁自动剔除）
             [gManaged addObject:v];
             if (!CGAffineTransformEqualToTransform(v.transform, t)) v.transform = t;
         }
     }
+    // ⭐ v1.9.2 撤销：已登记但此刻已不合格（被复用/被搬走/已变成时间）的，还原
+    sbs_revalidateManaged(t);
     // ⭐ v1.7.0 leading 区（时间右侧、灵动岛左侧）图标独立缩放 0.6 —— 与右侧互斥
     @try { sbs_applyLead(fg); } @catch (NSException *e) { sbs_logNow(@"[exc-lead] %@", e); }
     @try { sbs_auxLayoutInFG(fg); } @catch (NSException *e) { sbs_log(@"[exc-auxL] %@", e); }
@@ -1615,14 +1664,58 @@ static void sbs_leadNote(NSString *key, NSString *msg) {
 }
 
 // 时间视图右缘（leading 参照起点）；取所有可见 StringView 的最大右缘
-static CGFloat sbs_timeMaxX(UIView *fg) {
-    CGFloat mx = 0;
+// ⭐ v1.9.1 探针：把「贡献 timeMaxX 的那个 StringView」带出来。
+//   背景（2026-10-06 日志实证）：同一台机同一个"时间"，timeMaxX 在
+//   52.8 / 94.7 / 95.0 / 104.7 之间漂移 —— 说明基准不是稳定的"时间右缘"，
+//   而是"fg 直接子视图里所有可见 StringView 的最大右缘"。谁是那个视图必须可观测。
+static CGFloat sbs_timeMaxXDbg(UIView *fg, UIView **outBest, CGRect *outRect) {
+    CGFloat mx = 0; UIView *best = nil; CGRect bestR = CGRectZero;
     for (UIView *v in fg.subviews) {
         NSString *cn = NSStringFromClass(v.class);
-        if ([cn containsString:@"StringView"] && !v.hidden)
-            mx = MAX(mx, CGRectGetMaxX([v convertRect:v.bounds toView:fg]));
+        if ([cn containsString:@"StringView"] && !v.hidden) {
+            CGRect f = [v convertRect:v.bounds toView:fg];
+            if (CGRectGetMaxX(f) > mx) { mx = CGRectGetMaxX(f); best = v; bestR = f; }
+        }
     }
+    if (outBest) *outBest = best;
+    if (outRect) *outRect = bestR;
     return mx;
+}
+
+// ⭐⭐ v1.9.1 探针（许总铁律：先取证再改逻辑）：列出 fg 子树内**所有当前带非单位变换**
+//   的视图 —— 即"此刻屏幕上到底有什么被缩过"。带实例地址，用于识别状态栏 item 视图
+//   是否被系统复用池回收后拿去渲染了别的 item（ReusePool 真实存在：SBStatusBarReusePoolWindow）。
+static void sbs_collectScaled(UIView *v, int depth, NSMutableString *o, int *n) {
+    if (!v || depth > 5) return;
+    CGAffineTransform t = v.transform;
+    if (fabs(t.a - 1.0) > 0.001 || fabs(t.d - 1.0) > 0.001) {
+        (*n)++;
+        [o appendFormat:@"\n      %s %p a=%.3f d=%.3f tx=%.1f ty=%.1f f=%@ hid=%d sup=%s",
+            class_getName(v.class), (__bridge void *)v, t.a, t.d, t.tx, t.ty,
+            NSStringFromCGRect(v.frame), v.hidden,
+            v.superview ? class_getName(v.superview.class) : "nil"];
+    }
+    for (UIView *s in v.subviews) sbs_collectScaled(s, depth + 1, o, n);
+}
+
+static void sbs_dumpScaled(UIView *fg, NSString *by) {
+    if (!gDiag || !fg) return;
+    NSMutableString *o = [NSMutableString string];
+    int n = 0;
+    sbs_collectScaled(fg, 0, o, &n);
+    // ⭐ 变更即记 + 60s 心跳（本项目教训：任何"每次布局都写"的探针都会变成日志泛洪，
+    //    旧版 `巡检tick` 曾 2 行/秒 ≈ 23 万行/天）。此探针只在集合真正变化时落盘。
+    NSString *sig = [NSString stringWithFormat:@"%d|%@", n, o];
+    static NSString *lastSig = nil;
+    static NSTimeInterval lastT = 0;
+    NSTimeInterval now = [NSDate date].timeIntervalSince1970;
+    BOOL changed = ![sig isEqualToString:lastSig];
+    if (!changed && now - lastT < 60.0) return;
+    lastSig = sig;                                // ARC：static 强引用自动持有
+    lastT = now;
+    sbs_logNow(@"[scaled] 触发=%@ win=%@ fgW=%.0f 带变换视图 %d 个:%@",
+        by, fg.window ? NSStringFromClass(fg.window.class) : @"nil",
+        fg.bounds.size.width, n, o.length ? (NSString *)o : @" (无)");
 }
 
 // 候选判定（坐标一律换算到 fg 坐标系，避免深层嵌套时用到父容器坐标）
@@ -1686,6 +1779,39 @@ static void sbs_leadReport(UIView *fg, NSArray<UIView *> *cands,
     }
 }
 
+// ⭐ v1.9.2 leading 撤销：候选集会随布局变化（时间的宽度/位置一变，区间左右边界就变），
+//   而 transform 是黏在视图对象上的 —— 不再命中的必须还原，否则「该缩的不缩、
+//   不该缩的一直缩」；同时防「视图被复用池拿去渲染别的 item 后仍带着 0.504」。
+//   与主缩放一致：连续 SBS_RV_GRACE 秒脱离候选集才还原（防边界抖动导致来回闪）。
+static void sbs_leadRevalidate(UIView *fg, NSArray<UIView *> *cands, CGAffineTransform lt) {
+    if (!gManagedLead || gManagedLead.count == 0) return;
+    static NSMutableDictionary *stamp = nil;      // 视图地址 → 首次脱离候选集时刻
+    if (!stamp) stamp = [NSMutableDictionary dictionary];
+    if (stamp.count > 400) [stamp removeAllObjects];
+    NSTimeInterval now = [NSDate date].timeIntervalSince1970;
+    NSHashTable *hit = [NSHashTable weakObjectsHashTable];
+    for (UIView *v in cands) [hit addObject:v];
+    for (UIView *v in gManagedLead.allObjects) {
+        NSString *k = [NSString stringWithFormat:@"%p", (__bridge void *)v];
+        BOOL inFG = (v == fg || [v isDescendantOfView:fg]);
+        if (inFG && [hit containsObject:v]) { [stamp removeObjectForKey:k]; continue; }
+        // ⚠️ 不按 window/hidden 还原：App 前台时主屏 fg 被系统摘窗（实测 window=nil），
+        //    据此还原会让 leading 图标反复"还原→重缩"（22:52:25→35 实测 10s 一次闪烁）。
+        //    只有「仍在同一 fg 子树内、却持续脱离候选集」才还原 —— 被复用/被搬走必然先脱离候选集。
+        if (!inFG) continue;                      // 属于别的 fg → 由那个 fg 处理
+        if (v.bounds.size.width <= 0.5) continue; // 布局尚未完成，本轮不判
+        NSNumber *f = stamp[k];
+        if (!f) { stamp[k] = @(now); continue; }  // 首轮脱离 → 宽限
+        if (now - f.doubleValue < SBS_RV_GRACE) continue;
+        [stamp removeObjectForKey:k];
+        [gManagedLead removeObject:v];            // 先摘登记再还原
+        if (CGAffineTransformEqualToTransform(v.transform, lt))
+            v.transform = CGAffineTransformIdentity;
+        sbs_logNow(@"[leadUndo] %s %p → 还原（持续脱离候选集 %.1fs）",
+                   class_getName(v.class), (__bridge void *)v, SBS_RV_GRACE);
+    }
+}
+
 // leading 区主流程：发现 → 上报 → 施加 0.6 变换
 static void sbs_applyLead(UIView *fg) {
     if (!gLeadEnabled || !fg || fg.subviews.count == 0) return;
@@ -1711,7 +1837,14 @@ static void sbs_applyLead(UIView *fg) {
             fg.bounds.size.width, scrW]);
         return;
     }
-    CGFloat timeMaxX = sbs_timeMaxX(fg);
+    UIView *timeV = nil; CGRect timeR = CGRectZero;
+    CGFloat timeMaxX = sbs_timeMaxXDbg(fg, &timeV, &timeR);
+    // ⭐ v1.9.1 基准取证：把"谁是时间基准"直写出来（许总可核对）
+    sbs_leadNote([NSString stringWithFormat:@"base:%p:%.0f", (void *)timeV, timeMaxX],
+        [NSString stringWithFormat:@"时间基准 %p %s f=%@ maxX=%.1f win=%@",
+         (void *)timeV, timeV ? class_getName(timeV.class) : "nil",
+         NSStringFromCGRect(timeR), timeMaxX,
+         fg.window ? NSStringFromClass(fg.window.class) : @"nil"]);
     if (timeMaxX <= 0.5) {
         sbs_leadNote(@"skipTime", @"跳过：无可视时间视图（timeMaxX=0），无判定基准");
         return;
@@ -1745,6 +1878,7 @@ static void sbs_applyLead(UIView *fg) {
                        class_getName(v.class), before.a, v.transform.a, lt.a);
         }
     }
+    sbs_leadRevalidate(fg, cands, lt);    // ⭐ v1.9.2 撤销：脱离候选集的还原
 }
 
 // Entry → 是否激活。
