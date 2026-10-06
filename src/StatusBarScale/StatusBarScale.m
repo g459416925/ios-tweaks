@@ -46,7 +46,7 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 
-#define SBS_VERSION @"1.9.8"
+#define SBS_VERSION @"1.10.0"
 #define SBS_LOG_PATH @"/var/mobile/Documents/sbs_log.txt"
 
 static BOOL    gEnabled = YES;
@@ -1911,10 +1911,55 @@ static void sbs_applyLead(UIView *fg) {
 //   rotationLock / quietMode（KVC enabled 键不适用）；
 //   恒存在 + enabled 标志的项：alarm / vpn / location / bluetooth。
 // 故：nil → 关；非 nil → 先试已知键，**都不匹配则视为开启**（存在即显示）。
+// ⭐ v1.10.0 蓝牙"功能开关"状态
+//   许总实测：蓝牙**开着**但辅助条不显示 → 因为状态栏数据里
+//   `_UIStatusBarDataBluetoothEntry._state` 表达的是**「是否已连接设备」**（未连接=0），
+//   而 iOS 状态栏的蓝牙图标本来就只在**连了设备**时出现（系统语义）。
+//   许总要的是「开关开着就显示」⇒ 另取蓝牙管理器的**电源状态**；
+//   取不到则回落「已连接」语义（= 与系统行为一致），绝不误显示。
+#import <objc/message.h>
+static BOOL sbs_bluetoothPoweredOn(void) {
+    static BOOL logged = NO;
+    Class BM = objc_getClass("BluetoothManager");
+    if (!BM) {
+        if (!logged) { logged = YES;
+            sbs_logNow(@"[bt] 本进程无 BluetoothManager → 回落「已连接」语义（与系统一致）"); }
+        return NO;
+    }
+    @try {
+        id inst = ((id (*)(id, SEL))objc_msgSend)((id)BM, @selector(sharedInstance));
+        if (!inst) return NO;
+        for (NSString *sn in (@[@"powered", @"isPoweredOn", @"enabled",
+                                @"isEnabled", @"powerState"])) {
+            SEL s = NSSelectorFromString(sn);
+            if (![inst respondsToSelector:s]) continue;
+            NSMethodSignature *sig = [inst methodSignatureForSelector:s];
+            if (!sig || sig.numberOfArguments != 2) continue;
+            BOOL on = ((BOOL (*)(id, SEL))objc_msgSend)(inst, s);
+            if (!logged) { logged = YES;
+                sbs_logNow(@"[bt] BluetoothManager 可用：%@ → powered=%d", sn, on); }
+            return on;
+        }
+        if (!logged) { logged = YES;
+            sbs_logNow(@"[bt] BluetoothManager 无电源状态方法 → 回落「已连接」语义"); }
+    } @catch (__unused NSException *e) {}
+    return NO;
+}
+
 static BOOL sbs_entryActive(id entry, NSString *ident) {
     if (!entry) return NO;
+    // 蓝牙特判：entry 表达的是「已连接」，不是「开关」（见上）
+    if ([ident caseInsensitiveCompare:@"bluetooth"] == NSOrderedSame)
+        return sbs_bluetoothPoweredOn();
     if ([entry isKindOfClass:[NSNumber class]]) return [(NSNumber *)entry boolValue];
-    for (NSString *k in (@[@"enabled", @"visible", @"isVisible", @"showing",
+    // ⭐⭐ v1.9.9 取值优先级修正（2026-10-06 许总实测：蓝牙**开着**却被判"未启用"→ 灰图标）：
+    //    `_UIStatusBarDataEntry.enabled` 的语义是**「该系统 item 是否启用/渲染」**，
+    //    不是「功能是否开启」—— 灵动岛机型状态栏根本不渲染蓝牙 item，故 enabled=0；
+    //    旧逻辑第一个就取到 enabled ⇒ 蓝牙开着也判"未开启"。
+    //    功能开关的真实来源是 `_UIStatusBarDataBoolEntry.boolValue`（状态位）。
+    //    ⇒ 先取状态位（boolValue/value/isOn），`enabled` 之类的"渲染位"降到最后兜底。
+    for (NSString *k in (@[@"boolValue", @"value", @"isOn",
+                           @"enabled", @"visible", @"isVisible", @"showing",
                            @"active", @"on", @"state"])) {
         @try {
             id v = [entry valueForKey:k];
@@ -1928,6 +1973,34 @@ static BOOL sbs_entryActive(id entry, NSString *ident) {
     sbs_logIdentOnce(@"entry", [NSString stringWithFormat:@"%@ 无键匹配→按开启 (%@)",
         ident, NSStringFromClass([entry class])]);
     return YES;   // 非 nil 但没有布尔键 → 存在即激活
+}
+
+// ⭐ v1.9.9 一次性取证探针：把 entry 的**全部字段**（含继承链上的 ivar）直写出来，
+//    用于定位"哪个字段才是真正的功能开关"（许总实测：蓝牙开着却被判未启用，必须看见真值）。
+//    每个 ident+类名 只写一次，正常零成本。
+static void sbs_dumpEntryOnce(NSString *ident, id entry) {
+    if (!entry) return;
+    static NSMutableSet *seen = nil;
+    if (!seen) seen = [NSMutableSet set];
+    NSString *key = [NSString stringWithFormat:@"%@:%@", ident, NSStringFromClass([entry class])];
+    if ([seen containsObject:key]) return;
+    [seen addObject:key];
+    NSMutableString *o = [NSMutableString string];
+    for (Class c = [entry class]; c && c != [NSObject class]; c = class_getSuperclass(c)) {
+        unsigned int n = 0;
+        Ivar *ivs = class_copyIvarList(c, &n);
+        for (unsigned i = 0; i < n; i++) {
+            const char *nm = ivar_getName(ivs[i]);
+            if (!nm) continue;
+            NSString *k = @(nm);
+            if ([k hasPrefix:@"_"]) k = [k substringFromIndex:1];
+            id v = nil;
+            @try { v = [entry valueForKey:k]; } @catch (__unused NSException *e) { v = nil; }
+            [o appendFormat:@"%s=%@ ", nm, v ?: @"?"];
+        }
+        free(ivs);
+    }
+    sbs_logNow(@"[entryDump] %@(%@)：%@", ident, NSStringFromClass([entry class]), o);
 }
 
 // ⭐⭐⭐ v1.8.1 信号源实现（许总指正后新增）
@@ -2549,6 +2622,7 @@ static void sbs_auxRefresh(void) {
         id entry = nil;
         @try { entry = [data valueForKey:gAuxKeys[ident]]; } @catch (__unused NSException *e) {}
         BOOL active = sbs_entryActive(entry, ident);
+        sbs_dumpEntryOnce(ident, entry);   // ⭐ v1.9.9 一次性字段取证（每个 ident 只写一次）
         // ⭐ v1.8.0 直写：每个 ident 的「Entry 是否存在 / 是否激活」= 条不显示的定位证据
         sbs_auxLogOnce([NSString stringWithFormat:@"ent:%@:%d:%d", ident,
                         entry ? 1 : 0, active ? 1 : 0],
@@ -2561,21 +2635,18 @@ static void sbs_auxRefresh(void) {
         //   同时把信号源（gSysRendered）也纳入：系统正在显示 → 隐藏本家副本。
         BOOL sig = [sbs_sysRendered() containsObject:ident];
         BOOL suppressed = sig || [sbs_sysShown() containsObject:ident];
-        // ⭐⭐ v1.9.8 许总指正后的显隐规则：**只由"系统是否已显示"决定**。
-        //    旧实现 `hide = (!active) || suppressed` —— Entry 未启用就隐藏，于是
-        //    "面板里勾选了却不显示"（2026-10-06 日志实证：bluetooth/vpn/airplane 的
-        //    active=0 ⇒ 条里只剩 alarm/quietmode/rotationlock，与面板语义矛盾）。
-        //    许总要求：除"系统已在灵动岛左侧/右侧显示"的以外，其余**全部**显示在辅助条里；
-        //    收纳范围只由面板勾选（gAuxIcons）决定，Entry 只用来区分"启用/未启用"的观感。
-        //    未启用者以**半透明**呈现：既"都显示"，又不会把"关着的开关"误读成"开着"。
-        BOOL hide = suppressed;
-        CGFloat wantA = active ? 1.0 : 0.45;
+        // ⭐⭐ v1.9.9 许总澄清后的最终规则：**只显示"已开启"的状态**（实时）。
+        //    `hide = !active || suppressed`：
+        //      · active     = 该功能此刻**真的开着**（取 BoolEntry.boolValue，见 sbs_entryActive）
+        //      · suppressed = 系统已在灵动岛左/右显示（禁止重复）
+        //    未开启的一律不显示；面板勾选只决定"允许收纳哪些"，不强行常显。
+        BOOL hide = (!active) || suppressed;
         BOOL hiddenChanged = (iv.hidden != hide);
-        BOOL alphaChanged  = (fabs(iv.alpha - wantA) > 0.01);
+        BOOL alphaChanged  = (fabs(iv.alpha - 1.0) > 0.01);   // 恢复不透明（不再用半透明区分）
         if (!hiddenChanged && !alphaChanged) continue;        // 无变化不写
         if (hiddenChanged) iv.hidden = hide;
-        if (alphaChanged)  iv.alpha  = wantA;
-        // ⭐ 效果级日志改为「跃迁即记 + 60s 心跳」（旧版永久去重 → 状态变了也不再记录）
+        if (alphaChanged)  iv.alpha  = 1.0;
+        // ⭐ 跃迁即记 + 60s 心跳（旧版永久去重 → 状态变了也不再记录）
         sbs_auxLogState([@"vis:" stringByAppendingString:ident],
             [NSString stringWithFormat:@"%@:%d:%d", ident, hide ? 1 : 0, active ? 1 : 0],
             @"图标显隐 %@ hidden=%d alpha=%.2f（entry激活=%d 被系统显示抑制=%d）",
