@@ -95,6 +95,32 @@ static void SBSPrefSet(NSString *key, id value) {
                                          CFSTR(NOTIFY_RELOAD), NULL, NULL, YES);
 }
 
+// ══════════════════════════ 缩放 → 垂直微调（与插件同一公式） ══════════════════════════
+//
+// ⭐ v1.9.5 许总要求：垂直微调与图标缩放**绑定**（缩放一变就实时推算），面板只留缩放滑块。
+// ⚠️⚠️ 必须与插件 `StatusBarScale.m` 的 `sbs_dyForScale` 完全一致，否则面板显示值 ≠ 实际生效值：
+//      dy = K·(1−scale)，K 由**锚点强度**标定；锚点强度 = 配置键 dy 的值（配锚点缩放 0.84847）。
+//      本面板同样**读配置里的 dy** 来算，保证两边永远同一个数。
+//      锚点缓存为静态值：面板已不再写 dy，进程内不会变；也避免拖动时每帧读盘。
+#define SBS_DY_ANCHOR_SCALE      0.84847f
+#define SBS_DY_ANCHOR_DY_DEFAULT 0.67f
+static float SBSAnchorDy(void) {
+    static float cached = -1.0f;
+    if (cached < 0.0f) {
+        id v = SBSPrefGet(@"dy", @(SBS_DY_ANCHOR_DY_DEFAULT));
+        float a = [v respondsToSelector:@selector(floatValue)] ? [v floatValue]
+                                                              : SBS_DY_ANCHOR_DY_DEFAULT;
+        if (!(a > 0.0f && a <= 20.0f)) a = SBS_DY_ANCHOR_DY_DEFAULT;
+        cached = a;
+    }
+    return cached;
+}
+static float SBSDerivedDyForScale(float s) {
+    static float k = -1.0f;
+    if (k < 0.0f) k = SBSAnchorDy() / (1.0f - SBS_DY_ANCHOR_SCALE);
+    return k * (1.0f - s);
+}
+
 // ══════════════════════════ 自定义滑块单元格 ══════════════════════════
 
 @interface SBSSliderCell : PSTableCell
@@ -152,8 +178,9 @@ static void SBSPrefSet(NSString *key, id value) {
     [super layoutSubviews];
     CGFloat w = self.contentView.bounds.size.width;
     CGFloat h = self.contentView.bounds.size.height;
-    self.textLabel.frame  = CGRectMake(16.0, 6.0, w - 118.0, 20.0);
-    self.sbsValueLabel.frame = CGRectMake(w - 100.0, 6.0, 84.0, 20.0);
+    // ⭐ v1.9.5 数值标签加宽（缩放行要显示 "0.85× ↓4.0pt" 这种带推算微调的文本）
+    self.textLabel.frame  = CGRectMake(16.0, 6.0, w - 152.0, 20.0);
+    self.sbsValueLabel.frame = CGRectMake(w - 134.0, 6.0, 118.0, 20.0);
     self.sbsSlider.frame  = CGRectMake(16.0, h - 36.0, w - 32.0, 31.0);
 }
 
@@ -161,7 +188,13 @@ static void SBSPrefSet(NSString *key, id value) {
     NSNumber *p = [sp propertyForKey:@"precision"];
     NSInteger prec = p ? p.integerValue : 2;
     NSString *unit = [sp propertyForKey:@"unit"];
-    return [NSString stringWithFormat:@"%.*f%@", (int)prec, v, unit ?: @""];
+    NSString *base = [NSString stringWithFormat:@"%.*f%@", (int)prec, v, unit ?: @""];
+    // ⭐ v1.9.5 绑定显示：本行若是"图标缩放"，顺带显示实时推算出的垂直微调，
+    //    使"联动已生效"肉眼可见（拖动时随缩放连续变化，松手保存的只有 scale）。
+    if ([[sp propertyForKey:@"showDerivedDy"] boolValue]) {
+        base = [NSString stringWithFormat:@"%@ ↓%.1fpt", base, SBSDerivedDyForScale(v)];
+    }
+    return base;
 }
 
 - (void)sbsLoadFromPrefs {

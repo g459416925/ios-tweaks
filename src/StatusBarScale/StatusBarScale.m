@@ -46,12 +46,13 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 
-#define SBS_VERSION @"1.9.4"
+#define SBS_VERSION @"1.9.6"
 #define SBS_LOG_PATH @"/var/mobile/Documents/sbs_log.txt"
 
 static BOOL    gEnabled = YES;
 static CGFloat gScale   = 0.92f;
-static CGFloat gDy      = 1.5f;
+static CGFloat gDy      = 0.67f;  // ⭐ v1.9.5 语义＝「锚点强度」：scale=0.84847 时的下移量（实机调定值）；
+                                  //    实际 dy 由 sbs_dyForScale(gScale) 实时推算（面板不再暴露 dy）
 static CGFloat gThr     = 312.0f;
 static BOOL    gVerbose = NO;
 // ⭐ v1.7.1 修复回归：v1.5.0 给 sbs_logNow 加了 `if (!gVerbose) return;`，
@@ -103,9 +104,23 @@ static CGFloat      gLeadScale   = 0.60f; // 许总指定：单独缩小为 0.6 
 static CGFloat      gLeadDy      = 0.0f;  // 额外下移量（待实机确认，默认不位移）
 static NSHashTable *gManagedLead = nil;   // leading 受管视图（与 gManaged 分开，变换值不同）
 
+// ⭐⭐ v1.9.5 垂直微调与缩放**绑定**（许总要求：缩放一变，微调实时推算；面板只留"缩放"滑块）。
+//   绑定曲线取线性 dy(s) = K · (1 − s)：
+//     · s → 1（不缩）时 dy → 0 —— 符合"不缩就不必下移"的直觉；
+//     · K 由**许总实机调定的工作点**标定：锚点强度 = 配置键 `dy` 的值，配锚点缩放 0.84847
+//       （实测 dy=0.6687、scale=0.84847 ⇒ K ≈ 4.41）⇒ 在该点推算值与原值相等，**视觉零变化**；
+//     · 面板已不再暴露 dy；改配置即改绑定曲线的陡峭程度。
+#define SBS_DY_ANCHOR_SCALE     0.84847f
+#define SBS_DY_ANCHOR_DY_DEFAULT 0.67f
+static CGFloat sbs_dyForScale(CGFloat s) {
+    CGFloat anchor = (gDy > 0.0f && gDy <= 20.0f) ? gDy : SBS_DY_ANCHOR_DY_DEFAULT;
+    CGFloat k = anchor / (1.0f - SBS_DY_ANCHOR_SCALE);
+    return k * (1.0f - s);
+}
+
 static CGAffineTransform sbs_targetTransform(void) {
     return CGAffineTransformTranslate(
-        CGAffineTransformMakeScale(gScale, gScale), 0, gDy / gScale);
+        CGAffineTransformMakeScale(gScale, gScale), 0, sbs_dyForScale(gScale) / gScale);
 }
 
 // leading 图标的目标变换：绕中心缩放 gLeadScale（+ 可选下移 gLeadDy pt）
@@ -475,7 +490,17 @@ static void sbs_apply(UIView *fg) {
         }
     }
     if (!gEnabled) return;
-    sbs_dumpScaled(fg, @"apply");     // ⭐ v1.9.1 探针：此刻 fg 内谁带着缩放过（1s 节流）
+    sbs_dumpScaled(fg, @"apply");     // ⭐ v1.9.1 探针：此刻 fg 内谁带着缩放过（变更即记+60s 心跳）
+    // ⭐ v1.9.5 绑定取证：缩放一变就打印实时推算的垂直微调（变更即记，许总可核对联动）
+    {
+        static CGFloat lastS = -1.0f, lastD = -1.0f;
+        CGFloat dyNow = sbs_dyForScale(gScale);
+        if (fabs(lastS - gScale) > 0.0005f || fabs(lastD - dyNow) > 0.005f) {
+            lastS = gScale; lastD = dyNow;
+            sbs_logNow(@"[bind] 缩放 %.4f → 垂直微调 %.2f pt（锚点 %.2fpt@%.5f）",
+                       gScale, dyNow, gDy, SBS_DY_ANCHOR_SCALE);
+        }
+    }
     CGAffineTransform t = sbs_targetTransform();
     if (!gManaged) gManaged = [NSHashTable weakObjectsHashTable];
     for (UIView *v in fg.subviews) {

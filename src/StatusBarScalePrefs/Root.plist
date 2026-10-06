@@ -36,7 +36,7 @@
 			<key>label</key>
 			<string>灵动岛右侧图标（信号 / Wi-Fi / 电池）</string>
 			<key>footerText</key>
-			<string>这批图标比左侧时间略大、重心偏高。缩小并下移，使其与时间对齐。拖动滑块实时预览，松手即保存。</string>
+			<string>这批图标比左侧时间略大、重心偏高。缩小并下移，使其与时间对齐。垂直微调已与缩放绑定（缩放越小、下移越多），随缩放实时推算，无需单独调节。拖动滑块实时预览，松手即保存。</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -59,33 +59,13 @@
 			<integer>2</integer>
 			<key>unit</key>
 			<string>&#215;</string>
+			<key>showDerivedDy</key>
+			<true/>
 			<key>height</key>
 			<real>64</real>
 		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSliderCell</string>
-			<key>cellClass</key>
-			<string>SBSSliderCell</string>
-			<key>label</key>
-			<string>垂直微调</string>
-			<key>key</key>
-			<string>dy</string>
-			<key>defaults</key>
-			<string>com.xu.statusbarscale</string>
-			<key>min</key>
-			<real>-4</real>
-			<key>max</key>
-			<real>4</real>
-			<key>default</key>
-			<real>1.5</real>
-			<key>precision</key>
-			<integer>1</integer>
-			<key>unit</key>
-			<string> pt</string>
-			<key>height</key>
-			<real>64</real>
-		</dict>
+		<!-- ⭐ v1.9.5 「垂直微调」滑块已移除：微调与「图标缩放」绑定，由缩放实时推算
+		     （dy = K·(1−scale)，锚点 4.0pt @ 0.84847）—— 面板只留缩放这一条调节。 -->
 
 		<!-- ═════════ 时间旁图标 ═════════ -->
 		<dict>
@@ -132,30 +112,7 @@
 			<key>height</key>
 			<real>64</real>
 		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSliderCell</string>
-			<key>cellClass</key>
-			<string>SBSSliderCell</string>
-			<key>label</key>
-			<string>垂直微调</string>
-			<key>key</key>
-			<string>leadDy</string>
-			<key>defaults</key>
-			<string>com.xu.statusbarscale</string>
-			<key>min</key>
-			<real>-4</real>
-			<key>max</key>
-			<real>4</real>
-			<key>default</key>
-			<real>0</real>
-			<key>precision</key>
-			<integer>1</integer>
-			<key>unit</key>
-			<string> pt</string>
-			<key>height</key>
-			<real>64</real>
-		</dict>
+		<!-- ⭐ v1.9.5 「垂直微调」滑块已移除（同上一组：微调随缩放推算，实测该组无需下移，锚点=0）。 -->
 
 		<!-- ═════════ 辅助条 ═════════ -->
 		<dict>
