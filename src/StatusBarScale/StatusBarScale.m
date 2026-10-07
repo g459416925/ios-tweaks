@@ -46,7 +46,7 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 
-#define SBS_VERSION @"1.10.4"
+#define SBS_VERSION @"1.10.9"
 #define SBS_LOG_PATH @"/var/mobile/Documents/sbs_log.txt"
 
 static BOOL    gEnabled = YES;
@@ -2843,16 +2843,43 @@ static void sbs_auxLayoutInFG(UIView *fg) {
     //   → 宿主窗在两条日志之间 ping-pong（`条显示 宿主窗=` 交替）。
     //   规则：UIStatusBarWindow 的 fg 只要存活，就让 MainSwitcher 的 fg 让位。
     //   （App 前台时主屏 fg 会被摘窗 → `!live` → 自然放行，App 内仍由 MainSwitcher 承载。）
+    // ⭐⭐ v1.10.6 宿主仲裁换判据（治「App 内条消失」）
+    //   探针实测（2026-10-07 10:33，App 前台）：
+    //     UIStatusBarWindow[hid=0 a=1.00 lv=999 全屏 scene=0 **key=0**]
+    //     MainSwitcher    [hid=0 a=1.00 lv=5   全屏 scene=0 **key=1**]
+    //   —— 两个窗口都"未隐藏/全屏/alpha=1"，旧判据（"UIStatusBarWindow 只要存活就让
+    //   MainSwitcher 让位"）**根本无法区分**，于是永远让 MainSwitcher 让位；
+    //   而 App 前台**真正承载状态栏的是 MainSwitcher（它是 key window）**，
+    //   UIStatusBarWindow 只是"没隐藏"⇒ 条挂在主屏窗口里 → App 内看不见。
+    //   新判据：**谁所在窗口是 key window，谁就是当前宿主**；两者都非 key（主屏场景）
+    //   时主屏状态栏窗口优先，保证回主屏后条能自己搬回来。
     if (sbs_isSpringBoard()) {
-        if ([winCls containsString:@"UIStatusBarWindow"]) {
-            gUIFG = fg;
-        } else {
-            UIView *ui = gUIFG;
-            if (ui && ui != fg && ui.window && !ui.window.isHidden && !ui.isHidden &&
-                sbs_fgIsLive(ui)) {
-                sbs_auxLogState(@"arb", @"cede-mainswitch",
-                    @"宿主仲裁：MainSwitcher fg(%p) 让位于存活的 UIStatusBarWindow fg(%p)", fg, ui);
+        BOOL fgKey  = fg.window.isKeyWindow;
+        BOOL isMS   = [winCls containsString:@"MainSwitcher"];
+        UIView *cur = gUIFG;
+        BOOL curKey = (cur && cur != fg && cur.window && cur.window.isKeyWindow);
+        if (fgKey && !curKey) {
+            gUIFG = fg;                                   // 本窗口是 key → 由它托管
+        } else if (!fgKey && curKey) {
+            if (cur.window && !cur.window.isHidden && !cur.isHidden && sbs_fgIsLive(cur)) {
+                sbs_auxLogState(@"arb", @"cede-keywin",
+                    @"宿主仲裁：%@ fg(%p) 让位于 key 窗(%@) fg(%p)",
+                    isMS ? @"MainSwitcher" : @"状态栏窗", fg,
+                    NSStringFromClass(cur.window.class), cur);
                 return;
+            }
+        } else if (!fgKey && !curKey) {
+            // 都非 key（主屏/首页场景）：**MainSwitcher 一律让位**，由主屏状态栏窗托管；
+            // 反向则把托管权交回主屏窗 —— 保证"App 内 → 回主屏"条能自己搬回来。
+            if (isMS) {
+                sbs_auxLogState(@"arb", @"cede-home",
+                    @"宿主仲裁：MainSwitcher 让位于主屏状态栏窗（两者均非 key）");
+                return;
+            }
+            if (cur && cur != fg && cur.window &&
+                [NSStringFromClass(cur.window.class) containsString:@"MainSwitcher"]) {
+                gUIFG = fg;
+                sbs_auxLogState(@"arb", @"back-home", @"宿主仲裁：主屏窗口接管");
             }
         }
     }
@@ -2883,6 +2910,20 @@ static void sbs_auxLayoutInFG(UIView *fg) {
     //    多档重试也能在动画结束后把它劫持回来。
     gActiveFG = fg;
     [sbs_seenFGs() addObject:fg];          // ⭐ v1.4.6 记入见过表（弱引用）
+    // ⭐ v1.10.6 窗口状态取证（跃迁即记）：判定"谁在台前"= 谁的窗口是 key window。
+    //   主屏 / App 两种场景都会各留一条，用于核对仲裁结果与条的实际宿主窗。
+    {
+        UIWindow *w  = fg.window;
+        UIWindow *wu = gUIFG.window;
+        sbs_auxLogState(@"winState",
+            [NSString stringWithFormat:@"%@:%d:%d:%d", winCls, w.isKeyWindow,
+             wu ? wu.isKeyWindow : -1, gUIFG != fg],
+            @"窗口状态：当前fg窗=%@ key=%d hid=%d lv=%.0f ｜ gUIFG窗=%@ key=%d ｜ 条宿主=%@ 条hidden=%d",
+            winCls, w.isKeyWindow, w.isHidden, (double)w.windowLevel,
+            wu ? NSStringFromClass(wu.class) : @"nil", wu ? wu.isKeyWindow : -1,
+            gStrip.window ? NSStringFromClass(gStrip.window.class) : @"nil",
+            gStrip ? gStrip.isHidden : -1);
+    }
     if (!sbs_fgIsLive(fg)) return;
     // ⭐ 节流 33ms（CC 动画每帧都调 layoutSubviews，封顶 30fps 防止任何残余循环）
     //    data 驱动（sbs_auxRelayoutFromData）会先置 gAuxForceRelayout 跳过节流。
@@ -3077,6 +3118,8 @@ static void sbs_auxLayoutInFG(UIView *fg) {
     }
     // ⭐ 宿主恒定 = fg.superview（v1.4.1 二分定位：clipsToBounds 条件换宿主会在
     //    CC 动画中抖动 → 每帧 add/remove → 同步布局死循环 → 内存 4GB → Jetsam）。
+    //   ⛔ v1.10.8 曾试过改挂"窗口本身 + 置顶"，实测**把主屏也搞坏了**（条被窗口内
+    //   其它视图盖住 ⇒ 主屏不可见）⇒ 已回退，宿主维持 fg.superview。
     UIView *host = fg.superview ?: fg;
     // ⭐ v1.4.6 同窗防护：host 必须与 fg 同窗口。快速 Home 时系统会把 UIStatusBarWindow
     //    里的宿主容器整体借进 SBMainSwitcherWindow（App 切换器动画），过渡瞬间存在
