@@ -63,13 +63,13 @@
     </tr>
     <tr>
       <td><code>com.xu.screentimelocker16</code></td>
-      <td>5.2.0</td>
+      <td>5.2.1</td>
       <td>ScreenTimeLocker16 — 让「屏幕使用时间」的 App 限额真正锁得住</td>
     </tr>
     <tr>
       <td><code>com.xu.statusbarscale</code></td>
-      <td>1.9.0</td>
-      <td>StatusBarScale — 状态栏图标缩放对齐（右侧 0.92 / 时间右侧 0.6）+ 系统辅助图标条（灵动岛正下方居中）+ 设置 App 可视化面板（滑块实时预览、热生效免 respring）</td>
+      <td>2.0.0</td>
+      <td>StatusBarScale — 状态栏图标缩放：灵动岛右侧图标 0.90× 对齐时间，时间旁/岛左图标 0.50×</td>
     </tr>
   </table>
 
@@ -98,34 +98,21 @@
   <h2>StatusBarScale</h2>
   <ol>
     <li>灵动岛右侧图标比时间<b>大一号且重心偏高 1.66px</b> —— 本插件缩放对齐</li>
-    <li>hook <code>_UIStatusBarForegroundView -layoutSubviews</code>，对右侧图标施加
-        <b>绕中心缩放 0.92 + 下移 1.5pt</b>（实测重心差 −1.66 → −0.07px）</li>
-    <li><b>v1.7.3 新增：时间右侧（灵动岛左侧）图标缩放 0.6</b> —— 这批图标（实测类名
-        <code>_UIStatusBarImageView</code>）无法按标识枚举，改为运行时按 fg 坐标系
-        <b>frame 区间</b>发现（时间右缘 → 岛左缘）并单独缩到 0.6；带三道场景门禁
-        （只处理全屏宽度 fg / 无可视时间跳过 / 岛左缘合理），日志实证
-        <code>transform.a 1.000 → 0.600</code></li>
-    <li>transform 不参与布局 → <b>间距与点击区域不受影响</b>；灵动岛展开自动跟随</li>
-    <li><b>系统辅助图标</b>：用系统原生字形（hook 捕获系统 item 视图渲染图，
-        兜底 Assets.car 的 Black_* 字形），状态源为 <code>_UIStatusBarData</code>，
-        <b>灵动岛正下方居中</b>显示 9pt 小图标，
-        闹钟/勿扰/旋转锁/VPN/蓝牙 激活才显示，颜色跟随时间文字</li>
-    <li><b>v1.4.1–1.4.6 稳定性</b>：全被动写 + 33ms 节流 + 宿主恒定（修 CC 开合
-        Jetsam）；只托管全屏宽度 fg + 岛窗口坐标双校验 + 解锁补触发（修锁屏解锁后
-        条消失/偏移）；data 驱动多档延迟重试（修 CC 收起后辅助条延迟数秒才显示）；
-        前台门禁 + 1s 定时自愈 + 见过表找回 + didMoveToSuperview 多档重试（修快速
-        开关 App 后条消失数秒）；<b>App 内条支持</b> —— SBMainSwitcherWindow 是
-        App 前台状态栏的远程渲染宿主（App 进程无状态栏视图），门禁放行；
-        <b>锁屏自动隐藏</b>（SBLockScreenManager.uiIsLocked），解锁自动恢复。
-        实测主屏/App 内/锁屏/快速切换全链路通过</li>
-    <li>配置
-      <code>/var/mobile/Library/Preferences/com.xu.statusbarscale.plist</code>
-      （enabled / scale / dy / threshold / leadEnabled / leadScale / leadDy /
-      diag / verbose / auxEnabled / auxIcons，改后 respring）</li>
+    <li>hook <code>_UIStatusBarForegroundView -layoutSubviews</code>，每次布局后对命中图标施加
+        <b>绕中心缩放 + 垂直微调</b>；transform 不参与布局 → <b>间距与点击区域不受影响</b>，
+        灵动岛展开自动跟随</li>
+    <li><b>主缩放</b>：<code>frame.minX ≥ 280</code>（灵动岛右缘）的状态栏图标 × <b>0.9025</b>；
+        垂直下移按绑定曲线 <code>dy(s)=K·(1−s)</code> 实时推算（当前 0.43pt）</li>
+    <li><b>时间旁缩放</b>：时间右侧、灵动岛左侧那批图标（闹钟/定位/录屏等，无法按标识枚举）
+        × <b>0.5038</b>；运行时按 fg 坐标系 <b>frame 区间</b>发现，带三道场景门禁
+        （只处理全屏宽度 fg / 无可视时间跳过 / 岛左缘须在 60~200）</li>
+    <li>带<b>撤销/复核</b>：状态栏 item 视图会被系统复用池回收后换身份，脱离命中区间即
+        「先摘登记、再还原」（防「时间被缩放」）</li>
+    <li><b>参数已硬编码进源码</b>：不含设置面板、不读取任何配置文件</li>
   </ol>
   <p class="sub" style="margin-top:14px">
-    ⚠️ 自 v1.5.0 起<b>仅注入 SpringBoard</b>（<code>Filter.Bundles = com.apple.springboard</code>）——
-    普通 App / WebKit / PosterBoard 不再加载本插件；App 内状态栏由 SpringBoard 远程渲染，
+    ⚠️ 仅注入 SpringBoard（<code>Filter.Bundles = com.apple.springboard</code>）——
+    普通 App / WebKit / PosterBoard 不加载本插件；App 内状态栏由 SpringBoard 远程渲染，
     观感一致。
   </p>
 
