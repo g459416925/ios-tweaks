@@ -16,7 +16,7 @@ https://g459416925.github.io/ios-tweaks/
 |---|---|---|
 | `com.xu.compactorfix` | 1.0.0 | **CompactorFix** — 把系统 UI 字体整体换成 Apple Watch 的 SF Compact |
 | `com.xu.screentimelocker16` | 5.2.1 | **ScreenTimeLocker16** — 让「屏幕使用时间」的 App 限额真正锁得住 |
-| `com.xu.statusbarscale` | 2.0.0 | **StatusBarScale** — 状态栏图标缩放：灵动岛右侧图标 0.90× 对齐时间，时间旁/岛左图标 0.50× |
+| `com.xu.statusbarscale` | 2.1.0 | **StatusBarScale** — 状态栏图标缩放（灵动岛右侧 0.90× 对齐时间、时间旁/岛左 0.50×）+ 资源库分类卡片背景透明 |
 
 ### CompactorFix
 
@@ -75,6 +75,17 @@ https://g459416925.github.io/ios-tweaks/
 **④ 参数硬编码（v2.0.0）**：不含设置面板、不读取任何配置文件。
 参数（`scale=0.9025 / dy=0.6687(锚点) / threshold=280 / leadScale=0.5038`）
 直接写在源码顶部 `#define`/静态变量处。
+
+**⑤ 资源库背景透明（v2.1.0）**：App 资源库（App Library）分类卡片的背景板
+（`SBHLibraryCategoryPodBackgroundView`）清成透明 —— 只留应用图标与分类标签浮在壁纸上。
+
+- hook 该类的 `-layoutSubviews`，递归清子树：材质视图(`MTMaterialView`/`UIVisualEffectView`)
+  隐藏、实色背景清成 `clearColor`；`UIImageView`/`UILabel` 一律保留
+- 实机 dump 的层级：`_SBHLibraryPodIconListView` → `_SBHLibraryPodIconView`(170×184)
+  → `SBHLibraryCategoryPodBackgroundView`(170×170) + `SBHLibraryCategoryPodIconListView`(图标层)
+- ⚠️ **勿 hook `_SBHLibraryCategoryStackViewBackgroundView`** —— 那是**Dock 上"App 资源库"
+  按钮的图标**（挂在 `SBFloatingDockWindow`），不是页面里的卡片
+- 门禁：类名必须含 `Library` ⇒ 不误伤主屏 App 文件夹或系统其它 `MTMaterialView`
 
 - 仅注入 SpringBoard（`Filter.Bundles = ["com.apple.springboard"]`）；App 内状态栏由
   SpringBoard 远程渲染，无需向普通 App、WebKit 或 PosterBoard 注入

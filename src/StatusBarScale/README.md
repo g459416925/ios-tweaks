@@ -1,6 +1,6 @@
 # StatusBarScale — 状态栏图标缩放
 
-**包名** `com.xu.statusbarscale` · **版本** 2.0.0 · **宿主** 仅 SpringBoard
+**包名** `com.xu.statusbarscale` · **版本** 2.1.0 · **宿主** 仅 SpringBoard
 
 > v2.0.0 起本插件**只做状态栏缩放**：不含辅助图标条、不含设置面板、不读取任何配置文件，
 > 参数全部硬编码在源码里。
@@ -63,6 +63,32 @@ transform = Translate(Scale(s, s), 0, dy/s)   // 绕中心缩放 s 倍 + 下移 
 - 两张受管表（主缩放 / leading）都带撤销：脱离命中区间**连续 1.5s** 才
   「**先摘登记、再还原**」（先摘是必需的，否则 `setTransform:` hook 会立刻把值改回）；
 - 判据**不用 window / hidden**（App 前台主屏 fg 会被系统摘窗），只用类名 + 尺寸 + 位置。
+
+### ③ 资源库背景透明（v2.1.0）
+
+App 资源库（App Library）里每个分类卡片的背景板清成透明，只留应用图标与分类标签。
+
+hook `SBHLibraryCategoryPodBackgroundView` 的 `-layoutSubviews`，递归清子树（深度 4）：
+
+- `MTMaterialView` / `UIVisualEffectView`（毛玻璃材质）→ `hidden = YES`
+- 其余非 `UIImageView` / `UILabel` 且 `backgroundColor` 非透明的视图 → `clearColor`
+- 应用图标与文字标签一律保留
+
+实机 dump 的层级（iOS 16.5.1）：
+
+```
+_SBHLibraryPodIconListView                    (资源库滚动列表)
+  _SBHLibraryPodIconView  {170×184}           (每个分类卡片)
+    SBHLibraryCategoryPodBackgroundView {170×170}   ← 本 hook 的 self
+    SBHLibraryCategoryPodIconListView   {170×170}   (图标层，兄弟节点，不动)
+      SBHLibraryCategoryPodIconView ×4
+```
+
+- ⚠️ **勿 hook `_SBHLibraryCategoryStackViewBackgroundView`** —— 那是 **Dock 上"App 资源库"
+  按钮的图标**（祖先链是 `SBFloatingDockWindow`），不是资源库页面里的卡片
+- 门禁：类名必须含 `Library` ⇒ 不误伤主屏 App 文件夹或系统其它 `MTMaterialView`
+- 安装时机：ctor 阶段对任意类调 `class_getInstanceMethod` 会触发 `+initialize` 而崩溃
+  （v1.1.0 教训）⇒ 延迟 3s 安装 + 0.5s×40 次重试等类就绪
 
 ## 参数（硬编码，v2.0.0）
 

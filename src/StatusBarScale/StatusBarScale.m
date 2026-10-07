@@ -1,10 +1,12 @@
-// StatusBarScale.m —— 状态栏图标缩放（精简版 v2.0.0）
+// StatusBarScale.m —— 状态栏图标缩放 + 资源库背景透明（v2.1.0）
 //
-// 【功能范围】仅此两项，辅助图标条 / 设置面板 / 热重载 / plist 配置读取已全部移除：
+// 【功能范围】
 //   ① 主缩放：灵动岛【右侧】（frame.minX >= 阈值）的状态栏图标，整体绕中心缩放 + 垂直微调，
 //      与左侧时间的高度/重心对齐。
 //   ② leading 缩放：时间右侧、灵动岛左侧的图标（闹钟/定位/录屏/麦克风等，无法按标识枚举），
 //      按 fg 坐标系 frame 区间运行时发现，单独缩放。
+//   ③ 资源库背景透明：App 资源库（App Library）分类卡片的背景板清成透明，只留图标与标签。
+//   （辅助图标条 / 设置面板 / 热重载 / plist 配置读取已于 v2.0.0 全部移除）
 //
 // 问题背景：iPhone 14 Pro Max (iOS 16.5.1) 灵动岛右侧图标与时间不对齐
 //   实测基线（1x points）：时间 高12 上沿24 下沿35 重心29.38
@@ -34,7 +36,7 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 
-#define SBS_VERSION @"2.0.0"
+#define SBS_VERSION @"2.1.0"
 #define SBS_LOG_PATH @"/var/mobile/Documents/sbs_log.txt"
 
 // ─────────────── 硬编码参数（原 plist 配置 / 设置面板已移除）───────────────
@@ -234,6 +236,7 @@ static void sbs_revalidateManaged(CGAffineTransform want) {
 static void sbs_applyLead(UIView *fg);
 static CGRect sbs_islandFrameInFG(UIView *fg);
 static void sbs_dumpScaled(UIView *fg, NSString *by);
+static void sbs_clearLibFolderBg(UIView *bgv);
 
 // ─────────────── 主流程：右侧缩放 + leading 缩放 ───────────────
 static void sbs_apply(UIView *fg) {
@@ -656,6 +659,13 @@ static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
     }
 }
 
+// 资源库文件夹背景透明：hook _SBHLibraryCategoryStackViewBackgroundView -layoutSubviews
+- (void)sbs_libBgLayout {
+    [self sbs_libBgLayout];      // 原实现
+    @try { sbs_clearLibFolderBg((UIView *)self); }
+    @catch (NSException *e) { sbs_log(@"[exc-libbg] %@", e); }
+}
+
 // 状态栏 foreground view 被重新挂到 window（App↔主屏切换/锁屏解锁）时补多次。
 - (void)sbs_fgDidMoveToWindow {
     [self sbs_fgDidMoveToWindow];         // 原实现
@@ -726,6 +736,69 @@ static NSUInteger sbs_hookDefiningClasses(Class base, SEL original, SEL replacem
 }
 
 // ===========================================================================
+// 功能：资源库（App Library）文件夹背景透明
+//
+// 实机 dump（2026-10-07，SpringBoard，iOS 16.5.1）确认的视图结构：
+//   _SBHLibraryPodIconListView            (资源库滚动列表)
+//     _SBHLibraryPodIconView  {170×184}   (每个分类卡片)
+//       SBHLibraryCategoryPodBackgroundView {170×170}  ← ★ 本 hook 的 self（背景板）
+//       SBHLibraryCategoryPodIconListView  {170×170}   (图标层，兄弟节点，不动)
+//         SBHLibraryCategoryPodIconView ×4
+//   ⚠️ 勿hook _SBHLibraryCategoryStackViewBackgroundView —— 那是【Dock 上"App 资源库"
+//      按钮的图标】(挂在 SBFloatingDockWindow)，不是页面里的卡片。
+//
+// 策略：把 backgroundView 自身及其子树的实色背景清成透明、材质(毛玻璃)视图隐藏；
+//       应用图标(UIImageView)与文字(UILabel)一律保留。
+// 安全门禁：类名必须含 "Library" ⇒ 绝不误伤主屏 App 文件夹或系统其它 MTMaterialView。
+// ===========================================================================
+static BOOL gLibBgClear = YES;   // 资源库文件夹背景透明 总开关
+
+// 递归清背景（深度 4）
+static void sbs_clearBgRecursive(UIView *v, int depth) {
+    if (!v || depth > 4) return;
+    NSString *cn = NSStringFromClass(v.class);
+    if ([cn containsString:@"Material"] || [v isKindOfClass:[UIVisualEffectView class]]) {
+        v.hidden = YES;                                      // 毛玻璃/材质 → 隐藏
+        return;
+    }
+    if (![v isKindOfClass:[UIImageView class]] && ![v isKindOfClass:[UILabel class]]) {
+        UIColor *c = v.backgroundColor;
+        if (c && CGColorGetAlpha(c.CGColor) > 0.01)
+            v.backgroundColor = [UIColor clearColor];        // 实色背景 → 透明
+    }
+    for (UIView *s in v.subviews) sbs_clearBgRecursive(s, depth + 1);
+}
+
+static void sbs_clearLibFolderBg(UIView *bgv) {
+    if (!gLibBgClear || !bgv) return;
+    if (![NSStringFromClass(bgv.class) containsString:@"Library"]) return;   // 门禁
+    UIColor *c = bgv.backgroundColor;
+    if (c && CGColorGetAlpha(c.CGColor) > 0.01) bgv.backgroundColor = [UIColor clearColor];
+    for (UIView *s in bgv.subviews) sbs_clearBgRecursive(s, 0);
+}
+
+// 延迟安装资源库背景 hook（类可能晚于 ctor 加载；避开 ctor 阶段触发 +initialize 的风险）
+static void sbs_installLibBgHook(void) {
+    static int tries = 0;
+    static BOOL done = NO;
+    if (done) return;
+    Class BG = objc_getClass("SBHLibraryCategoryPodBackgroundView");
+    if (!BG) {
+        if (tries++ < 40)
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{ sbs_installLibBgHook(); });
+        else
+            sbs_logNow(@"[hook] 资源库背景类等待超时（%d 次）", tries);
+        return;
+    }
+    done = YES;
+    BOOL ok = SBSHook(BG, @selector(layoutSubviews), SBSHelper.class,
+                      @selector(sbs_libBgLayout));
+    sbs_logNow(@"[hook] 资源库文件夹背景 SBHLibraryCategoryPodBackgroundView → %@",
+               ok ? @"已安装" : @"失败");
+}
+
+// ===========================================================================
 // 安装
 // ===========================================================================
 static void sbs_install(void) {
@@ -778,6 +851,13 @@ static void sbs_install(void) {
           (unsigned long)layoutSubs, (unsigned long)windowSubs);
     sbs_logNow(@"[hook] 子类补 hook layout=%lu window=%lu",
                (unsigned long)layoutSubs, (unsigned long)windowSubs);
+
+    // ⚠️ 资源库背景类可能晚于 ctor 加载，且 ctor 阶段对任意类调 class_getInstanceMethod
+    //    会触发 +initialize 而崩溃（v1.1.0 血泪教训）⇒ 延迟 3s 安装并带重试。
+    if (gLibBgClear) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{ sbs_installLibBgHook(); });
+    }
 }
 
 __attribute__((constructor))

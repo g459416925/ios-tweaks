@@ -71,13 +71,14 @@ SHA256: 35bb1ab01d7fcf75f292cd78233435d87d9dd5e128baa11589dfe0ad646acc51
 
 Package: com.xu.statusbarscale
 Name: StatusBarScale
-Version: 2.0.0
+Version: 2.1.0
 Architecture: iphoneos-arm64e
-Description: 状态栏图标缩放（精简版）。
- hook _UIStatusBarForegroundView -layoutSubviews，每次布局后：
- · 灵动岛右侧（minX >= 阈值）的状态栏图标施加 绕中心缩放 + 垂直微调，与时间对齐；
- · 时间右侧、灵动岛左侧的图标（闹钟/定位/录屏等，无法按标识枚举）按 fg 坐标系
+Description: 状态栏图标缩放 + 资源库背景透明。
+ · 状态栏缩放：hook _UIStatusBarForegroundView -layoutSubviews，每次布局后
+   对灵动岛右侧（minX >= 阈值）的图标施加 绕中心缩放 + 垂直微调，与时间对齐；
+   时间右侧、灵动岛左侧的图标（闹钟/定位/录屏等，无法按标识枚举）按 fg 坐标系
    frame 区间运行时发现，单独缩放。
+ · 资源库背景透明：App 资源库分类卡片的背景板清成透明，只留图标与标签。
  参数已硬编码进源码，不含设置面板/配置文件读取。
  仅注入 SpringBoard（Filter.Bundles = com.apple.springboard）。
  适用 iOS 16.x / RootHide (arm64e)。
@@ -85,9 +86,9 @@ Maintainer: g459416925
 Author: g459416925 (iOS 16.5.1 / RootHide)
 Section: Tweaks
 Depends: mobilesubstrate
-Installed-Size: 90
+Installed-Size: 91
 Tag: purpose::extension
-Filename: ./debs/StatusBarScale_2.0.0_iphoneos-arm64e.deb
-Size: 17072
-MD5sum: b2953da5f700da0303f25a959da82d62
-SHA256: a9f5a0aa6876243a97489235cfc2a6877be59b0daad21b21f1659008ef0c53f5
+Filename: ./debs/StatusBarScale_2.1.0_iphoneos-arm64e.deb
+Size: 18430
+MD5sum: 045e37aa283191a35828cbbf2e683b37
+SHA256: 6b90ea84392c7c73332deedaf9510dd32d27049c77e2ab6ceb6b55459b2d3d1f
