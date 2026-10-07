@@ -1,6 +1,6 @@
 # StatusBarScale — 状态栏图标缩放
 
-**包名** `com.xu.statusbarscale` · **版本** 2.1.0 · **宿主** 仅 SpringBoard
+**包名** `com.xu.statusbarscale` · **版本** 2.1.1 · **宿主** 仅 SpringBoard
 
 > v2.0.0 起本插件**只做状态栏缩放**：不含辅助图标条、不含设置面板、不读取任何配置文件，
 > 参数全部硬编码在源码里。
@@ -89,6 +89,25 @@ _SBHLibraryPodIconListView                    (资源库滚动列表)
 - 门禁：类名必须含 `Library` ⇒ 不误伤主屏 App 文件夹或系统其它 `MTMaterialView`
 - 安装时机：ctor 阶段对任意类调 `class_getInstanceMethod` 会触发 `+initialize` 而崩溃
   （v1.1.0 教训）⇒ 延迟 3s 安装 + 0.5s×40 次重试等类就绪
+
+### ④ 资源库搜索框背景透明（v2.1.1）
+
+顶部"App 资源库"搜索框的背景材质（`SBHSearchTextField` 内的 `MTMaterialView`）隐藏，
+只留放大镜图标（`UIImageView`）与文字（`UISearchBarTextFieldLabel`）。
+
+实机 dump（`hitTest(215,99)`）：
+
+```
+SBHSearchBar {430×147}
+  SBHSSearchTextField {33,75,364,48}          ← hook/扫描目标
+    MTMaterialView {0,0,364,48}               ← ★ 背景材质 → 隐藏
+    UIImageView（放大镜）/ UISearchBarTextFieldLabel（"App 资源库"）→ 保留
+```
+
+- ⚠️⚠️ **搜索框是常驻视图**（随 SpringBoard 启动就在树里），进入资源库时**只改可见性、
+  不重新布局** ⇒ 只 hook `-layoutSubviews` **完全不触发**（实测 `[searchBg]` 日志 0 条）。
+  正确做法：**每 2s 主动扫描**视图树，找 `SBHSearchTextField` 实例后清理。
+- 门禁：类名含 `Search` **且** 祖先链含 `Library` ⇒ 不误伤其它搜索框
 
 ## 参数（硬编码，v2.0.0）
 

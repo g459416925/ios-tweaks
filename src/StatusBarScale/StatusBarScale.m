@@ -5,7 +5,7 @@
 //      与左侧时间的高度/重心对齐。
 //   ② leading 缩放：时间右侧、灵动岛左侧的图标（闹钟/定位/录屏/麦克风等，无法按标识枚举），
 //      按 fg 坐标系 frame 区间运行时发现，单独缩放。
-//   ③ 资源库背景透明：App 资源库（App Library）分类卡片的背景板清成透明，只留图标与标签。
+//   ③ 资源库背景透明：App 资源库分类卡片的背景板 + 顶部搜索框背景 清成透明，只留图标与文字。
 //   （辅助图标条 / 设置面板 / 热重载 / plist 配置读取已于 v2.0.0 全部移除）
 //
 // 问题背景：iPhone 14 Pro Max (iOS 16.5.1) 灵动岛右侧图标与时间不对齐
@@ -36,7 +36,7 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 
-#define SBS_VERSION @"2.1.0"
+#define SBS_VERSION @"2.1.1"
 #define SBS_LOG_PATH @"/var/mobile/Documents/sbs_log.txt"
 
 // ─────────────── 硬编码参数（原 plist 配置 / 设置面板已移除）───────────────
@@ -237,6 +237,7 @@ static void sbs_applyLead(UIView *fg);
 static CGRect sbs_islandFrameInFG(UIView *fg);
 static void sbs_dumpScaled(UIView *fg, NSString *by);
 static void sbs_clearLibFolderBg(UIView *bgv);
+static void sbs_clearSearchFieldBg(UIView *tf);
 
 // ─────────────── 主流程：右侧缩放 + leading 缩放 ───────────────
 static void sbs_apply(UIView *fg) {
@@ -659,6 +660,13 @@ static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
     }
 }
 
+// 资源库搜索框背景透明：hook SBHSearchTextField -layoutSubviews
+- (void)sbs_searchFieldLayout {
+    [self sbs_searchFieldLayout];   // 原实现
+    @try { sbs_clearSearchFieldBg((UIView *)self); }
+    @catch (NSException *e) { sbs_log(@"[exc-searchbg] %@", e); }
+}
+
 // 资源库文件夹背景透明：hook _SBHLibraryCategoryStackViewBackgroundView -layoutSubviews
 - (void)sbs_libBgLayout {
     [self sbs_libBgLayout];      // 原实现
@@ -777,25 +785,85 @@ static void sbs_clearLibFolderBg(UIView *bgv) {
     for (UIView *s in bgv.subviews) sbs_clearBgRecursive(s, 0);
 }
 
-// 延迟安装资源库背景 hook（类可能晚于 ctor 加载；避开 ctor 阶段触发 +initialize 的风险）
+// ===========================================================================
+// 功能：资源库顶部搜索框背景透明（v2.1.1）
+//
+// 实机 dump（hitTest(215,99)，SpringBoard，iOS 16.5.1）：
+//   SBHSearchBar {430×147}
+//     SBHSearchTextField {33,75,364,48}            ← 本 hook 的 self
+//       MTMaterialView {0,0,364,48}                ← ★ 背景材质（毛玻璃）→ 隐藏
+//       UIImageView（放大镜）/ UISearchBarTextFieldLabel（"App 资源库"）→ 保留
+// ===========================================================================
+static void sbs_clearSearchFieldBg(UIView *tf) {
+    if (!gLibBgClear || !tf) return;
+    if (![NSStringFromClass(tf.class) containsString:@"Search"]) return;   // 门禁①：类名
+    BOOL inLib = NO;                                                       // 门禁②：资源库上下文
+    for (UIView *p = tf; p; p = p.superview)
+        if ([NSStringFromClass(p.class) containsString:@"Library"]) { inLib = YES; break; }
+    static BOOL logged = NO;
+    int hid = 0, clr = 0;
+    for (UIView *s in tf.subviews) {
+        NSString *cn = NSStringFromClass(s.class);
+        if ([cn containsString:@"Material"] || [s isKindOfClass:[UIVisualEffectView class]]) {
+            s.hidden = YES; hid++;                                         // 材质背景 → 隐藏
+            continue;
+        }
+        if ([s isKindOfClass:[UIImageView class]] || [s isKindOfClass:[UILabel class]]) continue;
+        UIColor *c = s.backgroundColor;
+        if (c && CGColorGetAlpha(c.CGColor) > 0.01) { s.backgroundColor = [UIColor clearColor]; clr++; }
+    }
+    if (!logged) {          // 首次调用取证：门禁是否通过 + 实际动了几个视图
+        logged = YES;
+        sbs_logNow(@"[searchBg] cls=%@ inLib=%d 直接子视图=%lu → 隐藏材质%d 清背景%d",
+                   NSStringFromClass(tf.class), inLib, (unsigned long)tf.subviews.count, hid, clr);
+    }
+}
+
+// ⚠️ 实测（11:41）：单独 hook SBHSearchTextField -layoutSubviews【不触发】——
+//   搜索框是常驻视图（随 SpringBoard 启动就在树里），进入资源库时只改可见性、
+//   不重新布局 ⇒ layoutSubviews 不再调用。故必须【主动扫描】兜底。
+static void sbs_sweepSearchField(void) {
+    Class SF = objc_getClass("SBHSearchTextField");
+    if (!SF) return;
+    NSMutableArray *stack = [NSMutableArray array];
+    for (UIWindow *w in [UIApplication sharedApplication].windows) [stack addObject:w];
+    int guard = 0;
+    while (stack.count && guard++ < 20000) {
+        UIView *v = stack.lastObject;
+        [stack removeLastObject];
+        if ([v isKindOfClass:SF]) sbs_clearSearchFieldBg(v);
+        for (UIView *c in v.subviews) [stack addObject:c];
+    }
+}
+
+// 延迟安装资源库相关 hook（类可能晚于 ctor 加载；避开 ctor 阶段触发 +initialize 的风险）
 static void sbs_installLibBgHook(void) {
     static int tries = 0;
     static BOOL done = NO;
     if (done) return;
     Class BG = objc_getClass("SBHLibraryCategoryPodBackgroundView");
-    if (!BG) {
+    Class SF = objc_getClass("SBHSearchTextField");
+    if (!BG && !SF) {
         if (tries++ < 40)
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
                            dispatch_get_main_queue(), ^{ sbs_installLibBgHook(); });
         else
-            sbs_logNow(@"[hook] 资源库背景类等待超时（%d 次）", tries);
+            sbs_logNow(@"[hook] 资源库相关类等待超时（%d 次）", tries);
         return;
     }
     done = YES;
-    BOOL ok = SBSHook(BG, @selector(layoutSubviews), SBSHelper.class,
-                      @selector(sbs_libBgLayout));
-    sbs_logNow(@"[hook] 资源库文件夹背景 SBHLibraryCategoryPodBackgroundView → %@",
-               ok ? @"已安装" : @"失败");
+    if (BG) {
+        BOOL ok = SBSHook(BG, @selector(layoutSubviews), SBSHelper.class,
+                          @selector(sbs_libBgLayout));
+        sbs_logNow(@"[hook] 资源库文件夹背景 SBHLibraryCategoryPodBackgroundView → %@",
+                   ok ? @"已安装" : @"失败");
+    }
+    if (SF) {
+        BOOL ok = SBSHook(SF, @selector(layoutSubviews), SBSHelper.class,
+                          @selector(sbs_searchFieldLayout));
+        sbs_logNow(@"[hook] 资源库搜索框背景 SBHSearchTextField → %@",
+                   ok ? @"已安装" : @"失败");
+    }
 }
 
 // ===========================================================================
@@ -857,6 +925,13 @@ static void sbs_install(void) {
     if (gLibBgClear) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{ sbs_installLibBgHook(); });
+        // 搜索框常驻、进资源库不重布局 ⇒ 每 2s 主动扫描一次（遍历视图树，开销可忽略）
+        static dispatch_source_t t = nil;
+        t = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
+        dispatch_source_set_timer(t, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)),
+                                  (uint64_t)(2 * NSEC_PER_SEC), (uint64_t)(0.3 * NSEC_PER_SEC));
+        dispatch_source_set_event_handler(t, ^{ sbs_sweepSearchField(); });
+        dispatch_resume(t);
     }
 }
 

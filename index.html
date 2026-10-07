@@ -68,8 +68,8 @@
     </tr>
     <tr>
       <td><code>com.xu.statusbarscale</code></td>
-      <td>2.1.0</td>
-      <td>StatusBarScale — 状态栏图标缩放（右侧 0.90× / 时间旁 0.50×）+ 资源库分类卡片背景透明</td>
+      <td>2.1.1</td>
+      <td>StatusBarScale — 状态栏图标缩放（右侧 0.90× / 时间旁 0.50×）+ 资源库分类卡片与搜索框背景透明</td>
     </tr>
   </table>
 
@@ -109,9 +109,10 @@
     <li>带<b>撤销/复核</b>：状态栏 item 视图会被系统复用池回收后换身份，脱离命中区间即
         「先摘登记、再还原」（防「时间被缩放」）</li>
     <li><b>参数已硬编码进源码</b>：不含设置面板、不读取任何配置文件</li>
-    <li><b>资源库背景透明</b>（v2.1.0）：App 资源库分类卡片的背景板
-        (<code>SBHLibraryCategoryPodBackgroundView</code>) 清成透明，只留应用图标与分类标签；
-        hook 其 <code>-layoutSubviews</code> —— 毛玻璃材质隐藏、实色背景清成 clear</li>
+    <li><b>资源库背景透明</b>（v2.1.0 卡片 / v2.1.1 搜索框）：App 资源库分类卡片的背景板
+        (<code>SBHLibraryCategoryPodBackgroundView</code>) 与顶部搜索框的背景材质
+        (<code>SBHSearchTextField</code> 内的 <code>MTMaterialView</code>) 清成透明，
+        只留图标与文字。⚠️ 搜索框是常驻视图、进资源库不重新布局 ⇒ 需每 2s 主动扫描处理</li>
   </ol>
   <p class="sub" style="margin-top:14px">
     ⚠️ 仅注入 SpringBoard（<code>Filter.Bundles = com.apple.springboard</code>）——

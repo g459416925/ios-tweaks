@@ -16,7 +16,7 @@ https://g459416925.github.io/ios-tweaks/
 |---|---|---|
 | `com.xu.compactorfix` | 1.0.0 | **CompactorFix** — 把系统 UI 字体整体换成 Apple Watch 的 SF Compact |
 | `com.xu.screentimelocker16` | 5.2.1 | **ScreenTimeLocker16** — 让「屏幕使用时间」的 App 限额真正锁得住 |
-| `com.xu.statusbarscale` | 2.1.0 | **StatusBarScale** — 状态栏图标缩放（灵动岛右侧 0.90× 对齐时间、时间旁/岛左 0.50×）+ 资源库分类卡片背景透明 |
+| `com.xu.statusbarscale` | 2.1.1 | **StatusBarScale** — 状态栏图标缩放（灵动岛右侧 0.90× 对齐时间、时间旁/岛左 0.50×）+ 资源库分类卡片与搜索框背景透明 |
 
 ### CompactorFix
 
@@ -86,6 +86,13 @@ https://g459416925.github.io/ios-tweaks/
 - ⚠️ **勿 hook `_SBHLibraryCategoryStackViewBackgroundView`** —— 那是**Dock 上"App 资源库"
   按钮的图标**（挂在 `SBFloatingDockWindow`），不是页面里的卡片
 - 门禁：类名必须含 `Library` ⇒ 不误伤主屏 App 文件夹或系统其它 `MTMaterialView`
+
+**⑥ 资源库搜索框背景透明（v2.1.1）**：顶部"App 资源库"搜索框的背景材质
+（`SBHSearchTextField` 内的 `MTMaterialView`）隐藏，只留放大镜图标与文字。
+
+- ⚠️ **搜索框是常驻视图**（随 SpringBoard 启动就在树里），进入资源库时只改可见性、
+  **不重新布局** ⇒ 单纯 hook `-layoutSubviews` **不会触发**（实测 `[searchBg]` 日志 0 条）。
+  必须每 2s **主动扫描**视图树找 `SBHSearchTextField` 实例来处理
 
 - 仅注入 SpringBoard（`Filter.Bundles = ["com.apple.springboard"]`）；App 内状态栏由
   SpringBoard 远程渲染，无需向普通 App、WebKit 或 PosterBoard 注入
