@@ -1,4 +1,4 @@
-// StatusBarScale.m —— 状态栏图标缩放 + 资源库背景透明（v2.1.0）
+// StatusBarScale.m —— 状态栏图标缩放 + 资源库背景透明（v2.1.23）
 //
 // 【功能范围】
 //   ① 主缩放：灵动岛【右侧】（frame.minX >= 阈值）的状态栏图标，整体绕中心缩放 + 垂直微调，
@@ -33,10 +33,12 @@
 //   · 文字视图(_UIStatusBarStringView) 永不参与主缩放。
 
 #import <UIKit/UIKit.h>
+#import <QuartzCore/QuartzCore.h>
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
+#import <objc/message.h>
 
-#define SBS_VERSION @"2.1.1"
+#define SBS_VERSION @"2.1.24"
 #define SBS_LOG_PATH @"/var/mobile/Documents/sbs_log.txt"
 
 // ─────────────── 硬编码参数（原 plist 配置 / 设置面板已移除）───────────────
@@ -54,6 +56,12 @@ static CGFloat gLeadDy      = 0.0f;
 // 日志门控：diag=关键事件直写（默认开）；verbose=高频/批量诊断（默认关）
 static BOOL    gDiag        = YES;
 static BOOL    gVerbose     = NO;
+// 正式版关闭布局期取证。保留低频安装/异常日志，但不在每次状态栏布局时
+// 递归遍历、拼接视图签名或构造候选诊断字符串。
+static BOOL    gRuntimeDiagnostics = NO;
+// 实时活动树/CA 绘制探针只用于一次性逆向定位。已由日志锁定 key-line ivar，
+// 正式版本关闭，避免全局 CALayer display/draw hook 与每 2 秒视图树日志。
+static BOOL    gApertureProbeEnabled = NO;
 
 // 受管图标视图的弱引用集合（setTransform: hook 据此拦截系统改动）
 static NSHashTable *gManaged     = nil;   // 主缩放
@@ -238,6 +246,245 @@ static CGRect sbs_islandFrameInFG(UIView *fg);
 static void sbs_dumpScaled(UIView *fg, NSString *by);
 static void sbs_clearLibFolderBg(UIView *bgv);
 static void sbs_clearSearchFieldBg(UIView *tf);
+static void sbs_probeApertureTree(UIView *fg);
+static void sbs_probeApertureLayers(CALayer *x, int depth, int *count);
+static void sbs_probeApertureContentViews(UIView *v, int depth, int *count);
+static BOOL sbs_isApertureLayer(CALayer *layer);
+static BOOL gApertureExpandedLayerCaptured = NO;
+
+// System Aperture 的实时活动外框不是普通 CALayer.border：
+// SBSystemApertureContainerView 内部通过 _darkBkgKeyLineView /
+// _lightBkgKeyLineView 两个私有 UIView 绘制 key-line。它们通常是匿名
+// UIView，所以不能按类名匹配；保存弱引用后，在 UIView/CALayer 写入口持续压制。
+static NSHashTable *gApertureKeylineViews = nil;
+static NSHashTable *gApertureKeylineLayers = nil;
+
+static NSHashTable *sbs_apertureKeylineViews(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        gApertureKeylineViews = [NSHashTable weakObjectsHashTable];
+    });
+    return gApertureKeylineViews;
+}
+
+static NSHashTable *sbs_apertureKeylineLayers(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        gApertureKeylineLayers = [NSHashTable weakObjectsHashTable];
+    });
+    return gApertureKeylineLayers;
+}
+
+// 只对明确的对象 ivar 调 object_getIvar。历史上对非对象 ivar 误用
+// object_getIvar 会破坏 SpringBoard 堆，故这里先检查 type encoding。
+static id sbs_objectIvar(id obj, const char *name) {
+    if (!obj || !name) return nil;
+    Ivar iv = class_getInstanceVariable(object_getClass(obj), name);
+    if (!iv) return nil;
+    const char *enc = ivar_getTypeEncoding(iv);
+    if (!enc || enc[0] != '@') return nil;
+    @try { return object_getIvar(obj, iv); }
+    @catch (__unused NSException *e) { return nil; }
+}
+
+static BOOL sbs_isManagedApertureKeyline(UIView *v) {
+    return v && gApertureKeylineViews && [gApertureKeylineViews containsObject:v];
+}
+
+static BOOL sbs_isManagedApertureKeylineLayer(CALayer *layer) {
+    return layer && gApertureKeylineLayers && [gApertureKeylineLayers containsObject:layer];
+}
+
+static void sbs_logApertureKeyline(UIView *v, const char *role, BOOL changed) {
+    if (!v) return;
+    static NSMutableSet *seen = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ seen = [NSMutableSet set]; });
+    NSString *key = [NSString stringWithFormat:@"%s/%p/%d", role ?: "keyLine", v, changed ? 1 : 0];
+    if ([seen containsObject:key] || seen.count >= 160) return;
+    [seen addObject:key];
+    CGRect f = [v convertRect:v.bounds toView:nil];
+    CALayer *l = v.layer;
+    sbs_logNow(@"[apertureKeyline] role=%s view=%p class=%@ frame=%@ hidden=%d alpha=%.2f "
+               @"layerHidden=%d opacity=%.2f bgA=%.2f changed=%d",
+               role ?: "keyLine", v, NSStringFromClass(v.class), NSStringFromCGRect(f),
+               v.hidden, v.alpha, l.hidden, l.opacity,
+               l.backgroundColor ? CGColorGetAlpha(l.backgroundColor) : -1.0, changed);
+}
+
+// 精确隐藏 System Aperture 容器的两条 key-line。不要隐藏 content/gainMap/
+// black-fill 视图，否则会连实时活动内容或灵动岛黑底一起抹掉。
+static void sbs_suppressApertureKeylines(UIView *owner) {
+    if (!owner) return;
+    NSString *cn = NSStringFromClass(owner.class);
+    if (![cn containsString:@"SystemApertureContainerView"]) return;
+
+    static const struct { const char *ivar; const char *role; } targets[] = {
+        {"_darkBkgKeyLineView",  "dark"},
+        {"_lightBkgKeyLineView", "light"},
+    };
+    for (NSUInteger i = 0; i < sizeof(targets) / sizeof(targets[0]); i++) {
+        id obj = sbs_objectIvar(owner, targets[i].ivar);
+        if (![obj isKindOfClass:[UIView class]] || obj == owner) continue;
+        UIView *v = (UIView *)obj;
+        CALayer *layer = v.layer;
+        NSHashTable *managed = sbs_apertureKeylineViews();
+        BOOL wasSuppressed = v.hidden && layer.hidden && v.alpha < 0.01 && layer.opacity < 0.01;
+        [managed addObject:v];
+        [sbs_apertureKeylineLayers() addObject:layer];
+        // 先登记再写属性，避免全局 setter hook 把系统恢复动作漏过去。
+        if (!v.hidden) v.hidden = YES;
+        if (!layer.hidden) layer.hidden = YES;
+        if (v.alpha >= 0.01) v.alpha = 0.0;
+        if (layer.opacity >= 0.01f) layer.opacity = 0.0f;
+        if (layer.borderWidth != 0.0) layer.borderWidth = 0.0;
+        if (layer.borderColor && CGColorGetAlpha(layer.borderColor) > 0.0)
+            layer.borderColor = [UIColor clearColor].CGColor;
+        sbs_logApertureKeyline(v, targets[i].role, !wasSuppressed);
+    }
+
+    // shadowView 不是 key-line 本体；仅移除其阴影参数，保留容器的黑底和内容。
+    id shadowObj = sbs_objectIvar(owner, "_shadowView");
+    if ([shadowObj isKindOfClass:[UIView class]]) {
+        UIView *shadow = (UIView *)shadowObj;
+        CALayer *layer = shadow.layer;
+        if (layer.shadowOpacity != 0.0f) layer.shadowOpacity = 0.0f;
+        if (layer.shadowColor && CGColorGetAlpha(layer.shadowColor) > 0.0)
+            layer.shadowColor = [UIColor clearColor].CGColor;
+        if (layer.shadowRadius != 0.0) layer.shadowRadius = 0.0;
+        if (layer.shadowPath) layer.shadowPath = nil;
+        sbs_logApertureKeyline(shadow, "shadow", NO);
+    }
+}
+
+static void sbs_logApertureClassMetadata(Class cls) {
+    if (!cls) return;
+    NSMutableArray *methodNames = [NSMutableArray array];
+    unsigned int methodCount = 0;
+    Method *methods = class_copyMethodList(cls, &methodCount);
+    for (unsigned int i = 0; i < methodCount; i++) {
+        NSString *name = NSStringFromSelector(method_getName(methods[i]));
+        if ([name containsString:@"border"] || [name containsString:@"Border"] ||
+            [name containsString:@"background"] || [name containsString:@"Background"] ||
+            [name containsString:@"effect"] || [name containsString:@"Effect"] ||
+            [name containsString:@"corner"] || [name containsString:@"Corner"] ||
+            [name containsString:@"portal"] || [name containsString:@"Portal"] ||
+            [name containsString:@"display"] || [name containsString:@"Display"] ||
+            [name containsString:@"layout"] || [name containsString:@"Layout"])
+            [methodNames addObject:name];
+    }
+    free(methods);
+    NSMutableArray *ivarNames = [NSMutableArray array];
+    unsigned int ivarCount = 0;
+    Ivar *ivars = class_copyIvarList(cls, &ivarCount);
+    for (unsigned int i = 0; i < ivarCount; i++) {
+        const char *name = ivar_getName(ivars[i]);
+        if (name) [ivarNames addObject:[NSString stringWithUTF8String:name]];
+    }
+    free(ivars);
+    sbs_logNow(@"[apertureClass] %@ methods=%@ ivars=%@", NSStringFromClass(cls), methodNames, ivarNames);
+}
+
+static void sbs_logApertureRenderLayer(CALayer *layer, NSString *kind, CGContextRef ctx) {
+    if (!layer || !sbs_isApertureLayer(layer)) return;
+    static NSMutableSet *seen = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ seen = [NSMutableSet set]; });
+    NSString *key = [NSString stringWithFormat:@"%@/%p", kind, layer];
+    if ([seen containsObject:key] || seen.count >= 160) return;
+    [seen addObject:key];
+    id delegate = layer.delegate;
+    sbs_logNow(@"[apertureCA] kind=%@ layer=%p class=%@ delegate=%@ frame=%@ sub=%lu ctx=%d contents=%d",
+               kind, layer, NSStringFromClass(layer.class), delegate ? NSStringFromClass([delegate class]) : @"nil",
+               NSStringFromCGRect(layer.frame), (unsigned long)layer.sublayers.count, ctx ? 1 : 0,
+               layer.contents ? 1 : 0);
+}
+
+static BOOL sbs_isApertureLayer(CALayer *layer) {
+    if (!layer) return NO;
+    for (CALayer *p = layer; p; p = p.superlayer) {
+        NSString *ln = NSStringFromClass(p.class);
+        if ([ln containsString:@"Shape"] || [ln containsString:@"Border"] ||
+            [ln containsString:@"Outline"] || [ln containsString:@"Ring"])
+            ; // 继续检查其宿主视图/祖先层
+        id delegate = p.delegate;
+        if ([delegate isKindOfClass:[UIView class]]) {
+            for (UIView *v = (UIView *)delegate; v; v = v.superview) {
+                NSString *cn = NSStringFromClass(v.class);
+                if ([cn containsString:@"Aperture"] || [cn containsString:@"Island"] ||
+                    [cn containsString:@"Pill"] || [cn containsString:@"LiveActivity"] ||
+                    [cn containsString:@"GainMap"] || [cn containsString:@"Border"] ||
+                    [cn containsString:@"Outline"] || [cn containsString:@"Ring"])
+                    return YES;
+            }
+        }
+    }
+    return NO;
+}
+
+static void sbs_probeApertureLayers(CALayer *x, int depth, int *count) {
+    if (!x || !count || depth > 8 || *count >= 120) return;
+    @try {
+        NSArray *children = x.sublayers ?: @[];
+        BOOL shape = [x isKindOfClass:[CAShapeLayer class]];
+        CAShapeLayer *sl = shape ? (CAShapeLayer *)x : nil;
+        CGFloat strokeA = (shape && sl.strokeColor) ? CGColorGetAlpha(sl.strokeColor) : -1.0;
+        CALayer *presentation = x.presentationLayer;
+        id delegate = x.delegate;
+        sbs_logNow(@"[apertureLayer] d=%d idx=? class=%@ delegate=%@ frame=%@ "
+                   @"sub=%lu mask=%d pres=%d contents=%d border=%.2f/%.2f "
+                   @"bg=%.2f shadow=%.2f/%.2f shape=%d path=%d strokeA=%.2f line=%.2f",
+                   depth, NSStringFromClass(x.class), delegate ? NSStringFromClass([delegate class]) : @"nil",
+                   NSStringFromCGRect(x.frame), (unsigned long)children.count, x.mask ? 1 : 0,
+                   presentation ? 1 : 0, x.contents ? 1 : 0, x.borderWidth,
+                   x.borderColor ? CGColorGetAlpha(x.borderColor) : -1.0,
+                   x.backgroundColor ? CGColorGetAlpha(x.backgroundColor) : -1.0,
+                   x.shadowOpacity, x.shadowRadius, shape, (shape && sl.path) ? 1 : 0,
+                   strokeA, shape ? sl.lineWidth : 0.0);
+        (*count)++;
+        if (x.mask && *count < 120) {
+            sbs_logNow(@"[apertureLayerChild] d=%d kind=mask class=%@ frame=%@", depth + 1,
+                       NSStringFromClass(x.mask.class), NSStringFromCGRect(x.mask.frame));
+            sbs_probeApertureLayers(x.mask, depth + 1, count);
+        }
+        NSUInteger i = 0;
+        for (CALayer *sub in children) {
+            if (*count >= 120) break;
+            sbs_logNow(@"[apertureLayerChild] d=%d idx=%lu class=%@ frame=%@ delegate=%@",
+                       depth + 1, (unsigned long)i, NSStringFromClass(sub.class),
+                       NSStringFromCGRect(sub.frame), sub.delegate ? NSStringFromClass([sub.delegate class]) : @"nil");
+            sbs_probeApertureLayers(sub, depth + 1, count);
+            i++;
+        }
+    } @catch (NSException *e) {
+        sbs_logNow(@"[apertureLayerError] d=%d class=%@ reason=%@", depth,
+                   NSStringFromClass(x.class), e.reason ?: @"unknown");
+        (*count)++;
+    }
+}
+
+// 搜索框可能挂在 SpringBoard 的特殊窗口中，UIApplication.windows 不一定能枚举到。
+// 只接受 App Library 的 SBH 搜索类，避免全局 UIView setter 误伤 Spotlight、
+// 控制中心或其他系统搜索界面的材质层。
+static UIView *sbs_librarySearchOwner(UIView *v) {
+    for (UIView *p = v; p; p = p.superview) {
+        NSString *cn = NSStringFromClass(p.class);
+        BOOL isHomeScreenSearch = [cn hasPrefix:@"SBH"] && [cn containsString:@"Search"];
+        if (isHomeScreenSearch) return p;
+    }
+    return nil;
+}
+
+static BOOL sbs_isSearchBackgroundView(UIView *v) {
+    if (!v) return NO;
+    if ([v isKindOfClass:[UIImageView class]] || [v isKindOfClass:[UILabel class]]) return NO;
+    NSString *cn = NSStringFromClass(v.class);
+    // 这是 UIView 全局 setter 的热路径。先用当前类做廉价过滤，仅对真正可能是
+    // 搜索框材质的少数视图遍历祖先链；否则控制中心出现时会对数百个视图反复爬树。
+    BOOL candidate = [cn containsString:@"Material"] ||
+                     [v isKindOfClass:[UIVisualEffectView class]];
+    return candidate && sbs_librarySearchOwner(v) != nil;
+}
 
 // ─────────────── 主流程：右侧缩放 + leading 缩放 ───────────────
 static void sbs_apply(UIView *fg) {
@@ -253,7 +500,8 @@ static void sbs_apply(UIView *fg) {
         }
     }
     if (!gEnabled) return;
-    sbs_dumpScaled(fg, @"apply");     // ⭐ 探针：此刻 fg 内谁带着缩放过（变更即记 + 60s 心跳）
+    if (gRuntimeDiagnostics)
+        sbs_dumpScaled(fg, @"apply"); // 诊断模式：递归记录当前带缩放的视图
     // ⭐ 绑定取证：缩放一变就打印实时推算的垂直微调（变更即记，可核对联动）
     {
         static CGFloat lastS = -1.0f, lastD = -1.0f;
@@ -283,6 +531,9 @@ static void sbs_apply(UIView *fg) {
     }
     // ⭐ v1.9.2 撤销：已登记但此刻已不合格（被复用/被搬走/已变成时间）的，还原
     sbs_revalidateManaged(t);
+    // v2.1.23：不再从状态栏 layoutSubviews 遍历所有窗口/图层。边框已确认是
+    // SBSystemApertureContainerView 的两个 key-line ivar，由该容器的精确 hook 处理。
+    if (gApertureProbeEnabled) sbs_probeApertureTree(fg);
     // ⭐ v1.7.0 leading 区（时间右侧、灵动岛左侧）图标独立缩放 —— 与右侧互斥
     @try { sbs_applyLead(fg); } @catch (NSException *e) { sbs_logNow(@"[exc-lead] %@", e); }
 }
@@ -487,28 +738,32 @@ static void sbs_applyLead(UIView *fg) {
     //   ③ 灵动岛左缘必须落在合理区间（真岛实测 152）。
     CGFloat scrW = UIScreen.mainScreen.bounds.size.width;
     if (scrW > 0 && fabs(fg.bounds.size.width - scrW) > 1.0) {
-        sbs_leadNote(@"skipFg", [NSString stringWithFormat:
-            @"跳过：非全屏 fg（宽 %.0f ≠ 屏宽 %.0f）—— CC/Spotlight 迷你状态栏",
-            fg.bounds.size.width, scrW]);
+        if (gRuntimeDiagnostics)
+            sbs_leadNote(@"skipFg", [NSString stringWithFormat:
+                @"跳过：非全屏 fg（宽 %.0f ≠ 屏宽 %.0f）—— CC/Spotlight 迷你状态栏",
+                fg.bounds.size.width, scrW]);
         return;
     }
     UIView *timeV = nil; CGRect timeR = CGRectZero;
     CGFloat timeMaxX = sbs_timeMaxXDbg(fg, &timeV, &timeR);
     // ⭐ 基准取证：把"谁是时间基准"直写出来（可核对）
-    sbs_leadNote([NSString stringWithFormat:@"base:%p:%.0f", (void *)timeV, timeMaxX],
-        [NSString stringWithFormat:@"时间基准 %p %s f=%@ maxX=%.1f win=%@",
-         (void *)timeV, timeV ? class_getName(timeV.class) : "nil",
-         NSStringFromCGRect(timeR), timeMaxX,
-         fg.window ? NSStringFromClass(fg.window.class) : @"nil"]);
+    if (gRuntimeDiagnostics)
+        sbs_leadNote([NSString stringWithFormat:@"base:%p:%.0f", (void *)timeV, timeMaxX],
+            [NSString stringWithFormat:@"时间基准 %p %s f=%@ maxX=%.1f win=%@",
+             (void *)timeV, timeV ? class_getName(timeV.class) : "nil",
+             NSStringFromCGRect(timeR), timeMaxX,
+             fg.window ? NSStringFromClass(fg.window.class) : @"nil"]);
     if (timeMaxX <= 0.5) {
-        sbs_leadNote(@"skipTime", @"跳过：无可视时间视图（timeMaxX=0），无判定基准");
+        if (gRuntimeDiagnostics)
+            sbs_leadNote(@"skipTime", @"跳过：无可视时间视图（timeMaxX=0），无判定基准");
         return;
     }
     CGRect island = sbs_islandFrameInFG(fg);
     CGFloat leadLimit = CGRectIsEmpty(island) ? 152.0 : island.origin.x;
     if (leadLimit < 60.0 || leadLimit > 200.0) {
-        sbs_leadNote(@"skipIsland", [NSString stringWithFormat:
-            @"跳过：灵动岛左缘异常（%.1f 不在 60~200）", leadLimit]);
+        if (gRuntimeDiagnostics)
+            sbs_leadNote(@"skipIsland", [NSString stringWithFormat:
+                @"跳过：灵动岛左缘异常（%.1f 不在 60~200）", leadLimit]);
         return;
     }
 
@@ -516,7 +771,8 @@ static void sbs_applyLead(UIView *fg) {
     for (UIView *s in fg.subviews)
         sbs_collectLead(s, fg, 0, timeMaxX, leadLimit, cands);
 
-    sbs_leadReport(fg, cands, timeMaxX, leadLimit);     // 探针（去重 + 节流，安全）
+    if (gRuntimeDiagnostics)
+        sbs_leadReport(fg, cands, timeMaxX, leadLimit);
 
     if (cands.count == 0) return;
     if (!gManagedLead) gManagedLead = [NSHashTable weakObjectsHashTable];
@@ -565,6 +821,113 @@ static CGRect sbs_findIslandRect(UIView *v, int depth, UIView *target, CGFloat f
         if (!CGRectIsEmpty(r)) return r;
     }
     return CGRectZero;
+}
+
+// 一次性探针：实时活动外框可能不是 CALayer.border，而是独立的私有子视图/内容层。
+// 记录灵动岛附近视图的真实类名与 layer 属性，供下一轮按证据锁定目标。
+static void sbs_probeApertureTreeRecursive(UIView *v, int depth, int *count) {
+    if (!v || depth > 5 || !count || *count >= 160) return;
+    CGRect f = [v convertRect:v.bounds toView:nil];
+    BOOL region = f.origin.y < 90.0 && f.size.width >= 50.0 && f.size.width <= 450.0 &&
+                  f.size.height >= 15.0 && f.size.height <= 180.0 &&
+                  fabs(CGRectGetMidX(f) - 215.0) < 150.0;
+    NSString *cn = NSStringFromClass(v.class);
+    BOOL named = [cn containsString:@"Aperture"] || [cn containsString:@"Island"] ||
+                 [cn containsString:@"Pill"] || [cn containsString:@"Activity"] ||
+                 [cn containsString:@"Border"] || [cn containsString:@"Outline"] ||
+                 [cn containsString:@"Ring"];
+    if (region && (named || depth <= 2)) {
+        CALayer *l = v.layer;
+        CGFloat ba = l.backgroundColor ? CGColorGetAlpha(l.backgroundColor) : -1.0;
+        CGFloat bra = l.borderColor ? CGColorGetAlpha(l.borderColor) : -1.0;
+        sbs_logNow(@"[apertureProbe] d=%d %@ f=%@ hidden=%d alpha=%.2f sub=%lu "
+                   @"layerBorder=%.2f/%.2f layerBg=%.2f contents=%d",
+                   depth, cn, NSStringFromCGRect(f), v.hidden, v.alpha,
+                   (unsigned long)v.subviews.count, l.borderWidth, bra, ba,
+                   l.contents ? 1 : 0);
+        (*count)++;
+        if ([cn containsString:@"ApertureContainerView"] && !v.hidden && v.bounds.size.width > 200.0) {
+            int contentCount = 0;
+            sbs_probeApertureContentViews(v, 0, &contentCount);
+            sbs_logNow(@"[apertureView] 完成宿主 %@，记录 %d 个 UIView", cn, contentCount);
+            if (!gApertureExpandedLayerCaptured) {
+                gApertureExpandedLayerCaptured = YES;
+                sbs_logApertureClassMetadata(v.class);
+                sbs_logApertureClassMetadata(object_getClass(v));
+                for (UIView *p = v; p; p = p.superview) {
+                    NSString *pn = NSStringFromClass(p.class);
+                    if ([pn containsString:@"Aperture"] || [pn containsString:@"Portal"] ||
+                        [pn containsString:@"SAUIElement"])
+                        sbs_logApertureClassMetadata(p.class);
+                }
+                int expandedLayerCount = 0;
+                sbs_logNow(@"[apertureLayerTree] captured expanded host class=%@ frame=%@",
+                           cn, NSStringFromCGRect(f));
+                sbs_probeApertureLayers(v.layer, 0, &expandedLayerCount);
+                sbs_logNow(@"[apertureLayerTree] complete layers=%d", expandedLayerCount);
+            }
+        }
+    }
+    for (UIView *s in v.subviews)
+        sbs_probeApertureTreeRecursive(s, depth + 1, count);
+}
+
+static void sbs_probeApertureContentViews(UIView *v, int depth, int *count) {
+    if (!v || !count || depth > 12 || *count >= 240) return;
+    CALayer *l = v.layer;
+    CGRect f = [v convertRect:v.bounds toView:nil];
+    // 聚焦展开态容器及其直接渲染节点，避免重复输出整棵静态子树。
+    if (depth <= 1) {
+        NSString *curve = @"unavailable";
+        SEL curveSel = NSSelectorFromString(@"cornerCurve");
+        if ([l respondsToSelector:curveSel]) {
+            id value = ((id (*)(id, SEL))objc_msgSend)(l, curveSel);
+            curve = [value respondsToSelector:@selector(description)] ? [value description] : @"nil";
+        }
+        NSString *signature = [NSString stringWithFormat:@"%@|%d|%.1f|%.1f|%d|%.2f|%.2f|%@|%d|%.2f|%@|%@|%@",
+            NSStringFromClass(v.class), depth, f.size.width, f.size.height, v.hidden, v.alpha,
+            l.cornerRadius, curve, l.masksToBounds, l.borderWidth,
+            l.filters ?: @[], l.backgroundFilters ?: @[], l.compositingFilter ?: @"nil"];
+        static NSMutableDictionary *lastSignatures = nil;
+        static dispatch_once_t signatureOnce;
+        dispatch_once(&signatureOnce, ^{ lastSignatures = [NSMutableDictionary dictionary]; });
+        NSString *key = [NSString stringWithFormat:@"%@/%d", NSStringFromClass(v.class), depth];
+        if (![lastSignatures[key] isEqualToString:signature]) {
+            lastSignatures[key] = signature;
+            sbs_logNow(@"[apertureView] d=%d class=%@ frame=%@ hidden=%d alpha=%.2f opaque=%d sub=%lu corner=%.2f curve=%@ masks=%d border=%.2f/%.2f filters=%@ bgFilters=%@ compFilter=%@ edgeAA=%d raster=%d",
+                       depth, NSStringFromClass(v.class), NSStringFromCGRect(f), v.hidden, v.alpha, v.opaque,
+                       (unsigned long)v.subviews.count, l.cornerRadius, curve, l.masksToBounds,
+                       l.borderWidth, l.borderColor ? CGColorGetAlpha(l.borderColor) : -1.0,
+                       l.filters ?: @[], l.backgroundFilters ?: @[], l.compositingFilter ?: @"nil",
+                       l.allowsEdgeAntialiasing, l.shouldRasterize);
+        }
+    }
+    (*count)++;
+    for (UIView *sub in [v.subviews copy]) sbs_probeApertureContentViews(sub, depth + 1, count);
+}
+
+static void sbs_probeApertureTree(UIView *fg) {
+    if (!fg) return;
+    static NSTimeInterval lastProbe = 0;
+    NSTimeInterval now = [NSDate date].timeIntervalSince1970;
+    if (now - lastProbe < 2.0) return;
+    lastProbe = now;
+    UIView *node = fg;
+    int count = 0;
+    for (int up = 0; up < 4 && node.superview; up++) {
+        UIView *parent = node.superview;
+        for (UIView *sib in parent.subviews) {
+            if (sib == node) continue;
+            sbs_probeApertureTreeRecursive(sib, 0, &count);
+        }
+        node = parent;
+    }
+    // System Aperture/实时活动可能位于独立窗口，不在 fg 的祖先兄弟树中。
+    // 补扫 UIApplication 当前可见窗口，按屏幕坐标记录顶部灵动岛区域。
+    for (UIWindow *w in [UIApplication sharedApplication].windows)
+        sbs_probeApertureTreeRecursive(w, 0, &count);
+    sbs_logNow(@"[apertureProbe] 完成，记录 %d 个视图 fgWin=%@", count,
+               fg.window ? NSStringFromClass(fg.window.class) : @"nil");
 }
 
 static CGRect sbs_islandFrameInFG(UIView *fg) {
@@ -630,6 +993,59 @@ static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
 @end
 
 @implementation SBSHelper
+// Core Animation 可能直接生成实时活动外框纹理；记录 display/drawInContext 入口。
+- (void)sbs_layerDisplay {
+    CALayer *layer = (CALayer *)self;
+    sbs_logApertureRenderLayer(layer, @"display", NULL);
+    [self sbs_layerDisplay];
+}
+
+- (void)sbs_layerDrawInContext:(CGContextRef)ctx {
+    CALayer *layer = (CALayer *)self;
+    sbs_logApertureRenderLayer(layer, @"drawInContext", ctx);
+    [self sbs_layerDrawInContext:ctx];
+}
+
+- (void)sbs_viewDrawLayer:(CALayer *)layer inContext:(CGContextRef)ctx {
+    if (layer && sbs_isApertureLayer(layer))
+        sbs_logApertureRenderLayer(layer, @"delegateDrawLayer", ctx);
+    [self sbs_viewDrawLayer:layer inContext:ctx];
+}
+
+// System Aperture 的外框可能来自私有 UIView 的自定义 drawRect，而非 layer 属性。
+// 先记录真实绘制入口与实例，再决定是否仅跳过外壳绘制，避免误删倒计时/圆环内容。
+- (void)sbs_apertureDrawRect:(CGRect)rect {
+    UIView *v = (UIView *)self;
+    static NSMutableSet *seen = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ seen = [NSMutableSet set]; });
+    NSString *key = [NSString stringWithFormat:@"%@/%p", NSStringFromClass(v.class), v];
+    if (![seen containsObject:key] && seen.count < 80) {
+        [seen addObject:key];
+        sbs_logNow(@"[apertureDraw] class=%@ self=%p rect=%@ frame=%@ sub=%lu hidden=%d alpha=%.2f",
+                   NSStringFromClass(v.class), v, NSStringFromCGRect(rect), NSStringFromCGRect(v.frame),
+                   (unsigned long)v.subviews.count, v.hidden, v.alpha);
+    }
+    [self sbs_apertureDrawRect:rect];
+}
+
+- (void)sbs_apertureLayoutSubviews {
+    UIView *v = (UIView *)self;
+    static NSMutableSet *seen = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ seen = [NSMutableSet set]; });
+    NSString *key = [NSString stringWithFormat:@"%@/%p", NSStringFromClass(v.class), v];
+    if (![seen containsObject:key] && seen.count < 80) {
+        [seen addObject:key];
+        sbs_logNow(@"[apertureLayout] class=%@ self=%p frame=%@ sub=%lu hidden=%d alpha=%.2f",
+                   NSStringFromClass(v.class), v, NSStringFromCGRect(v.frame),
+                   (unsigned long)v.subviews.count, v.hidden, v.alpha);
+    }
+    [self sbs_apertureLayoutSubviews];
+    @try { sbs_suppressApertureKeylines(v); }
+    @catch (NSException *e) { sbs_logNow(@"[exc-apertureKeyline] %@", e); }
+}
+
 // 交换后：此选择子挂在目标类上指向【原实现】；先调原布局，再做缩放
 - (void)sbs_fgLayoutSubviews {
     [self sbs_fgLayoutSubviews];          // 原实现
@@ -660,6 +1076,115 @@ static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
     }
 }
 
+// 搜索框及其材质子视图在资源库滑动转场中会动态挂窗；即时清理，不依赖 windows 扫描。
+- (void)sbs_viewDidMoveToWindow {
+    [self sbs_viewDidMoveToWindow];
+    UIView *v = (UIView *)self;
+    NSString *cn = NSStringFromClass(v.class);
+    // 全局 didMoveToWindow 也属于控制中心转场热路径：只检查搜索类本身或材质候选，
+    // 避免每个新挂窗视图都遍历祖先链。
+    if ([cn containsString:@"Search"])
+        sbs_clearSearchFieldBg(v);
+    else if (sbs_isSearchBackgroundView(v)) {
+        v.hidden = YES;
+        v.backgroundColor = [UIColor clearColor];
+    }
+}
+
+// 系统切换资源库可见性时可能把材质背景重新设为可见，立即压回隐藏状态。
+- (void)sbs_viewSetHidden:(BOOL)h {
+    UIView *v = (UIView *)self;
+    BOOL keyline = sbs_isManagedApertureKeyline(v);
+    if (!h && sbs_isSearchBackgroundView(v)) h = YES;
+    if (keyline && !h) h = YES;
+    [self sbs_viewSetHidden:h];
+    if (keyline && !v.layer.hidden) v.layer.hidden = YES;
+}
+
+// 系统重设材质背景色时立即清透明；不影响搜索框内的图标和文字。
+- (void)sbs_viewSetBackgroundColor:(UIColor *)c {
+    UIView *v = (UIView *)self;
+    if (sbs_isSearchBackgroundView(v)) c = [UIColor clearColor];
+    [self sbs_viewSetBackgroundColor:c];
+}
+
+// 系统可能用 alpha 而不是 hidden 切换 key-line，两个入口都要拦截。
+- (void)sbs_viewSetAlpha:(CGFloat)a {
+    UIView *v = (UIView *)self;
+    BOOL keyline = sbs_isManagedApertureKeyline(v);
+    if (keyline && a > 0.0) a = 0.0;
+    [self sbs_viewSetAlpha:a];
+    if (keyline && v.layer.opacity > 0.0f) v.layer.opacity = 0.0f;
+}
+
+// 实时活动外框实际会在 CALayer 写入口被系统恢复；拦截写入而不是只做一次清理。
+- (void)sbs_layerSetBorderColor:(CGColorRef)c {
+    if (sbs_isApertureLayer((CALayer *)self)) c = [UIColor clearColor].CGColor;
+    [self sbs_layerSetBorderColor:c];
+}
+
+- (void)sbs_layerSetBorderWidth:(CGFloat)w {
+    if (sbs_isApertureLayer((CALayer *)self)) w = 0.0;
+    [self sbs_layerSetBorderWidth:w];
+}
+
+- (void)sbs_shapeSetStrokeColor:(CGColorRef)c {
+    if (sbs_isApertureLayer((CALayer *)self)) c = [UIColor clearColor].CGColor;
+    [self sbs_shapeSetStrokeColor:c];
+}
+
+- (void)sbs_shapeSetLineWidth:(CGFloat)w {
+    if (sbs_isApertureLayer((CALayer *)self)) w = 0.0;
+    [self sbs_shapeSetLineWidth:w];
+}
+
+- (void)sbs_layerSetShadowColor:(CGColorRef)c {
+    if (sbs_isApertureLayer((CALayer *)self)) c = [UIColor clearColor].CGColor;
+    [self sbs_layerSetShadowColor:c];
+}
+
+- (void)sbs_layerSetShadowOpacity:(float)o {
+    if (sbs_isApertureLayer((CALayer *)self)) o = 0.0f;
+    [self sbs_layerSetShadowOpacity:o];
+}
+
+- (void)sbs_layerSetShadowRadius:(CGFloat)r {
+    if (sbs_isApertureLayer((CALayer *)self)) r = 0.0;
+    [self sbs_layerSetShadowRadius:r];
+}
+
+- (void)sbs_layerSetShadowPath:(CGPathRef)p {
+    if (sbs_isApertureLayer((CALayer *)self)) p = nil;
+    [self sbs_layerSetShadowPath:p];
+}
+
+- (void)sbs_layerSetHidden:(BOOL)h {
+    CALayer *layer = (CALayer *)self;
+    if (sbs_isManagedApertureKeylineLayer(layer) && !h) h = YES;
+    [self sbs_layerSetHidden:h];
+}
+
+- (void)sbs_layerSetOpacity:(float)o {
+    CALayer *layer = (CALayer *)self;
+    if (sbs_isManagedApertureKeylineLayer(layer) && o > 0.0f) o = 0.0f;
+    [self sbs_layerSetOpacity:o];
+}
+
+// ⭐⭐ v2.1.2：系统会【反复重设】该背景视图的 backgroundColor / hidden
+//   （实测每轮扫描都能撞见 hidden=0 bgA=1.00 的"新"实例）⇒ 单纯定时清会被系统盖回去。
+//   必须在【设置入口】拦截：无论系统设什么，统一改成透明/隐藏。
+- (void)sbs_podBgSetBackgroundColor:(UIColor *)c {
+    if ([NSStringFromClass(((UIView *)self).class) containsString:@"Library"])
+        c = [UIColor clearColor];
+    [self sbs_podBgSetBackgroundColor:c];
+}
+
+- (void)sbs_podBgSetHidden:(BOOL)h {
+    if ([NSStringFromClass(((UIView *)self).class) containsString:@"Library"])
+        h = YES;
+    [self sbs_podBgSetHidden:h];
+}
+
 // 资源库搜索框背景透明：hook SBHSearchTextField -layoutSubviews
 - (void)sbs_searchFieldLayout {
     [self sbs_searchFieldLayout];   // 原实现
@@ -682,13 +1207,10 @@ static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
             NSStringFromClass(((UIView *)self).class),
             ((UIView *)self).window ? @"有" : @"nil");
         // 挂载后的布局尚未发生时，子视图可能还没建好 → 下一 runloop 补施
-        dispatch_async(dispatch_get_main_queue(), ^{
-            sbs_apply((UIView *)self);
-        });
         // ⭐ v1.4.5 多档补触发：退出 App 回主屏时主屏 fg 可能不触发 layoutSubviews
         //    （实测 home 后零布局），0.3s 单次触发不够 —— 多档重试覆盖切换动画全周期。
-        for (int i = 0; i < 4; i++) {
-            NSTimeInterval delay = (i == 0 ? 0.0 : (i == 1 ? 0.3 : (i == 2 ? 0.8 : 1.5)));
+        for (int i = 0; i < 3; i++) {
+            NSTimeInterval delay = (i == 0 ? 0.0 : (i == 1 ? 0.3 : 0.8));
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)),
                            dispatch_get_main_queue(), ^{
                 @try { sbs_apply((UIView *)self); }
@@ -743,6 +1265,46 @@ static NSUInteger sbs_hookDefiningClasses(Class base, SEL original, SEL replacem
     return hooked;
 }
 
+// 枚举当前 ObjC runtime 中带 SystemAperture/LiveActivity 语义的 UIView 类，
+// 只 hook 由该类自身定义的 drawRect:/layoutSubviews，避免重复交换继承方法。
+static void sbs_installApertureRenderProbes(void) {
+    int num = objc_getClassList(NULL, 0);
+    if (num <= 0) return;
+    Class *classes = (Class *)malloc(sizeof(Class) * num);
+    num = objc_getClassList(classes, num);
+    NSUInteger draws = 0, layouts = 0, matched = 0;
+    Class viewClass = [UIView class];
+    for (int i = 0; i < num; i++) {
+        Class c = classes[i];
+        if (!c || c == viewClass) continue;
+        BOOL isView = NO;
+        for (Class p = c; p; p = class_getSuperclass(p)) {
+            if (p == viewClass) { isView = YES; break; }
+        }
+        if (!isView) continue;
+        NSString *name = NSStringFromClass(c);
+        if (![name containsString:@"Aperture"] && ![name containsString:@"LiveActivity"] &&
+            ![name containsString:@"DynamicIsland"]) continue;
+        matched++;
+        unsigned int count = 0;
+        Method *methods = class_copyMethodList(c, &count);
+        BOOL hasDraw = NO, hasLayout = NO;
+        for (unsigned int j = 0; j < count; j++) {
+            SEL sel = method_getName(methods[j]);
+            if (sel == @selector(drawRect:)) hasDraw = YES;
+            if (sel == @selector(layoutSubviews)) hasLayout = YES;
+        }
+        free(methods);
+        if (hasDraw && SBSHook(c, @selector(drawRect:), SBSHelper.class, @selector(sbs_apertureDrawRect:))) draws++;
+        // Container 的 layoutSubviews 由正式 key-line hook 独占，避免诊断模式重复交换。
+        if (hasLayout && ![name containsString:@"SystemApertureContainerView"] &&
+            SBSHook(c, @selector(layoutSubviews), SBSHelper.class, @selector(sbs_apertureLayoutSubviews))) layouts++;
+    }
+    free(classes);
+    sbs_logNow(@"[apertureRenderHook] matched=%lu draw=%lu layout=%lu",
+               (unsigned long)matched, (unsigned long)draws, (unsigned long)layouts);
+}
+
 // ===========================================================================
 // 功能：资源库（App Library）文件夹背景透明
 //
@@ -780,6 +1342,18 @@ static void sbs_clearBgRecursive(UIView *v, int depth) {
 static void sbs_clearLibFolderBg(UIView *bgv) {
     if (!gLibBgClear || !bgv) return;
     if (![NSStringFromClass(bgv.class) containsString:@"Library"]) return;   // 门禁
+    // ⭐ v2.1.2：实测该视图【无任何子视图 ⇒ 纯背景】⇒ 整块隐藏最彻底。
+    //    只清 backgroundColor 对"自绘背景"无效 —— "建议/最近添加"就是这么漏掉的。
+    static int n = 0;
+    BOOL was = bgv.hidden;
+    bgv.hidden = YES;
+    bgv.layer.hidden = YES;   // ⭐ v2.1.2：layer 级隐藏 —— 绕开 view.hidden 被系统复位的路径
+    if (n < 5) {
+        n++;
+        sbs_logNow(@"[libBg] 命中 %@ frame=%@ 原hidden=%d bgA=%.2f",
+                   NSStringFromClass(bgv.class), NSStringFromCGRect(bgv.frame), was,
+                   bgv.backgroundColor ? CGColorGetAlpha(bgv.backgroundColor.CGColor) : -1.0);
+    }
     UIColor *c = bgv.backgroundColor;
     if (c && CGColorGetAlpha(c.CGColor) > 0.01) bgv.backgroundColor = [UIColor clearColor];
     for (UIView *s in bgv.subviews) sbs_clearBgRecursive(s, 0);
@@ -796,10 +1370,7 @@ static void sbs_clearLibFolderBg(UIView *bgv) {
 // ===========================================================================
 static void sbs_clearSearchFieldBg(UIView *tf) {
     if (!gLibBgClear || !tf) return;
-    if (![NSStringFromClass(tf.class) containsString:@"Search"]) return;   // 门禁①：类名
-    BOOL inLib = NO;                                                       // 门禁②：资源库上下文
-    for (UIView *p = tf; p; p = p.superview)
-        if ([NSStringFromClass(p.class) containsString:@"Library"]) { inLib = YES; break; }
+    if (![NSStringFromClass(tf.class) containsString:@"Search"]) return;   // 仅处理搜索框类
     static BOOL logged = NO;
     int hid = 0, clr = 0;
     for (UIView *s in tf.subviews) {
@@ -814,33 +1385,63 @@ static void sbs_clearSearchFieldBg(UIView *tf) {
     }
     if (!logged) {          // 首次调用取证：门禁是否通过 + 实际动了几个视图
         logged = YES;
-        sbs_logNow(@"[searchBg] cls=%@ inLib=%d 直接子视图=%lu → 隐藏材质%d 清背景%d",
-                   NSStringFromClass(tf.class), inLib, (unsigned long)tf.subviews.count, hid, clr);
+        sbs_logNow(@"[searchBg] cls=%@ 直接子视图=%lu → 隐藏材质%d 清背景%d",
+                   NSStringFromClass(tf.class), (unsigned long)tf.subviews.count, hid, clr);
     }
 }
 
 // ⚠️ 实测（11:41）：单独 hook SBHSearchTextField -layoutSubviews【不触发】——
 //   搜索框是常驻视图（随 SpringBoard 启动就在树里），进入资源库时只改可见性、
 //   不重新布局 ⇒ layoutSubviews 不再调用。故必须【主动扫描】兜底。
-static void sbs_sweepSearchField(void) {
-    Class SF = objc_getClass("SBHSearchTextField");
-    if (!SF) return;
+// ⚠️⚠️ 关键：资源库页面所在的窗口**不在** [UIApplication sharedApplication].windows 里
+//   （实测打点 (38,250) 处只有窗口层、扫到的 8 个 backgroundView 全是离屏副本）
+//   ⇒ 统一用 connectedScenes 收集【所有场景】的窗口。
+static NSArray<UIWindow *> *sbs_allWindows(void) {
+    // ⚠️ 实测：connectedScenes 收不到资源库所在的 SBHomeScreenWindow（返回 0 个 Pod），
+    //    却会混入控制中心等后台场景 ⇒ 以 [UIApplication windows] 为准。
+    return [UIApplication sharedApplication].windows;
+}
+
+// ⚠️ 实测（11:52）：hook `SBHLibraryCategoryPodBackgroundView -layoutSubviews` **不可靠** ——
+//   普通分类卡片透明了，但"建议/最近添加"两行没变（探针实测其 bgA 仍 = 1.00、hid = 0，
+//   说明清理根本没执行到）⇒ 部分实例创建后不再重布局，hook 不触发。
+//   ⇒ 统一改为【主动扫描】兜底（与搜索框同一套机制，0.5s 一轮）。
+static void sbs_sweepAll(void) {
+    Class PODBG = objc_getClass("SBHLibraryCategoryPodBackgroundView");
     NSMutableArray *stack = [NSMutableArray array];
-    for (UIWindow *w in [UIApplication sharedApplication].windows) [stack addObject:w];
+    for (UIWindow *w in sbs_allWindows()) [stack addObject:w];
     int guard = 0;
-    while (stack.count && guard++ < 20000) {
+    int podHit = 0, podDirty = 0;
+    // ⚠️ 上限 20000 → 200000：资源库页面 + SpringBoard 整个视图树节点数远超 2 万，
+    //    旧上限会让遍历提前中断、后段的 backgroundView 根本没被扫到（"建议/最近添加"漏掉的原因）
+    while (stack.count && guard++ < 200000) {
         UIView *v = stack.lastObject;
         [stack removeLastObject];
-        if ([v isKindOfClass:SF]) sbs_clearSearchFieldBg(v);
+        if (PODBG && [v isKindOfClass:PODBG]) {
+            podHit++;
+            if (v.backgroundColor && CGColorGetAlpha(v.backgroundColor.CGColor) > 0.01) podDirty++;
+            sbs_clearLibFolderBg(v);
+        }
+        else if ([NSStringFromClass(v.class) containsString:@"Search"])
+            sbs_clearSearchFieldBg(v);
         for (UIView *c in v.subviews) [stack addObject:c];
+    }
+    {   // 每 2s 记一次统计：若 podDirty 持续 > 0 ⇒ 系统在改回；若恒为 0 ⇒ 处理已生效
+        static NSTimeInterval last = 0;
+        NSTimeInterval now = [NSDate date].timeIntervalSince1970;
+        if (now - last > 2.0) {
+            last = now;
+            sbs_logNow(@"[sweep] 节点=%d bg视图=%d 其中带色=%d", guard, podHit, podDirty);
+        }
     }
 }
 
 // 延迟安装资源库相关 hook（类可能晚于 ctor 加载；避开 ctor 阶段触发 +initialize 的风险）
 static void sbs_installLibBgHook(void) {
     static int tries = 0;
-    static BOOL done = NO;
-    if (done) return;
+    static BOOL bgDone = NO;
+    static BOOL sfDone = NO;
+    if (bgDone && sfDone) return;
     Class BG = objc_getClass("SBHLibraryCategoryPodBackgroundView");
     Class SF = objc_getClass("SBHSearchTextField");
     if (!BG && !SF) {
@@ -851,19 +1452,62 @@ static void sbs_installLibBgHook(void) {
             sbs_logNow(@"[hook] 资源库相关类等待超时（%d 次）", tries);
         return;
     }
-    done = YES;
-    if (BG) {
-        BOOL ok = SBSHook(BG, @selector(layoutSubviews), SBSHelper.class,
-                          @selector(sbs_libBgLayout));
-        sbs_logNow(@"[hook] 资源库文件夹背景 SBHLibraryCategoryPodBackgroundView → %@",
-                   ok ? @"已安装" : @"失败");
+    if (BG && !bgDone) {
+        BOOL ok  = SBSHook(BG, @selector(layoutSubviews), SBSHelper.class,
+                           @selector(sbs_libBgLayout));
+        BOOL ok2 = SBSHook(BG, @selector(setBackgroundColor:), SBSHelper.class,
+                           @selector(sbs_podBgSetBackgroundColor:));
+        BOOL ok3 = SBSHook(BG, @selector(setHidden:), SBSHelper.class,
+                           @selector(sbs_podBgSetHidden:));
+        sbs_logNow(@"[hook] 资源库背景 SBHLibraryCategoryPodBackgroundView → layout=%@ setBg=%@ setHidden=%@",
+                   ok ? @"OK" : @"失败", ok2 ? @"OK" : @"失败", ok3 ? @"OK" : @"失败");
+        bgDone = ok && ok2 && ok3;
     }
-    if (SF) {
+    if (SF && !sfDone) {
         BOOL ok = SBSHook(SF, @selector(layoutSubviews), SBSHelper.class,
                           @selector(sbs_searchFieldLayout));
         sbs_logNow(@"[hook] 资源库搜索框背景 SBHSearchTextField → %@",
                    ok ? @"已安装" : @"失败");
+        sfDone = ok;
     }
+    if (!(bgDone && sfDone) && tries++ < 40)
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{ sbs_installLibBgHook(); });
+}
+
+// 只扫描 UIView 树并精确命中 System Aperture 容器；不访问 CALayer 子树。
+// 仅在 hook 安装成功后执行一次，用于处理安装前已经存在且暂未重新布局的实时活动。
+static void sbs_suppressExistingApertureKeylines(UIView *v, int depth, int *hits) {
+    if (!v || depth > 20) return;
+    if ([NSStringFromClass(v.class) containsString:@"SystemApertureContainerView"]) {
+        sbs_suppressApertureKeylines(v);
+        if (hits) (*hits)++;
+    }
+    for (UIView *sub in v.subviews)
+        sbs_suppressExistingApertureKeylines(sub, depth + 1, hits);
+}
+
+static void sbs_installApertureKeylineHook(void) {
+    static BOOL done = NO;
+    static int tries = 0;
+    if (done) return;
+    Class container = objc_getClass("SBSystemApertureContainerView");
+    if (!container) {
+        if (tries++ < 40)
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{ sbs_installApertureKeylineHook(); });
+        return;
+    }
+    done = SBSHook(container, @selector(layoutSubviews), SBSHelper.class,
+                   @selector(sbs_apertureLayoutSubviews));
+    sbs_logNow(@"[hook] SystemAperture key-line 精确布局保护=%@",
+               done ? @"OK" : @"失败");
+    if (!done) return;
+
+    int hits = 0;
+    for (UIWindow *w in [UIApplication sharedApplication].windows)
+        sbs_suppressExistingApertureKeylines(w, 0, &hits);
+    sbs_logNow(@"[apertureKeyline] 启动定向扫描命中=%d", hits);
 }
 
 // ===========================================================================
@@ -890,6 +1534,18 @@ static void sbs_install(void) {
     }
     installed = YES;
     NSLog(@"[StatusBarScale] status bar class ready; installing core hooks");
+    if (gApertureProbeEnabled) {
+        sbs_installApertureRenderProbes();
+        BOOL caDisplayOK = SBSHook([CALayer class], @selector(display),
+                                   SBSHelper.class, @selector(sbs_layerDisplay));
+        BOOL caDrawOK = SBSHook([CALayer class], @selector(drawInContext:),
+                                SBSHelper.class, @selector(sbs_layerDrawInContext:));
+        BOOL delegateDrawOK = SBSHook([UIView class], @selector(drawLayer:inContext:),
+                                      SBSHelper.class, @selector(sbs_viewDrawLayer:inContext:));
+        sbs_logNow(@"[hook] CoreAnimation 实时活动渲染 display=%@ draw=%@ delegate=%@",
+                   caDisplayOK ? @"OK" : @"失败", caDrawOK ? @"OK" : @"失败",
+                   delegateDrawOK ? @"OK" : @"失败");
+    }
 
     // ① 布局终点 hook：每帧可重入 → 承载主缩放 + leading 缩放
     BOOL layoutOK = SBSHook(FG, @selector(layoutSubviews),
@@ -900,6 +1556,30 @@ static void sbs_install(void) {
     BOOL transformOK = SBSHook([UIView class], @selector(setTransform:),
                                SBSHelper.class, @selector(sbs_viewSetTransform:));
     sbs_logNow(@"[hook] UIView.setTransform: → %@", transformOK ? @"已安装" : @"失败");
+
+    BOOL moveOK = SBSHook([UIView class], @selector(didMoveToWindow),
+                          SBSHelper.class, @selector(sbs_viewDidMoveToWindow));
+    BOOL hiddenOK = SBSHook([UIView class], @selector(setHidden:),
+                            SBSHelper.class, @selector(sbs_viewSetHidden:));
+    BOOL bgOK = SBSHook([UIView class], @selector(setBackgroundColor:),
+                        SBSHelper.class, @selector(sbs_viewSetBackgroundColor:));
+    BOOL alphaOK = SBSHook([UIView class], @selector(setAlpha:),
+                           SBSHelper.class, @selector(sbs_viewSetAlpha:));
+    sbs_logNow(@"[hook] UIView 搜索框/实时活动保护 didMove=%@ hidden=%@ bg=%@ alpha=%@",
+               moveOK ? @"OK" : @"失败", hiddenOK ? @"OK" : @"失败",
+               bgOK ? @"OK" : @"失败", alphaOK ? @"OK" : @"失败");
+
+    // v2.1.23：普通 border/stroke/shadow 已由日志排除，不再全局 hook 这些高频
+    // Core Animation setter。控制中心转场会创建大量 layer，旧祖先链判断会阻塞主线程。
+    BOOL layerHiddenOK = SBSHook([CALayer class], @selector(setHidden:),
+                                 SBSHelper.class, @selector(sbs_layerSetHidden:));
+    BOOL layerOpacityOK = SBSHook([CALayer class], @selector(setOpacity:),
+                                  SBSHelper.class, @selector(sbs_layerSetOpacity:));
+    sbs_logNow(@"[hook] CALayer key-line 持续保护 hidden=%@ opacity=%@",
+               layerHiddenOK ? @"OK" : @"失败", layerOpacityOK ? @"OK" : @"失败");
+
+    // 精确 hook 私有容器；类晚加载时有限重试。
+    sbs_installApertureKeylineHook();
 
     // ③ fg 重新挂窗（App↔主屏切换/解锁）时补施
     BOOL windowOK = SBSHook(FG, @selector(didMoveToWindow),
@@ -920,18 +1600,17 @@ static void sbs_install(void) {
     sbs_logNow(@"[hook] 子类补 hook layout=%lu window=%lu",
                (unsigned long)layoutSubs, (unsigned long)windowSubs);
 
-    // ⚠️ 资源库背景类可能晚于 ctor 加载，且 ctor 阶段对任意类调 class_getInstanceMethod
-    //    会触发 +initialize 而崩溃（v1.1.0 血泪教训）⇒ 延迟 3s 安装并带重试。
+    // ⚠️ 资源库背景类可能晚于 ctor 加载。立即切到主线程尝试安装，
+    //    类未就绪时由 sbs_installLibBgHook 以 0.5s 间隔重试，避免转场时出现背景闪现。
     if (gLibBgClear) {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{ sbs_installLibBgHook(); });
-        // 搜索框常驻、进资源库不重布局 ⇒ 每 2s 主动扫描一次（遍历视图树，开销可忽略）
-        static dispatch_source_t t = nil;
-        t = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
-        dispatch_source_set_timer(t, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)),
-                                  (uint64_t)(2 * NSEC_PER_SEC), (uint64_t)(0.3 * NSEC_PER_SEC));
-        dispatch_source_set_event_handler(t, ^{ sbs_sweepSearchField(); });
-        dispatch_resume(t);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            sbs_installLibBgHook();
+            sbs_sweepAll();
+            // 部分资源库视图会在 SpringBoard 启动后稍晚创建，再补一次即可；
+            // 后续由目标类 layout/setter hook 维持，不再永久全树轮询。
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{ sbs_sweepAll(); });
+        });
     }
 }
 

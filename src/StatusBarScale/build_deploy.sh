@@ -16,7 +16,7 @@ REMOTE_TMP=/var/tmp          # ⚠️ 设备上 /tmp 不可靠，统一用 /var/
 echo "==> 1/6 编译 (arm64e, iOS SDK $(basename "$SDK"))"
 clang -arch arm64e -miphoneos-version-min=14.0 -isysroot "$SDK" \
   -dynamiclib -fobjc-arc -O2 -Wall -Wno-unused-variable \
-  -framework Foundation -framework UIKit -framework CoreGraphics \
+  -framework Foundation -framework UIKit -framework CoreGraphics -framework QuartzCore \
   -install_name "/Library/MobileSubstrate/DynamicLibraries/$PKG.dylib" \
   -o "$PKG.dylib" "$PKG.m"
 

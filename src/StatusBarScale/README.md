@@ -1,6 +1,13 @@
 # StatusBarScale — 状态栏图标缩放
 
-**包名** `com.xu.statusbarscale` · **版本** 2.1.1 · **宿主** 仅 SpringBoard
+**包名** `com.xu.statusbarscale` · **版本** 2.1.24 · **宿主** 仅 SpringBoard
+
+> v2.1.23：实时活动边框改为精确 hook `SBSystemApertureContainerView` 的 key-line，
+> 移除状态栏布局中的全窗口/全图层遍历及高频 CALayer 边框、描边、阴影 hook；
+> 资源库全树扫描改为启动阶段两次，消除下拉控制中心时的主线程滞后。
+
+> v2.1.24：关闭正式版布局期诊断递归；收紧资源库搜索门禁；修复资源库 Hook
+> 部分成功时停止重试的问题；key-line layer 改为弱引用直接匹配，并避免重复属性写入。
 
 > v2.0.0 起本插件**只做状态栏缩放**：不含辅助图标条、不含设置面板、不读取任何配置文件，
 > 参数全部硬编码在源码里。
@@ -105,8 +112,8 @@ SBHSearchBar {430×147}
 ```
 
 - ⚠️⚠️ **搜索框是常驻视图**（随 SpringBoard 启动就在树里），进入资源库时**只改可见性、
-  不重新布局** ⇒ 只 hook `-layoutSubviews` **完全不触发**（实测 `[searchBg]` 日志 0 条）。
-  正确做法：**每 2s 主动扫描**视图树，找 `SBHSearchTextField` 实例后清理。
+  不重新布局** ⇒ 仅靠 `-layoutSubviews` 不够。启动阶段执行两次定向兜底扫描，后续由
+  `didMoveToWindow` / `setHidden:` / `setBackgroundColor:` hook 持续维持，避免永久轮询。
 - 门禁：类名含 `Search` **且** 祖先链含 `Library` ⇒ 不误伤其它搜索框
 
 ## 参数（硬编码，v2.0.0）
