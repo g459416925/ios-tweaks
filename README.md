@@ -14,9 +14,41 @@ https://g459416925.github.io/ios-tweaks/
 
 | 包名 | 版本 | 说明 |
 |---|---|---|
+| `com.xu.bounceit16` | 1.0.2 | **BounceIt16** — SpringBoard 果冻弹性动画（界面冲过头 → 回弹 → 震荡几下停） |
 | `com.xu.compactorfix` | 1.0.0 | **CompactorFix** — 把系统 UI 字体整体换成 Apple Watch 的 SF Compact |
 | `com.xu.screentimelocker16` | 5.2.1 | **ScreenTimeLocker16** — 让「屏幕使用时间」的 App 限额真正锁得住 |
 | `com.xu.statusbarscale` | 2.1.1 | **StatusBarScale** — 状态栏图标缩放（灵动岛右侧 0.90× 对齐时间、时间旁/岛左 0.50×）+ 资源库分类卡片与搜索框背景透明 |
+
+### BounceIt16
+
+给 SpringBoard 的系统动画加上**弹簧回弹**：界面冲过头 → 回弹 → 小幅震荡几下才停。
+是 2018 年老插件 **Bounce It!**（`com.jakeashacks.bounceit`）的**重写版**。
+
+hook `SpringBoardFoundation` 的两个动画参数容器（两者都继承 `PTSettings`，属性走 getter）：
+
+- `SBFFluidBehaviorSettings` 的 `-setDampingRatio:`（强制写入）
+- `SBFAnimationSettings` 的 `-damping` / `-stiffness` / `-mass` / `-epsilon`（getter 恒返回本插件值）
+
+**原版的另外 19 个 hook 点在 iOS 16 已全部失效**（探针实测）：`SBFluidBehaviorSettings` /
+`SBAnimationSettings` / `SBFSpringAnimationSettings` **类已不存在**；`SBReachabilitySettings` /
+`SBAppSwitcherSettings` 虽在，但**不再有 damping/stiffness 属性**（靠 `-animationSettings` 转发）。
+
+手感参数（ζ = `damping / (2√(stiffness·mass))`，固定 `stiffness=1666` / `mass=2.5`）：
+
+| `kBDamping` | `kBDRatio` | ζ | 过冲 | 收敛 | 观感 |
+|---|---|---|---|---|---|
+| 56 | 0.43 | 0.434 | 22% | 0.36 s | 原版 BounceIt 档 |
+| **42** | **0.33** | **0.325** | **34%** | **0.48 s** | **当前 v1.0.2：弹 2 下即停** |
+| 30 | 0.24 | 0.232 | 47% | 0.67 s | 弹 3~4 下；界面已就位后仍在晃 |
+| 22 | 0.17 | 0.170 | 58% | 0.91 s | 很弹，明显拖尾 |
+
+⭐ **调参看「收敛时间」而非只看过冲**：App 界面视觉就位约 0.35 s，只要 `4/(ζω) > 0.35 s`
+就会出现「界面已经加载好了但还在弹」。既保留弹跳又不拖尾 ⇒ **ζ 取 0.30~0.35**。
+
+> ⚠️ **为什么不用原版 BounceIt**：它是 2018 年的 universal 二进制，RootHide 的 `roothidepatch`
+> 处理其 arm64e 切片时会**改坏 Mach-O 段结构且不更新签名哈希**（`codesign --verify` 报
+> `invalid signature`）⇒ dyld 拒绝 `dlopen`、ellekit 静默跳过（无日志无崩溃，插件"像没装"）。
+> 瘦身单 arm64e / plist 转 XML / 走 dpkg 均救不回来，故自行重写。
 
 ### CompactorFix
 
@@ -114,6 +146,7 @@ ios-tweaks/
 │   ├── build_deb.py                    # 打 .deb（版本号自动取自源码）
 │   ├── README.md                       # 该插件的原理与构建说明
 │   └── docs/                           # 各版本改动与实机验证记录
+├── src/BounceIt16/                     # 果冻弹性动画（宿主 SpringBoard）
 ├── src/ScreenTimeLocker16/             # 屏幕使用时间锁（宿主 SpringBoard）
 ├── src/CompactorFix/                   # 系统字体换 SF Compact（宿主 全 UIKit App）
 ├── src/StatusBarScale/                 # 状态栏图标缩放（宿主仅 SpringBoard）
@@ -123,8 +156,8 @@ ios-tweaks/
 ## 发布新版本
 
 ```bash
-# 以 <包名> 为 ScreenTimeLocker16 / CompactorFix / StatusBarScale 之一
-# 1. 改 src/<包名>/<包名>.m 里的版本宏（ScreenTimeLocker16=STL_VERSION；CompactorFix=CF_VERSION；StatusBarScale=SBS_VERSION）
+# 以 <包名> 为 BounceIt16 / ScreenTimeLocker16 / CompactorFix / StatusBarScale 之一
+# 1. 改 src/<包名>/<包名>.m 里的版本宏（BounceIt16=BIT16_VERSION；ScreenTimeLocker16=STL_VERSION；CompactorFix=CF_VERSION；StatusBarScale=SBS_VERSION）
 # 2. 交叉编译并签名，产出 <包名>.signed.dylib（同时会部署到手机；见脚本内说明）
 cd src/<包名> && ./build_deploy.sh && cd ../..
 # 3. 打包 deb（版本号自动读取源码，无需手填）

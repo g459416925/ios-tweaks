@@ -1,3 +1,21 @@
+Package: com.xu.bounceit16
+Name: BounceIt16
+Version: 1.0.2
+Architecture: iphoneos-arm64e
+Description: SpringBoard 果冻弹性动画（BounceIt 自研替代版）。
+ 劫持 SBFFluidBehaviorSettings.setDampingRatio: 与 SBFAnimationSettings 的
+ damping/stiffness/mass/epsilon，让系统动画带弹簧回弹（阻尼比约 0.23）。
+Maintainer: g459416925
+Author: g459416925
+Section: Tweaks
+Depends: mobilesubstrate
+Installed-Size: 66
+Tag: purpose::extension
+Filename: ./debs/BounceIt16_1.0.2_iphoneos-arm64e.deb
+Size: 4400
+MD5sum: b6cfd63e768beadae7d49cc884e2b574
+SHA256: c48289305ab22127d2a00087908dad4299b8fbe06f6de4b4328a0cefe5ea47de
+
 Package: com.xu.compactorfix
 Name: CompactorFix
 Version: 1.0.0

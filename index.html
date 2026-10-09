@@ -57,6 +57,11 @@
   <table>
     <tr><th>包名</th><th>版本</th><th>说明</th></tr>
     <tr>
+      <td><code>com.xu.bounceit16</code></td>
+      <td>1.0.2</td>
+      <td>BounceIt16 — SpringBoard 果冻弹性动画（界面冲过头 → 回弹 → 震荡几下停）</td>
+    </tr>
+    <tr>
       <td><code>com.xu.compactorfix</code></td>
       <td>1.0.0</td>
       <td>CompactorFix — 把系统 UI 字体整体换成 Apple Watch 的 SF Compact</td>
@@ -72,6 +77,22 @@
       <td>StatusBarScale — 状态栏图标缩放（右侧 0.90× / 时间旁 0.50×）+ 资源库分类卡片与搜索框背景透明</td>
     </tr>
   </table>
+
+  <h2>BounceIt16</h2>
+  <ol>
+    <li>给 SpringBoard 系统动画加<b>弹簧回弹</b>：界面冲过头 → 回弹 → 小幅震荡几下才停</li>
+    <li>hook <code>SBFFluidBehaviorSettings -setDampingRatio:</code> 与
+        <code>SBFAnimationSettings</code> 的 <code>damping / stiffness / mass / epsilon</code>
+        （两者继承 <code>PTSettings</code>，属性走 getter）</li>
+    <li>原版 <b>Bounce It!</b> 的另外 19 个 hook 点在 iOS 16 <b>已全部失效</b>
+        （相关类已不存在 / 属性被移除），故本插件只挂真实存在的 5 个目标</li>
+    <li>手感：阻尼比 ζ ≈ <b>0.33</b>（过冲 34%、约 <b>0.48 s</b> 收敛）—— 弹 2 下即停；
+        只调 damping、不动 stiffness（改 stiffness 会改动画节奏）</li>
+  </ol>
+  <p class="sub" style="margin-top:14px">
+    ⚠️ 仅注入 SpringBoard。原版 BounceIt 的二进制在 RootHide 下<b>无法加载</b>
+    （roothidepatch 破坏 arm64e 切片签名 → dyld 拒绝），故本版为自行重写。
+  </p>
 
   <h2>CompactorFix</h2>
   <ol>
