@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Filter</key>
+	<dict>
+		<!-- ⚠️ 实测结论（2026-10-09，v2.2.0）：
+		     ① `Bundles` 走不通 chronod —— ellekit 匹配的是【进程内已加载的 bundle】，
+		        chronod 是裸 daemon、进程内没有名为 com.apple.chronod 的 bundle ⇒ 匹配失败。
+		        同文件里 SpringBoard 能命中是因为 com.apple.springboard 确实被 dlopen 了。
+		     ② `Mode` / `Executables` 组合实测无效（chronod 未被注入），ellekit 未采纳。
+		     ③ 改用 `Classes` —— 设备上 CompactorFix 用 Filter.Classes=[UIApplication]
+		        实测能注入 chronod（syslog 抓到其构造日志）⇒ 本插件同样采用。
+		     ⇒ 副作用：所有含 UIApplication 的进程都会 dlopen 本 dylib；
+		        构造函数内已有进程守卫，只有 SpringBoard / 小组件渲染进程继续做事。
+		     ⚠️ 绝不写框架级 bundle id。 -->
+		<key>Classes</key>
+		<array>
+			<string>UIApplication</string>
+		</array>
+	</dict>
+</dict>
+</plist>

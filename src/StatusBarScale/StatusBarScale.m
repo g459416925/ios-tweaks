@@ -41,7 +41,7 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 
-#define SBS_VERSION @"2.2.0"
+#define SBS_VERSION @"2.2.1"
 
 // ⭐⭐ 日志路径（2026-10-09 血泪根因）：RootHide 下不同进程的路径解析不一致 ——
 //   SpringBoard 里 `/var/mobile/Documents` 可写；但 chronod（system daemon）里
@@ -1060,13 +1060,15 @@ static void sbs_wlogFile(NSString *line) {
     sbs_wlogFile([NSString stringWithFormat:fmt, ##__VA_ARGS__]); \
 } while (0)
 
-// 总开关。⭐⭐ 2026-10-09 对齐全量官方 RWB 源码后重开：
-//   此前"抹第 2+ 背景板仍在 / 抹第 1 变黑"的实测结论，根因是**强制暗色未配套**——
-//   官方 RWB 的 RBShape 抹除必须配合「UIWindow + CHUISWidgetScene + CHS*PresentationAttributes
-//   强制 dark colorScheme」：暗色下背景板才以【独立超阈值矩形】呈现，可被尺寸分离。
-//   浅色下背景与内容同尺寸，无论跳/抹都会误伤 → 变黑或无效。
-//   ⇒ 恢复渲染侧抹除（官方 RWB 的主力手段），并与强制暗色配套使用。
-static BOOL    gWidgetBgClear = YES;
+// 总开关（chronod 渲染侧 RBShape 抹除）。⭐⭐ 2026-10-09 v2.2.1 实测关闭：
+//   kickstart chronod 后日志证实抹除执行（80 组"跳过 170x170 → 抹除 170x170x2/153x153x2"），
+//   但主屏时钟显示【完全不变】⇒ chronod 渲染结果不走主屏显示路径（SB 用自身宿主/快照），
+//   渲染侧抹除无效；且 153x153 疑似表盘圆内容，抹它有破坏内容的风险。
+//   背景板移除的主力 = SB 侧（材质 alpha=0 / 快照拦截 / 清底色），保留不动。
+static BOOL    gWidgetBgClear = NO;
+// ⭐⭐ v2.2.1 强制暗色开关（默认关）。此前无条件对所有 widget 窗口强制 Dark，
+//   时钟模拟表盘被渲染成 dark 样式 = 黑色圆盘 —— 即许总报告的"时钟黑黑的"。
+//   原生浅色模式时钟 = 白盘黑针；关掉强制暗色即恢复。
 // 阈值（RBShape 绘制坐标系 = 屏幕点）。⭐⭐ 2026-10-09 实机实测绘制矩形分布：
 //     364x170  ×7   ← 整块 widget 尺寸（背景板与根层都在这个尺寸上）
 //     165x146  ×1   ← 内容卡
@@ -1075,6 +1077,7 @@ static BOOL    gWidgetBgClear = YES;
 //   ⇒ 150 阈值恰好【只命中整块 widget 尺寸】的绘制，不误伤内容元素。
 static CGFloat gWidgetMaxW    = 150.0f;
 static CGFloat gWidgetMaxH    = 150.0f;
+static BOOL    gWidgetForceDark = NO;   // v2.2.1：强制暗色总开关（默认关，恢复原生外观）
 // 跳过【前 N 个】"整块尺寸"绘制，第 N+1 个起抹除（对齐官方 RWB iOS16 策略）。
 // ⚠️ 必须与「强制暗色」配套：暗色下第 1 个大矩形是内容根层（跳过），第 2+ 个才是背景板（抹除）。
 static int     gWidgetSkipN   = 1;
@@ -1460,17 +1463,17 @@ static void sbs_dumpLayers(CALayer *l, int depth, int maxDepth) {
         }
     }
     id w = [self sbs_wbgWindowInitWithWindowScene:scene];
-    // ⭐⭐ 强制暗色（对齐官方 RWB：对所有 widget 窗口无条件强制 dark，不只白名单）。
-    //    这是 RBShape 抹除生效的前提 —— 暗色下背景板才以独立超阈值矩形呈现，可被尺寸分离。
-    if (w && isWidgetScene) {
+    // ⭐ v2.2.1 默认不强制暗色 —— 无条件 Dark 会把时钟模拟表盘渲染成黑色圆盘（"黑黑的"）。
+    //    保留开关（gWidgetForceDark）以便回退实验。
+    if (w && isWidgetScene && gWidgetForceDark) {
         [(UIWindow *)w setOverrideUserInterfaceStyle:UIUserInterfaceStyleDark];
     }
     if (mark && w) {
         objc_setAssociatedObject(w, kSBSWbgWindowMark, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         UIWindow *win = (UIWindow *)w;
-        sbs_logNow(@"[wbg] widget 窗口打标 %.0fx%.0f id=%@（已强制暗色）",
-                   win.bounds.size.width, win.bounds.size.height, wid);
-        SBS_WLOG(@"打标 %.0fx%.0f id=%@（已强制暗色）", win.bounds.size.width, win.bounds.size.height, wid);
+        sbs_logNow(@"[wbg] widget 窗口打标 %.0fx%.0f id=%@（强制暗色=%d）",
+                   win.bounds.size.width, win.bounds.size.height, wid, gWidgetForceDark);
+        SBS_WLOG(@"打标 %.0fx%.0f id=%@（强制暗色=%d）", win.bounds.size.width, win.bounds.size.height, wid, gWidgetForceDark);
     }
     return w;
 }
@@ -1574,7 +1577,7 @@ static void sbs_dumpLayers(CALayer *l, int depth, int maxDepth) {
 }
 
 - (unsigned long long)sbs_wbgHostColorScheme {
-    if (sbs_hostIsWhitelisted(self)) return 2;     // 强制暗色（对齐上游，需与材质拦截配套）
+    if (gWidgetForceDark && sbs_hostIsWhitelisted(self)) return 2;  // v2.2.1 默认关：不再强制暗色
     return [self sbs_wbgHostColorScheme];
 }
 
@@ -1665,13 +1668,15 @@ static void sbs_dumpLayers(CALayer *l, int depth, int maxDepth) {
 
 // ── chronod 侧强制暗色（对齐官方 RWB，无条件 return 2，与 RBShape 抹除配套）──
 //   ⚠️ 缺这些 hook 时，widget 在浅色下渲染 → 背景板与内容同尺寸 → RBShape 抹除误伤/无效。
-// CHUISWidgetScene.colorScheme（返回 unsigned long long，与 SB 侧 host 一致）
+// CHUISWidgetScene.colorScheme（返回 unsigned long long）—— v2.2.1 默认关（跟 gWidgetForceDark）
 - (unsigned long long)sbs_wbgSceneColorScheme {
-    return 2;
+    if (gWidgetForceDark) return 2;
+    return [self sbs_wbgSceneColorScheme];
 }
 // CHSMutableScreenshotPresentationAttributes / CHSScreenshotPresentationAttributes.colorScheme（返回 long long）
 - (long long)sbs_wbgAttrColorScheme {
-    return 2;
+    if (gWidgetForceDark) return 2;
+    return [self sbs_wbgAttrColorScheme];
 }
 @end
 
