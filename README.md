@@ -16,6 +16,7 @@ https://g459416925.github.io/ios-tweaks/
 |---|---|---|
 | `com.xu.bounceit16` | 1.0.2 | **BounceIt16** — SpringBoard 果冻弹性动画（界面冲过头 → 回弹 → 震荡几下停） |
 | `com.xu.compactorfix` | 1.0.0 | **CompactorFix** — 把系统 UI 字体整体换成 Apple Watch 的 SF Compact |
+| `com.xu.keyboardcorner16` | 1.0.0 | **KeyboardCorner16** — 系统键盘全按键圆角增强修复版（完美支持字母与数字键盘圆角矩形） |
 | `com.xu.screentimelocker16` | 5.2.1 | **ScreenTimeLocker16** — 让「屏幕使用时间」的 App 限额真正锁得住 |
 | `com.xu.statusbarscale` | 2.1.1 | **StatusBarScale** — 状态栏图标缩放（灵动岛右侧 0.90× 对齐时间、时间旁/岛左 0.50×）+ 资源库分类卡片与搜索框背景透明 |
 

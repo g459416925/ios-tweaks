@@ -41,6 +41,27 @@ Size: 2816
 MD5sum: bf6109754a963872500eeb01c9dfd529
 SHA256: 964f11c4e14b5207f527fdcc4c89cbd7c34117d1c916cd263c9d76f309cf79b7
 
+Package: com.xu.keyboardcorner16
+Name: KeyboardCorner16
+Version: 1.0.0
+Architecture: iphoneos-arm64e
+Description: 系统键盘全按键圆角增强修复版（完美支持字母与数字键盘按键圆角）。
+ 修复原版键盘圆角在切换为数字键盘输入时按键未显示为圆角矩形的问题，
+ 全面覆盖 UIKBRenderGeometry、10Key 九宫格及数字面板渲染路径。
+Conflicts: com.liuf.jpyj
+Replaces: com.liuf.jpyj, com.xu.kbprobe
+Provides: com.liuf.jpyj
+Maintainer: g459416925
+Author: xu
+Section: Tweaks
+Depends: mobilesubstrate
+Installed-Size: 67
+Tag: purpose::extension
+Filename: ./debs/KeyboardCorner16_1.0.0_iphoneos-arm64e.deb
+Size: 4622
+MD5sum: 6b50715450a58f14fd6808cf39bbab8a
+SHA256: d64fa6b81fafdf06272d5f32a2cd1cf387972f3d8d79d81154edda9a785b2c63
+
 Package: com.xu.screentimelocker16
 Name: ScreenTimeLocker16
 Version: 5.2.0
