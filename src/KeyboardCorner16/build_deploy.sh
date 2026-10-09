@@ -3,7 +3,7 @@
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"; cd "$HERE"
 NAME=KeyboardCorner16; PKG=com.xu.keyboardcorner16; ARCH=iphoneos-arm64e
-VER=$(grep -o '#define KBC_VERSION @"[^"]*"' "$NAME.m" | sed 's/.*"\([^"]*\)".*/\1/')
+VER=$(grep -o '#define KBC_VERSION @\{0,1\}"[^"]*"' "$NAME.m" | sed 's/.*"\([^"]*\)".*/\1/')
 [ -n "$VER" ] || { echo "!! 读不到 KBC_VERSION"; exit 1; }
 echo "   版本: $VER"
 SDK=$(xcrun --sdk iphoneos --show-sdk-path)

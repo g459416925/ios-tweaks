@@ -62,6 +62,69 @@ Size: 4622
 MD5sum: 6b50715450a58f14fd6808cf39bbab8a
 SHA256: d64fa6b81fafdf06272d5f32a2cd1cf387972f3d8d79d81154edda9a785b2c63
 
+Package: com.xu.keyboardcorner16
+Name: KeyboardCorner16
+Version: 1.0.1
+Architecture: iphoneos-arm64e
+Description: 系统键盘全按键圆角增强修复版（完美支持字母与数字键盘按键圆角）。
+ 修复原版键盘圆角在切换为数字键盘输入时按键未显示为圆角矩形的问题，
+ 全面覆盖 UIKBRenderGeometry、10Key 九宫格及数字面板渲染路径。
+Conflicts: com.liuf.jpyj
+Replaces: com.liuf.jpyj, com.xu.kbprobe
+Provides: com.liuf.jpyj
+Maintainer: g459416925
+Author: xu
+Section: Tweaks
+Depends: mobilesubstrate
+Installed-Size: 66
+Tag: purpose::extension
+Filename: ./debs/KeyboardCorner16_1.0.1_iphoneos-arm64e.deb
+Size: 4016
+MD5sum: 30f26b911ff415851efe0660642724ec
+SHA256: e65c14d273b18f0eceac4fcaad890fe50b2174658e5b97597f81d929b0d13fb6
+
+Package: com.xu.keyboardcorner16
+Name: KeyboardCorner16
+Version: 1.0.2
+Architecture: iphoneos-arm64e
+Description: 系统键盘全按键圆角增强修复版（完美支持字母与数字键盘按键圆角）。
+ 修复原版键盘圆角在切换为数字键盘输入时按键未显示为圆角矩形的问题，
+ 全面覆盖 UIKBRenderGeometry、10Key 九宫格及数字面板渲染路径。
+Conflicts: com.liuf.jpyj
+Replaces: com.liuf.jpyj, com.xu.kbprobe
+Provides: com.liuf.jpyj
+Maintainer: g459416925
+Author: xu
+Section: Tweaks
+Depends: mobilesubstrate
+Installed-Size: 66
+Tag: purpose::extension
+Filename: ./debs/KeyboardCorner16_1.0.2_iphoneos-arm64e.deb
+Size: 4070
+MD5sum: 5bc4fe6df79064ad90ed90b457e4005f
+SHA256: e7bc76692ecb26a30e86cb58df3c41631b116b6c7793b68eda1151f376bd3552
+
+Package: com.xu.keyboardcorner16
+Name: KeyboardCorner16
+Version: 1.0.3
+Architecture: iphoneos-arm64e
+Description: 系统键盘全按键圆角增强修复版（完美支持字母与数字键盘按键圆角）。
+ 修复原版键盘圆角在切换为数字键盘输入时按键未显示为圆角矩形的问题，
+ 全面覆盖 UIKBRenderGeometry、10Key 九宫格及数字面板渲染路径。
+Conflicts: com.liuf.jpyj
+Replaces: com.liuf.jpyj, com.xu.kbprobe
+Provides: com.liuf.jpyj
+Maintainer: g459416925
+Author: xu
+Section: Tweaks
+Depends: mobilesubstrate
+Installed-Size: 67
+Tag: purpose::extension
+Filename: ./debs/KeyboardCorner16_1.0.3_iphoneos-arm64e.deb
+Size: 4456
+MD5sum: d6c1d719e1217fcf062150f680e4feea
+SHA256: fca43b5a8cbe2c74178959581f6582c0ef18994d2573af624c27b6f203b7c27c
+
 Package: com.xu.screentimelocker16
 Name: ScreenTimeLocker16
 Version: 5.2.0

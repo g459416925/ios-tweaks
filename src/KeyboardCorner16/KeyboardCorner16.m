@@ -1,192 +1,284 @@
-// ============================================================
-// KeyboardCorner16 —— iOS 16 系统键盘按键圆角增强修复版
-// Author: xu
-// 包名: com.xu.keyboardcorner16
-// 宿主: UIApplication (SpringBoard + 全量 UIKit App)
-//
-// 根因分析与修复：
-// 原版 com.liuf.jpyj 仅 Hook [UIKBRenderGeometry setRoundRectRadius:] 强制赋 10.0。
-// 但数字键盘（包括 10Key 九宫格数字面、全键盘 123 数字面、NumberPad）：
-// 1. [UIKBRenderGeometry roundRectCorners] 默认或系统判定为 0（无圆角掩码）；
-//    UIKBRenderer defaultPathForRenderGeometry 绘制时若 corners==0，即使 radius==10
-//    也会退化为无圆角直角矩形！
-// 2. UIKBRenderFactory10Key useRoundCorner 默认返回 NO，roundCornersForKey: 返回 0。
-// 3. UIKBTree clipCorners 针对数字内联键返回 0。
-//
-// 本插件全面覆盖并拦截上述路径，使所有字母键与数字键均一致呈现圆角矩形质感。
-// ============================================================
-
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
 #import <stdio.h>
 
-#define KBC_VERSION @"1.0.0"
+#define KBC_VERSION "1.0.3"
 #define TARGET_RADIUS 10.0
-#define ALL_CORNERS   0xFULL // UIRectCornerAllCorners (15)
+#define TARGET_CORNERS 0xF // UIRectCornerAllCorners
 
-// ellekit 动态解析
 extern void MSHookMessageEx(Class cls, SEL sel, IMP newImp, IMP *oldImp);
 
-// 原始方法指针
-static IMP sOrig_setRoundRectRadius = NULL;
-static IMP sOrig_roundRectRadius = NULL;
-static IMP sOrig_setRoundRectCorners = NULL;
-static IMP sOrig_roundRectCorners = NULL;
-static IMP sOrig_setLayeredBgRadius = NULL;
-static IMP sOrig_layeredBgRadius = NULL;
-static IMP sOrig_setLayeredFgRadius = NULL;
-static IMP sOrig_layeredFgRadius = NULL;
-
-static IMP sOrig_10Key_useRound = NULL;
-static IMP sOrig_10Key_roundCorners = NULL;
-static IMP sOrig_10KeyRound_useRound = NULL;
-static IMP sOrig_10KeyRound_shouldRound = NULL;
-static IMP sOrig_10KeyRound_roundCorners = NULL;
-static IMP sOrig_tree_clipCorners = NULL;
-
+#ifdef DEBUG
 static void logToFile(const char *msg) {
     FILE *fp = fopen("/var/mobile/Documents/kbc_round.log", "a");
     if (fp) {
-        fprintf(fp, "[%d] %s\n", getpid(), msg);
+        fprintf(fp, "%s\n", msg);
         fclose(fp);
     }
 }
+#else
+#define logToFile(msg) ((void)0)
+#endif
 
-// ------------------------------------------------------------
-// 1. UIKBRenderGeometry 钩子
-// ------------------------------------------------------------
-static void kbc_setRoundRectRadius(id self, SEL _cmd, double r) {
-    if (sOrig_setRoundRectRadius) {
-        ((void(*)(id, SEL, double))sOrig_setRoundRectRadius)(self, _cmd, TARGET_RADIUS);
+static BOOL safeIsSubclassOf(Class cls, Class targetSuper) {
+    if (!cls || !targetSuper) return NO;
+    Class cur = cls;
+    while (cur) {
+        if (cur == targetSuper) return YES;
+        cur = class_getSuperclass(cur);
+    }
+    return NO;
+}
+
+// -------------------------------------------------------------
+// 1. Geometry 强制修正工具
+// -------------------------------------------------------------
+
+static void enforceGeometryCorner(id geom) {
+    if (!geom) return;
+    if ([geom respondsToSelector:@selector(setRoundRectRadius:)]) {
+        ((void(*)(id, SEL, double))objc_msgSend)(geom, sel_registerName("setRoundRectRadius:"), TARGET_RADIUS);
+    }
+    if ([geom respondsToSelector:@selector(setRoundRectCorners:)]) {
+        ((void(*)(id, SEL, unsigned long long))objc_msgSend)(geom, sel_registerName("setRoundRectCorners:"), TARGET_CORNERS);
+    }
+    Class cls = object_getClass(geom);
+    if (cls) {
+        Ivar rIvar = class_getInstanceVariable(cls, "_roundRectRadius");
+        if (rIvar) {
+            *(double *)((uintptr_t)geom + ivar_getOffset(rIvar)) = TARGET_RADIUS;
+        }
+        Ivar cIvar = class_getInstanceVariable(cls, "_roundRectCorners");
+        if (cIvar) {
+            *(unsigned long long *)((uintptr_t)geom + ivar_getOffset(cIvar)) = TARGET_CORNERS;
+        }
     }
 }
 
-static double kbc_roundRectRadius(id self, SEL _cmd) {
-    double r = 0;
-    if (sOrig_roundRectRadius) {
-        r = ((double(*)(id, SEL))sOrig_roundRectRadius)(self, _cmd);
+static void enforceTraitsCorner(id traits) {
+    if (!traits) return;
+    if ([traits respondsToSelector:@selector(geometry)]) {
+        id geom = ((id(*)(id, SEL))objc_msgSend)(traits, sel_registerName("geometry"));
+        enforceGeometryCorner(geom);
     }
-    return (r < TARGET_RADIUS) ? TARGET_RADIUS : r;
-}
-
-static void kbc_setRoundRectCorners(id self, SEL _cmd, uint64_t corners) {
-    if (sOrig_setRoundRectCorners) {
-        // 若系统传入 0（无圆角，如数字键盘内联键），强制替换为全圆角
-        ((void(*)(id, SEL, uint64_t))sOrig_setRoundRectCorners)(self, _cmd, (corners == 0) ? ALL_CORNERS : corners);
+    if ([traits respondsToSelector:@selector(layeredGeometry)]) {
+        id layered = ((id(*)(id, SEL))objc_msgSend)(traits, sel_registerName("layeredGeometry"));
+        enforceGeometryCorner(layered);
     }
-}
-
-static uint64_t kbc_roundRectCorners(id self, SEL _cmd) {
-    uint64_t c = 0;
-    if (sOrig_roundRectCorners) {
-        c = ((uint64_t(*)(id, SEL))sOrig_roundRectCorners)(self, _cmd);
-    }
-    return (c == 0) ? ALL_CORNERS : c;
-}
-
-static void kbc_setLayeredBgRadius(id self, SEL _cmd, double r) {
-    if (sOrig_setLayeredBgRadius) {
-        ((void(*)(id, SEL, double))sOrig_setLayeredBgRadius)(self, _cmd, TARGET_RADIUS);
+    if ([traits respondsToSelector:@selector(variantGeometries)]) {
+        id vars = ((id(*)(id, SEL))objc_msgSend)(traits, sel_registerName("variantGeometries"));
+        if ([vars respondsToSelector:@selector(allValues)]) {
+            vars = [vars performSelector:@selector(allValues)];
+        }
+        if ([vars isKindOfClass:[NSArray class]]) {
+            for (id g in vars) {
+                enforceGeometryCorner(g);
+            }
+        }
     }
 }
 
-static double kbc_layeredBgRadius(id self, SEL _cmd) {
+// -------------------------------------------------------------
+// 2. UIKBRenderGeometry Hooks
+// -------------------------------------------------------------
+
+static IMP sOrig_geom_getRoundRectRadius = NULL;
+static IMP sOrig_geom_setRoundRectRadius = NULL;
+static IMP sOrig_geom_getRoundRectCorners = NULL;
+static IMP sOrig_geom_setRoundRectCorners = NULL;
+
+static double kbc_geom_getRoundRectRadius(id self, SEL _cmd) {
     return TARGET_RADIUS;
 }
 
-static void kbc_setLayeredFgRadius(id self, SEL _cmd, double r) {
-    if (sOrig_setLayeredFgRadius) {
-        ((void(*)(id, SEL, double))sOrig_setLayeredFgRadius)(self, _cmd, TARGET_RADIUS);
+static void kbc_geom_setRoundRectRadius(id self, SEL _cmd, double r) {
+    if (sOrig_geom_setRoundRectRadius) {
+        ((void(*)(id, SEL, double))sOrig_geom_setRoundRectRadius)(self, _cmd, TARGET_RADIUS);
+    }
+    Class cls = object_getClass(self);
+    if (cls) {
+        Ivar rIvar = class_getInstanceVariable(cls, "_roundRectRadius");
+        if (rIvar) {
+            *(double *)((uintptr_t)self + ivar_getOffset(rIvar)) = TARGET_RADIUS;
+        }
     }
 }
 
-static double kbc_layeredFgRadius(id self, SEL _cmd) {
+static unsigned long long kbc_geom_getRoundRectCorners(id self, SEL _cmd) {
+    return TARGET_CORNERS;
+}
+
+static void kbc_geom_setRoundRectCorners(id self, SEL _cmd, unsigned long long c) {
+    if (sOrig_geom_setRoundRectCorners) {
+        ((void(*)(id, SEL, unsigned long long))sOrig_geom_setRoundRectCorners)(self, _cmd, TARGET_CORNERS);
+    }
+    Class cls = object_getClass(self);
+    if (cls) {
+        Ivar cIvar = class_getInstanceVariable(cls, "_roundRectCorners");
+        if (cIvar) {
+            *(unsigned long long *)((uintptr_t)self + ivar_getOffset(cIvar)) = TARGET_CORNERS;
+        }
+    }
+}
+
+// -------------------------------------------------------------
+// 3. UIKBRenderFactory Hooks
+// -------------------------------------------------------------
+
+static IMP sOrig_factory_keyCornerRadius = NULL;
+
+static double kbc_factory_keyCornerRadius(id self, SEL _cmd) {
     return TARGET_RADIUS;
 }
 
-// ------------------------------------------------------------
-// 2. UIKBRenderFactory10Key 钩子（九宫格数字键盘）
-// ------------------------------------------------------------
-static BOOL kbc_10Key_useRound(id self, SEL _cmd) {
-    return YES;
-}
+static IMP sOrig_factory_traitsForKey = NULL;
 
-static uint64_t kbc_10Key_roundCorners(id self, SEL _cmd, id key, id keyplane) {
-    return ALL_CORNERS;
-}
-
-// ------------------------------------------------------------
-// 3. UIKBRenderFactory10Key_Round 钩子
-// ------------------------------------------------------------
-static BOOL kbc_10KeyRound_useRound(id self, SEL _cmd) {
-    return YES;
-}
-
-static BOOL kbc_10KeyRound_shouldRound(id self, SEL _cmd, id key) {
-    return YES;
-}
-
-static uint64_t kbc_10KeyRound_roundCorners(id self, SEL _cmd, id key, id keyplane) {
-    return ALL_CORNERS;
-}
-
-// ------------------------------------------------------------
-// 4. UIKBTree 钩子
-// ------------------------------------------------------------
-static uint64_t kbc_tree_clipCorners(id self, SEL _cmd) {
-    uint64_t c = 0;
-    if (sOrig_tree_clipCorners) {
-        c = ((uint64_t(*)(id, SEL))sOrig_tree_clipCorners)(self, _cmd);
+static id kbc_factory_traitsForKey(id self, SEL _cmd, id key, id keyplane) {
+    id traits = nil;
+    if (sOrig_factory_traitsForKey) {
+        traits = ((id(*)(id, SEL, id, id))sOrig_factory_traitsForKey)(self, _cmd, key, keyplane);
     }
-    return (c == 0) ? ALL_CORNERS : c;
+    enforceTraitsCorner(traits);
+    return traits;
 }
 
-static void installHooks(void) {
-    int count = 0;
+static IMP sOrig_factory_defaultKeyTraits = NULL;
 
-    Class geomCls = objc_getClass("UIKBRenderGeometry");
-    if (geomCls) {
-        MSHookMessageEx(geomCls, sel_registerName("setRoundRectRadius:"), (IMP)kbc_setRoundRectRadius, &sOrig_setRoundRectRadius);
-        MSHookMessageEx(geomCls, sel_registerName("roundRectRadius"), (IMP)kbc_roundRectRadius, &sOrig_roundRectRadius);
-        MSHookMessageEx(geomCls, sel_registerName("setRoundRectCorners:"), (IMP)kbc_setRoundRectCorners, &sOrig_setRoundRectCorners);
-        MSHookMessageEx(geomCls, sel_registerName("roundRectCorners"), (IMP)kbc_roundRectCorners, &sOrig_roundRectCorners);
-        MSHookMessageEx(geomCls, sel_registerName("setLayeredBackgroundRoundRectRadius:"), (IMP)kbc_setLayeredBgRadius, &sOrig_setLayeredBgRadius);
-        MSHookMessageEx(geomCls, sel_registerName("layeredBackgroundRoundRectRadius"), (IMP)kbc_layeredBgRadius, &sOrig_layeredBgRadius);
-        MSHookMessageEx(geomCls, sel_registerName("setLayeredForegroundRoundRectRadius:"), (IMP)kbc_setLayeredFgRadius, &sOrig_setLayeredFgRadius);
-        MSHookMessageEx(geomCls, sel_registerName("layeredForegroundRoundRectRadius"), (IMP)kbc_layeredFgRadius, &sOrig_layeredFgRadius);
-        count += 8;
+static id kbc_factory_defaultKeyTraits(id self, SEL _cmd, id key, id keyplane) {
+    id traits = nil;
+    if (sOrig_factory_defaultKeyTraits) {
+        traits = ((id(*)(id, SEL, id, id))sOrig_factory_defaultKeyTraits)(self, _cmd, key, keyplane);
     }
+    enforceTraitsCorner(traits);
+    return traits;
+}
 
-    Class f10Cls = objc_getClass("UIKBRenderFactory10Key");
-    if (f10Cls) {
-        MSHookMessageEx(f10Cls, sel_registerName("useRoundCorner"), (IMP)kbc_10Key_useRound, &sOrig_10Key_useRound);
-        MSHookMessageEx(f10Cls, sel_registerName("roundCornersForKey:onKeyplane:"), (IMP)kbc_10Key_roundCorners, &sOrig_10Key_roundCorners);
-        count += 2;
+static IMP sOrig_factory_geometryWithShape = NULL;
+
+static id kbc_factory_geometryWithShape(id self, SEL _cmd, id shape) {
+    id geom = nil;
+    if (sOrig_factory_geometryWithShape) {
+        geom = ((id(*)(id, SEL, id))sOrig_factory_geometryWithShape)(self, _cmd, shape);
     }
+    enforceGeometryCorner(geom);
+    return geom;
+}
 
-    Class f10RCls = objc_getClass("UIKBRenderFactory10Key_Round");
-    if (f10RCls) {
-        MSHookMessageEx(f10RCls, sel_registerName("useRoundCorner"), (IMP)kbc_10KeyRound_useRound, &sOrig_10KeyRound_useRound);
-        MSHookMessageEx(f10RCls, sel_registerName("shouldUseRoundCornerForKey:"), (IMP)kbc_10KeyRound_shouldRound, &sOrig_10KeyRound_shouldRound);
-        MSHookMessageEx(f10RCls, sel_registerName("roundCornersForKey:onKeyplane:"), (IMP)kbc_10KeyRound_roundCorners, &sOrig_10KeyRound_roundCorners);
-        count += 3;
+// -------------------------------------------------------------
+// 4. Hook 安装
+// -------------------------------------------------------------
+
+static void hookGeometryClass(Class geomCls) {
+    if (!geomCls) return;
+    
+    // Getter & Setter for roundRectRadius
+    if (class_getInstanceMethod(geomCls, sel_registerName("roundRectRadius"))) {
+        MSHookMessageEx(geomCls, sel_registerName("roundRectRadius"),
+                        (IMP)kbc_geom_getRoundRectRadius, &sOrig_geom_getRoundRectRadius);
     }
-
-    Class treeCls = objc_getClass("UIKBTree");
-    if (treeCls) {
-        MSHookMessageEx(treeCls, sel_registerName("clipCorners"), (IMP)kbc_tree_clipCorners, &sOrig_tree_clipCorners);
-        count += 1;
+    if (class_getInstanceMethod(geomCls, sel_registerName("setRoundRectRadius:"))) {
+        MSHookMessageEx(geomCls, sel_registerName("setRoundRectRadius:"),
+                        (IMP)kbc_geom_setRoundRectRadius, &sOrig_geom_setRoundRectRadius);
     }
+    
+    // Getter & Setter for roundRectCorners
+    if (class_getInstanceMethod(geomCls, sel_registerName("roundRectCorners"))) {
+        MSHookMessageEx(geomCls, sel_registerName("roundRectCorners"),
+                        (IMP)kbc_geom_getRoundRectCorners, &sOrig_geom_getRoundRectCorners);
+    }
+    if (class_getInstanceMethod(geomCls, sel_registerName("setRoundRectCorners:"))) {
+        MSHookMessageEx(geomCls, sel_registerName("setRoundRectCorners:"),
+                        (IMP)kbc_geom_setRoundRectCorners, &sOrig_geom_setRoundRectCorners);
+    }
+    
+    logToFile("[KBC] UIKBRenderGeometry hooks installed successfully.");
+}
 
+static void hookSingleFactoryClass(Class cls) {
+    if (!cls) return;
+    const char *cname = class_getName(cls);
+    
+    if (class_getInstanceMethod(cls, sel_registerName("keyCornerRadius"))) {
+        IMP dummy = NULL;
+        MSHookMessageEx(cls, sel_registerName("keyCornerRadius"),
+                        (IMP)kbc_factory_keyCornerRadius, &dummy);
+    }
+    if (class_getInstanceMethod(cls, sel_registerName("_traitsForKey:onKeyplane:"))) {
+        IMP dummy = NULL;
+        MSHookMessageEx(cls, sel_registerName("_traitsForKey:onKeyplane:"),
+                        (IMP)kbc_factory_traitsForKey, &dummy);
+    }
+    if (class_getInstanceMethod(cls, sel_registerName("defaultKeyTraitsForKey:onKeyplane:"))) {
+        IMP dummy = NULL;
+        MSHookMessageEx(cls, sel_registerName("defaultKeyTraitsForKey:onKeyplane:"),
+                        (IMP)kbc_factory_defaultKeyTraits, &dummy);
+    }
+    if (class_getInstanceMethod(cls, sel_registerName("geometryWithShape:"))) {
+        IMP dummy = NULL;
+        MSHookMessageEx(cls, sel_registerName("geometryWithShape:"),
+                        (IMP)kbc_factory_geometryWithShape, &dummy);
+    }
+    
     char buf[128];
-    snprintf(buf, sizeof(buf), "KeyboardCorner16 v%s 生效 (%d hooks) proc=%s",
-             [KBC_VERSION UTF8String], count, [[[NSProcessInfo processInfo] processName] UTF8String]);
+    snprintf(buf, sizeof(buf), "[KBC] Hooked Factory class: %s", cname);
     logToFile(buf);
 }
 
+static void hookAllFactoryClasses(void) {
+    Class baseFactoryCls = objc_getClass("UIKBRenderFactory");
+    if (!baseFactoryCls) {
+        logToFile("[KBC] UIKBRenderFactory not found!");
+        return;
+    }
+    // Hook base
+    hookSingleFactoryClass(baseFactoryCls);
+
+    // 显式指定已知常见工厂类（快速保底）
+    const char *knownFactories[] = {
+        "UIKBRenderFactoryiPhone",
+        "UIKBRenderFactoryiPhoneChoco",
+        "UIKBRenderFactoryiPhoneLandscape",
+        "UIKBRenderFactory10Key",
+        "UIKBRenderFactory10Key_Round",
+        "UIKBRenderFactory10Key_Landscape",
+        "UIKBRenderFactoryNumberPad",
+        "UIKBRenderFactoryNumberPadLandscape",
+        "UIKBRenderFactoryLayoutConfig",
+        NULL
+    };
+    for (int k = 0; knownFactories[k] != NULL; k++) {
+        Class fcls = objc_getClass(knownFactories[k]);
+        if (fcls) {
+            hookSingleFactoryClass(fcls);
+        }
+    }
+
+    // 动态安全遍历其余继承自 UIKBRenderFactory 的子类
+    int numClasses = objc_getClassList(NULL, 0);
+    if (numClasses > 0) {
+        Class *classes = (Class *)malloc(sizeof(Class) * numClasses);
+        numClasses = objc_getClassList(classes, numClasses);
+        for (int i = 0; i < numClasses; i++) {
+            Class cls = classes[i];
+            if (cls != baseFactoryCls && safeIsSubclassOf(cls, baseFactoryCls)) {
+                hookSingleFactoryClass(cls);
+            }
+        }
+        free(classes);
+    }
+    
+    logToFile("[KBC] All UIKBRenderFactory classes hooked!");
+}
+
+static void installHooks(void) {
+    logToFile("[KBC] Initializing KeyboardCorner16 v" KBC_VERSION " ...");
+    hookGeometryClass(objc_getClass("UIKBRenderGeometry"));
+    hookAllFactoryClasses();
+    logToFile("[KBC] KeyboardCorner16 initialization complete!");
+}
+
 __attribute__((constructor)) static void kbc_ctor(void) {
-    // 放入主队列异步，等待 UIKit 及其私有类加载完毕，规避 dyld 早期锁
     dispatch_async(dispatch_get_main_queue(), ^{
         installHooks();
     });
