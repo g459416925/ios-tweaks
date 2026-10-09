@@ -1,4 +1,4 @@
-// StatusBarScale.m —— 状态栏图标缩放 + 资源库背景透明（v2.1.23）
+// StatusBarScale.m —— 状态栏图标缩放 + 资源库背景透明 + 小组件背景移除（v2.2.0）
 //
 // 【功能范围】
 //   ① 主缩放：灵动岛【右侧】（frame.minX >= 阈值）的状态栏图标，整体绕中心缩放 + 垂直微调，
@@ -6,6 +6,9 @@
 //   ② leading 缩放：时间右侧、灵动岛左侧的图标（闹钟/定位/录屏/麦克风等，无法按标识枚举），
 //      按 fg 坐标系 frame 区间运行时发现，单独缩放。
 //   ③ 资源库背景透明：App 资源库分类卡片的背景板 + 顶部搜索框背景 清成透明，只留图标与文字。
+//   ④ 小组件背景移除（v2.2.0 新增）：主屏小组件（Widget）的半透明毛玻璃背景板移除，
+//      只留内容。见文件末尾「小组件背景移除」模块 —— 实现手法移植自
+//      RemoveWidgetBackground（MIT，OwnGoal Studio / Lessica）的"限制绘制命令尺寸"思路。
 //   （辅助图标条 / 设置面板 / 热重载 / plist 配置读取已于 v2.0.0 全部移除）
 //
 // 问题背景：iPhone 14 Pro Max (iOS 16.5.1) 灵动岛右侧图标与时间不对齐
@@ -38,8 +41,14 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 
-#define SBS_VERSION @"2.1.24"
-#define SBS_LOG_PATH @"/var/mobile/Documents/sbs_log.txt"
+#define SBS_VERSION @"2.2.0"
+
+// ⭐⭐ 日志路径（2026-10-09 血泪根因）：RootHide 下不同进程的路径解析不一致 ——
+//   SpringBoard 里 `/var/mobile/Documents` 可写；但 chronod（system daemon）里
+//   `/var/mobile/...` 与 `/var/tmp/...` **都写不进去**（日志与落痕全部静默丢失，
+//   曾据此误判"插件没注入 chronod"，浪费两轮排查）⇒ 统一改用**真实路径**。
+static NSString *sbs_logPath(void);
+#define SBS_LOG_PATH (sbs_logPath())
 
 // ─────────────── 硬编码参数（原 plist 配置 / 设置面板已移除）───────────────
 static BOOL    gEnabled     = YES;
@@ -93,6 +102,25 @@ static CGAffineTransform sbs_leadTransform(void) {
 }
 
 // ─────────────── 日志 ───────────────
+// 日志文件路径解析：真实路径优先（chronod 只认它），失败退回兼容路径。
+static NSString *sbs_logPath(void) {
+    static NSString *p = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        NSFileManager *fm = [NSFileManager defaultManager];
+        NSString *real   = @"/private/var/mobile/Documents/sbs_log.txt";
+        NSString *legacy = @"/var/mobile/Documents/sbs_log.txt";
+        if ([fm fileExistsAtPath:real]) {
+            p = real;
+        } else if ([fm createFileAtPath:real contents:[NSData data] attributes:nil]) {
+            p = real;
+        } else {
+            p = legacy;
+        }
+    });
+    return p;
+}
+
 static void sbs_log(NSString *fmt, ...) NS_FORMAT_FUNCTION(1, 2);
 static void sbs_logNow(NSString *fmt, ...) NS_FORMAT_FUNCTION(1, 2);
 
@@ -989,6 +1017,193 @@ static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
     return YES;
 }
 
+// ===========================================================================
+// 模块：主屏小组件（Widget）背景移除 —— 全局量 / 辅助（v2.2.0 新增）
+//
+// 【为什么不能"找背景视图"】小组件由 SwiftUI 渲染，背景板是渲染后端（RenderBox）
+//   用绘制命令画出来的 —— 视图树里往往找不到一个可辨识的"背景视图"类。
+// 【正解】在渲染后端拦截【尺寸超过阈值的绘制矩形】：超过阈值即视为背景板，
+//   把它归零（不画），而文字/图标等小元素照常绘制。
+//   手法来源：RemoveWidgetBackground（MIT License，OwnGoal Studio / Lessica）
+//   的 "restricting the size of drawing commands" 思路，本项目按需重写。
+//
+// 【生效范围】只对 widget 宿主窗口的绘制生效：
+//   窗口打标（UIWindow -initWithWindowScene:）→ 渲染期置线程标记
+//   （RBLayer -display）→ RBShape -setRect: 命中阈值才抹。绝不做全局绘制改写。
+//
+// 【日志】[wbg-*] 前缀，关键事件直写 /var/mobile/Documents/sbs_log.txt
+// ===========================================================================
+// ⭐⭐ chronod（system daemon）里 `/var/mobile/...`、`/var/tmp/...`、`/private/var/...`
+//   写入**全部失败**（沙箱）⇒ 诊断只能走两条路：os_log（NSLog）+ 进程自己的临时目录。
+//   NSTemporaryDirectory() 是 chronod 唯一保证可写的路径。
+static void sbs_wlogFile(NSString *line) {
+    static NSString *p = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        p = [NSTemporaryDirectory() stringByAppendingPathComponent:@"sbs_wbg.txt"];
+        if (!p.length) p = @"/private/var/tmp/sbs_wbg.txt";
+    });
+    NSString *s = [NSString stringWithFormat:@"[%lu] %@\n",
+                   (unsigned long)getpid(), line];
+    NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:p];
+    if (!fh) {
+        [s writeToFile:p atomically:YES encoding:NSUTF8StringEncoding error:nil];
+        return;
+    }
+    [fh seekToEndOfFile];
+    [fh writeData:[s dataUsingEncoding:NSUTF8StringEncoding]];
+    [fh closeFile];
+}
+
+#define SBS_WLOG(fmt, ...) do { \
+    NSLog(@"[SBSW] " fmt, ##__VA_ARGS__); \
+    sbs_wlogFile([NSString stringWithFormat:fmt, ##__VA_ARGS__]); \
+} while (0)
+
+// 总开关。⭐⭐ 2026-10-09 对齐全量官方 RWB 源码后重开：
+//   此前"抹第 2+ 背景板仍在 / 抹第 1 变黑"的实测结论，根因是**强制暗色未配套**——
+//   官方 RWB 的 RBShape 抹除必须配合「UIWindow + CHUISWidgetScene + CHS*PresentationAttributes
+//   强制 dark colorScheme」：暗色下背景板才以【独立超阈值矩形】呈现，可被尺寸分离。
+//   浅色下背景与内容同尺寸，无论跳/抹都会误伤 → 变黑或无效。
+//   ⇒ 恢复渲染侧抹除（官方 RWB 的主力手段），并与强制暗色配套使用。
+static BOOL    gWidgetBgClear = YES;
+// 阈值（RBShape 绘制坐标系 = 屏幕点）。⭐⭐ 2026-10-09 实机实测绘制矩形分布：
+//     364x170  ×7   ← 整块 widget 尺寸（背景板与根层都在这个尺寸上）
+//     165x146  ×1   ← 内容卡
+//     161x28   ×4   ← 文字行
+//     20x20    ×20  ← 图标
+//   ⇒ 150 阈值恰好【只命中整块 widget 尺寸】的绘制，不误伤内容元素。
+static CGFloat gWidgetMaxW    = 150.0f;
+static CGFloat gWidgetMaxH    = 150.0f;
+// 跳过【前 N 个】"整块尺寸"绘制，第 N+1 个起抹除（对齐官方 RWB iOS16 策略）。
+// ⚠️ 必须与「强制暗色」配套：暗色下第 1 个大矩形是内容根层（跳过），第 2+ 个才是背景板（抹除）。
+static int     gWidgetSkipN   = 1;
+
+static NSString *const kSBSWbgThreadFlag = @"sbs_wbg_hide";        // 线程标记：本次渲染在 widget 窗口内
+static NSString *const kSBSWbgSkipN  = @"sbs_wbg_skip_n";   // 本次渲染已跳过的大矩形个数
+static const void   *kSBSWbgWindowMark   = &kSBSWbgWindowMark;     // 关联对象 key：窗口已打标
+
+// 本进程是否为"小组件渲染进程"（chronod 或 WidgetRenderer-XXXX）
+static BOOL sbs_isWidgetRenderProcess(void) {
+    NSString *bid = [[NSBundle mainBundle] bundleIdentifier] ?: @"";
+    if ([bid hasPrefix:@"com.apple.chrono.WidgetRenderer-"]) return YES;
+    if ([bid isEqualToString:@"com.apple.chronod"]) return YES;
+    NSString *p = [[NSProcessInfo processInfo] processName] ?: @"";
+    if ([p isEqualToString:@"WidgetRenderer"] || [p isEqualToString:@"chronod"]) return YES;
+    return NO;
+}
+
+// 该 UIWindowScene 是否为小组件宿主场景（不写死单一类名，宽容匹配；首见即打印）
+static BOOL sbs_isWidgetScene(id scene) {
+    if (!scene) return NO;
+    static Class cWidget = Nil, cAvocado = Nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        cWidget  = objc_getClass("CHUISWidgetScene");
+        cAvocado = objc_getClass("CHUISAvocadoWindowScene");
+    });
+    if (cWidget  && [scene isKindOfClass:cWidget])  return YES;
+    if (cAvocado && [scene isKindOfClass:cAvocado]) return YES;
+    NSString *cn = NSStringFromClass([scene class]);
+    if ([cn containsString:@"CHUIS"] &&
+        ([cn containsString:@"Widget"] || [cn containsString:@"Avocado"])) return YES;
+    return NO;
+}
+
+// ⭐ 白名单：只处理 Remove Widget Background 已验证支持的 widget（照其默认名单）。
+//   非白名单 widget 一律不碰 —— 实测对它们抹除会让 widget 变纯黑块。
+static NSSet *sbs_widgetWhitelist(void) {
+    static NSSet *s;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        s = [NSSet setWithArray:@[
+            // ── 系统 widget ──
+            @"com.apple.mobiletimer.WorldClockWidget",                          // 时钟
+            @"com.apple.mobilecal.CalendarWidgetExtension",                     // 日历
+            @"com.apple.mobilemail.MailWidgetExtension",                        // 邮件
+            @"com.apple.ScreenTimeWidgetApplication.ScreenTimeWidgetExtension", // 使用时间
+            @"com.apple.reminders.WidgetExtension",                             // 提醒事项
+            @"com.apple.weather.widget",                                        // 天气
+            @"com.apple.Fitness.FitnessWidget",                                 // 健身
+            @"com.apple.Passbook.PassbookWidgets",                              // 钱包
+            @"com.apple.Health.Sleep.SleepWidgetExtension",                     // 睡眠
+            @"com.apple.tips.TipsSwift",                                        // 提示
+            @"com.apple.Music.MusicWidgets",                                    // 音乐
+            @"com.apple.gamecenter.widgets.extension",                          // Game Center
+            @"com.apple.tv.TVWidgetExtension",                                  // TV
+            @"com.apple.news.widget",                                           // Apple News
+            // ── 第三方 widget ──
+            @"com.growing.topwidgetsplus.Widget",           // Top Widgets
+            @"dk.simonbs.Scriptable.ScriptableWidget",      // Scriptable
+            @"wiki.qaq.trapp.LaunchPad",                    // 巨魔录音机
+        ]];
+    });
+    return s;
+}
+
+// 取 widget 宿主场景的 extensionBundleIdentifier（KVC，零链接期私有符号；取不到返回 nil）
+static NSString *sbs_widgetBundleIDOfScene(id scene) {
+    if (!scene) return nil;
+    @try {
+        id widget = [scene valueForKey:@"widget"];
+        if (!widget) return nil;
+        id bid = [widget valueForKey:@"extensionBundleIdentifier"];
+        if ([bid isKindOfClass:[NSString class]] && [bid length]) return bid;
+    } @catch (NSException *e) { }
+    return nil;
+}
+
+// 取 widget 宿主 ViewController 的 extensionBundleIdentifier（SB 侧）
+static NSString *sbs_widgetBundleIDOfHost(id vc) {
+    if (!vc) return nil;
+    @try {
+        id widget = [vc valueForKey:@"widget"];
+        if (!widget) return nil;
+        id bid = [widget valueForKey:@"extensionBundleIdentifier"];
+        if ([bid isKindOfClass:[NSString class]] && [bid length]) return bid;
+    } @catch (NSException *e) { }
+    return nil;
+}
+
+// 该宿主是否命中白名单（未命中 ⇒ 一律走原实现，绝不干预）
+static BOOL sbs_hostIsWhitelisted(id vc) {
+    NSString *bid = sbs_widgetBundleIDOfHost(vc);
+    return bid && [sbs_widgetWhitelist() containsObject:bid];
+}
+
+// 窗口是否为我们【已打标且在白名单内】的小组件宿主窗口。
+// ⚠️ 实测 rootViewController 恒为 nil（类名兜底判据不可用）⇒ 只认窗口标记，避免误伤非白名单 widget。
+static BOOL sbs_windowLooksLikeWidgetHost(UIWindow *w) {
+    if (!w) return NO;
+    return [objc_getAssociatedObject(w, kSBSWbgWindowMark) boolValue];
+}
+
+// ── 小组件宿主视图树 dump（诊断用，gWbgDump 关掉即静默）──
+static BOOL gWbgDump = YES;
+static int  gWbgDumpBudget = 0;
+
+static void sbs_dumpSubtree(UIView *v, int depth, int maxDepth) {
+    if (!v || depth > maxDepth || gWbgDumpBudget <= 0) return;
+    gWbgDumpBudget--;
+    NSMutableString *pad = [NSMutableString string];
+    for (int i = 0; i < depth; i++) [pad appendString:@"··"];
+    sbs_logNow(@"[wbg-tree]%@%@ f=%@ a=%.2f hid=%d layer=%@",
+               pad, NSStringFromClass(v.class), NSStringFromCGRect(v.frame),
+               v.alpha, v.hidden, NSStringFromClass(v.layer.class));
+    for (UIView *s in v.subviews) sbs_dumpSubtree(s, depth + 1, maxDepth);
+}
+
+static void sbs_dumpLayers(CALayer *l, int depth, int maxDepth) {
+    if (!l || depth > maxDepth || gWbgDumpBudget <= 0) return;
+    gWbgDumpBudget--;
+    NSMutableString *pad = [NSMutableString string];
+    for (int i = 0; i < depth; i++) [pad appendString:@"··"];
+    sbs_logNow(@"[wbg-layer]%@%@ f=%@ bg=%@ op=%.2f",
+               pad, NSStringFromClass(l.class), NSStringFromCGRect(l.frame),
+               l.backgroundColor ? @"有" : @"nil", l.opacity);
+    for (CALayer *s in l.sublayers) sbs_dumpLayers(s, depth + 1, maxDepth);
+}
+
 @interface SBSHelper : NSObject
 @end
 
@@ -1220,6 +1435,243 @@ static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
     } @catch (NSException *e) {
         sbs_log(@"[exc] %@", e);
     }
+}
+
+#pragma mark - 小组件（Widget）背景移除 · 渲染进程侧（v2.2.0）
+// 手法来源：RemoveWidgetBackground（MIT，OwnGoal Studio / Lessica）。
+// 只对"已打标的 widget 宿主窗口"的绘制生效，绝不做全局改写。
+
+// UIWindow -initWithWindowScene: —— widget 宿主窗口一创建就打标
+- (id)sbs_wbgWindowInitWithWindowScene:(UIWindowScene *)scene {
+    BOOL isWidgetScene = sbs_isWidgetScene(scene);
+    NSString *wid = isWidgetScene ? sbs_widgetBundleIDOfScene(scene) : nil;
+    BOOL mark = isWidgetScene && wid && [sbs_widgetWhitelist() containsObject:wid];
+    if (isWidgetScene) {
+        static int loggedScene = 0;
+        if (loggedScene < 24) {
+            loggedScene++;
+            SBS_WLOG(@"widget scene id=%@ 白名单=%d", wid ?: @"(nil)", mark);
+        }
+    } else if (scene) {
+        static int loggedNon = 0;
+        if (loggedNon < 8) {
+            loggedNon++;
+            SBS_WLOG(@"scene 非 widget: %@", NSStringFromClass([scene class]));
+        }
+    }
+    id w = [self sbs_wbgWindowInitWithWindowScene:scene];
+    // ⭐⭐ 强制暗色（对齐官方 RWB：对所有 widget 窗口无条件强制 dark，不只白名单）。
+    //    这是 RBShape 抹除生效的前提 —— 暗色下背景板才以独立超阈值矩形呈现，可被尺寸分离。
+    if (w && isWidgetScene) {
+        [(UIWindow *)w setOverrideUserInterfaceStyle:UIUserInterfaceStyleDark];
+    }
+    if (mark && w) {
+        objc_setAssociatedObject(w, kSBSWbgWindowMark, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        UIWindow *win = (UIWindow *)w;
+        sbs_logNow(@"[wbg] widget 窗口打标 %.0fx%.0f id=%@（已强制暗色）",
+                   win.bounds.size.width, win.bounds.size.height, wid);
+        SBS_WLOG(@"打标 %.0fx%.0f id=%@（已强制暗色）", win.bounds.size.width, win.bounds.size.height, wid);
+    }
+    return w;
+}
+
+// RBLayer -display —— 渲染期置/清线程标记（SwiftUI 绘制命令在同一线程下发）
+- (void)sbs_wbgRBLayerDisplay {
+    UIView *view = (UIView *)((CALayer *)self).delegate;
+    BOOL hide = NO;
+    BOOL isView = [view isKindOfClass:[UIView class]];
+    if (isView) hide = sbs_windowLooksLikeWidgetHost(view.window);
+    static int loggedHit = 0, loggedMiss = 0;
+    if (hide) {
+        if (loggedHit++ < 4) SBS_WLOG(@"RBLayer 命中 widget 窗口 → 进入涂抹模式");
+    } else if (isView && loggedMiss++ < 5) {
+        SBS_WLOG(@"RBLayer 非 widget 窗口 win=%@ rvc=%@",
+                 NSStringFromClass([view.window class]),
+                 NSStringFromClass([[view.window rootViewController] class]));
+    }
+    if (hide) {
+        NSMutableDictionary *td = [NSThread currentThread].threadDictionary;
+        td[kSBSWbgThreadFlag] = @YES;
+        [td removeObjectForKey:kSBSWbgSkipN];
+        [self sbs_wbgRBLayerDisplay];
+        [td removeObjectForKey:kSBSWbgThreadFlag];
+        [td removeObjectForKey:kSBSWbgSkipN];
+        return;
+    }
+    [self sbs_wbgRBLayerDisplay];
+}
+
+// RBShape -setRect: —— 「限制绘制命令尺寸」：超过阈值的绘制矩形归零 ⇒ 背景板不画
+- (void)sbs_wbgRBShapeSetRect:(CGRect)rect {
+    NSMutableDictionary *td = [NSThread currentThread].threadDictionary;
+    // 诊断：把标记生效期内见到的绘制矩形全量记前 30 条（用于标定阈值与坐标系）
+    if (td[kSBSWbgThreadFlag]) {
+        static int seen = 0;
+        if (seen < 30) {
+            seen++;
+            SBS_WLOG(@"rect %.0fx%.0f (阈值 %.0fx%.0f)",
+                     rect.size.width, rect.size.height, gWidgetMaxW, gWidgetMaxH);
+        }
+    }
+    if (td[kSBSWbgThreadFlag] && gWidgetBgClear &&
+        rect.size.width > gWidgetMaxW && rect.size.height > gWidgetMaxH) {
+        int passed = [td[kSBSWbgSkipN] intValue];
+        td[kSBSWbgSkipN] = @(passed + 1);
+        if (passed >= gWidgetSkipN) {      // 跳过前 gWidgetSkipN 个（第 1 个=内容根层），第 2+ 个=背景板 → 抹除
+            SBS_WLOG(@"抹除 %.0fx%.0f (第%d个)", rect.size.width, rect.size.height, passed + 1);
+            [self sbs_wbgRBShapeSetRect:CGRectZero];
+            return;
+        }
+        SBS_WLOG(@"跳过 %.0fx%.0f (第%d个)", rect.size.width, rect.size.height, passed + 1);
+    }
+    [self sbs_wbgRBShapeSetRect:rect];
+}
+
+#pragma mark - 小组件（Widget）背景移除 · SpringBoard 侧（v2.2.0）
+// SB 里的 widget 宿主视图控制器会主动给 widget 加背景材质 / 快照。
+// 在"设置入口"拦掉 ⇒ 背景板不会出现（不需要注入渲染进程）。
+
+// ⭐⭐ SB 侧核心招式（对齐上游 RWB）：**白名单命中才**阻止系统给 widget 铺背景材质 / 生成快照。
+//   ⚠️ 必须带白名单条件 —— 实测无条件 return 会把非白名单 widget（支付宝）打成纯黑圆角块。
+- (void)sbs_wbgHostUpdateBgMaterial {
+    if (sbs_hostIsWhitelisted(self)) {
+        static int n = 0;
+        if (n < 8) { n++; SBS_WLOG(@"[材质] 拦下背景材质更新 id=%@", sbs_widgetBundleIDOfHost(self)); }
+        return;      // 不调 orig：系统这次不会给 widget 铺背景材质
+    }
+    [self sbs_wbgHostUpdateBgMaterial];
+}
+
+- (void)sbs_wbgHostUpdateSnapshot {
+    if (sbs_hostIsWhitelisted(self)) {
+        static int n = 0;
+        if (n < 8) { n++; SBS_WLOG(@"[快照] 拦下 %@", NSStringFromSelector(_cmd)); }
+        return;
+    }
+    [self sbs_wbgHostUpdateSnapshot];
+}
+
+// ⚠️ 必须用【独立方法】挂第二个 selector：同一实现挂两个 selector 时，
+//    swizzle 交换会互相覆盖，导致 orig 回调指错（递归/失效）。
+- (void)sbs_wbgHostUpdateSnapshot2 {
+    if (sbs_hostIsWhitelisted(self)) {
+        static int n = 0;
+        if (n < 8) { n++; SBS_WLOG(@"[快照2] 拦下 %@", NSStringFromSelector(_cmd)); }
+        return;
+    }
+    [self sbs_wbgHostUpdateSnapshot2];
+}
+
+- (id)sbs_wbgHostScreenshotManager {
+    if (sbs_hostIsWhitelisted(self)) return nil;   // 快照通常带背景板 ⇒ 不生成
+    return [self sbs_wbgHostScreenshotManager];
+}
+
+// iOS 16.0-16.2：从 URL 加载持久化快照 —— 白名单命中返回 nil（阻止加载带背景的快照）
+- (id)sbs_wbgHostSnapshotImageFromURL:(id)arg1 {
+    if (sbs_hostIsWhitelisted(self)) return nil;
+    return [self sbs_wbgHostSnapshotImageFromURL:arg1];
+}
+
+- (unsigned long long)sbs_wbgHostColorScheme {
+    if (sbs_hostIsWhitelisted(self)) return 2;     // 强制暗色（对齐上游，需与材质拦截配套）
+    return [self sbs_wbgHostColorScheme];
+}
+
+- (void)sbs_wbgHostViewWillAppear:(BOOL)animated {
+    [self sbs_wbgHostViewWillAppear:animated];   // 原实现
+    @try {
+        UIViewController *vc = (UIViewController *)self;
+        UIView *root = vc.view;
+        // 诊断：dump 宿主视图/图层真实结构（前 3 次，预算限条数，避免刷屏）
+        if (gWbgDump && root) {
+            static int dumped = 0;
+            if (dumped < 3) {
+                dumped++;
+                gWbgDumpBudget = 240;
+                sbs_logNow(@"[wbg-dump] 宿主 %@ view=%@ frame=%@ sub=%lu",
+                           NSStringFromClass([vc class]), NSStringFromClass([root class]),
+                           NSStringFromCGRect(root.frame), (unsigned long)root.subviews.count);
+                sbs_dumpSubtree(root, 0, 5);
+                gWbgDumpBudget = 180;
+                sbs_dumpLayers(root.layer, 0, 4);
+            }
+        }
+        // 温和处理：材质类视图 alpha 归零（绝不拦截系统设置入口 —— 实测会把 widget 打成黑块）
+        UIView *v = root;
+        for (int depth = 0; depth < 4 && v; depth++) {
+            for (UIView *sub in v.subviews) {
+                BOOL isMat = [sub isKindOfClass:[UIVisualEffectView class]] ||
+                             [NSStringFromClass(sub.class) containsString:@"Material"];
+                if (isMat && sub.alpha > 0.01) {
+                    sub.alpha = 0.0;
+                    sbs_logNow(@"[wbg-sb] 材质 alpha=0 %@ depth=%d",
+                               NSStringFromClass(sub.class), depth);
+                }
+            }
+            v = v.subviews.firstObject;
+        }
+    } @catch (NSException *e) { sbs_log(@"[exc-wbg] %@", e); }
+}
+
+#pragma mark - 小组件背景移除 · 对照 Remove Widget Background 补齐（2026-10-09）
+// ⭐⭐ 实测结论：官方 RWB v2.1.1 在本机【有效】（时钟 widget 背景板消失、内容完整）。
+//   对比其源码，我此前漏掉的关键招式是下面几条 —— 都只动"视图背景色 / 材质 alpha"，
+//   绝不碰绘制命令，所以不会把 widget 打成黑块。
+
+// ① chronod 侧：UIView -layoutSubviews —— 非 SwiftUI 宿主视图一律清背景色。
+//    （上游 RWB 的原话注释：这是把 widget 宿主视图的底色清掉，最温和也最有效的一招）
+- (void)sbs_wbgViewLayoutSubviews {
+    [self sbs_wbgViewLayoutSubviews];      // 原实现
+    // ⚠️ 这是全局高频 hook（每次布局都来）⇒ 先做最便宜的判断：无背景色直接返回。
+    UIView *v = (UIView *)self;
+    UIColor *bg = v.backgroundColor;
+    if (!bg || CGColorGetAlpha(bg.CGColor) <= 0.01) return;
+    NSString *cn = NSStringFromClass([self class]);
+    if ([cn containsString:@"UIHostingView"]) return;   // SwiftUI 宿主视图不动
+    v.backgroundColor = [UIColor clearColor];           // 幂等：有颜色才写
+    static int n = 0;
+    if (n < 10) { n++; SBS_WLOG(@"清底 %@", cn); }
+}
+
+// ② SB 侧：SBHWidgetStackViewController / WGWidgetListItemViewController
+//    viewWillAppear: → 【两层】firstObject 若是材质视图 ⇒ alpha = 0
+//    ⚠️ 此前我只扫了一层 subviews ⇒ 没命中（上游是 firstChild.subviews.firstObject）
+- (void)sbs_wbgStackViewWillAppear:(BOOL)animated {
+    [self sbs_wbgStackViewWillAppear:animated];
+    @try {
+        UIView *first = ((UIViewController *)self).view.subviews.firstObject;
+        UIView *target = first.subviews.firstObject;
+        NSString *cn = NSStringFromClass([target class]);
+        if ([target isKindOfClass:[UIVisualEffectView class]] || [cn containsString:@"Material"]) {
+            target.alpha = 0.0;
+            SBS_WLOG(@"[栈] 材质 alpha=0 %@", cn);
+        }
+    } @catch (NSException *e) { sbs_log(@"[exc-wbg2] %@", e); }
+}
+
+// ③ SB 侧：SBHWidgetViewController（iOS 15 风格单 widget 宿主）
+//    viewWillAppear: → firstObject 若是 UIVisualEffectView ⇒ alpha = 0
+- (void)sbs_wbgSingleViewWillAppear:(BOOL)animated {
+    [self sbs_wbgSingleViewWillAppear:animated];
+    @try {
+        UIView *first = ((UIViewController *)self).view.subviews.firstObject;
+        if ([first isKindOfClass:[UIVisualEffectView class]]) {
+            first.alpha = 0.0;
+            SBS_WLOG(@"[单] 材质 alpha=0 %@", NSStringFromClass([first class]));
+        }
+    } @catch (NSException *e) { sbs_log(@"[exc-wbg3] %@", e); }
+}
+
+// ── chronod 侧强制暗色（对齐官方 RWB，无条件 return 2，与 RBShape 抹除配套）──
+//   ⚠️ 缺这些 hook 时，widget 在浅色下渲染 → 背景板与内容同尺寸 → RBShape 抹除误伤/无效。
+// CHUISWidgetScene.colorScheme（返回 unsigned long long，与 SB 侧 host 一致）
+- (unsigned long long)sbs_wbgSceneColorScheme {
+    return 2;
+}
+// CHSMutableScreenshotPresentationAttributes / CHSScreenshotPresentationAttributes.colorScheme（返回 long long）
+- (long long)sbs_wbgAttrColorScheme {
+    return 2;
 }
 @end
 
@@ -1510,6 +1962,131 @@ static void sbs_installApertureKeylineHook(void) {
     sbs_logNow(@"[apertureKeyline] 启动定向扫描命中=%d", hits);
 }
 
+// 安装「小组件背景移除」hook —— 只在 widget 渲染进程（chronod / WidgetRenderer）调用。
+// RBShape / RBLayer 是 SwiftUI 私有类，类可能晚于 ctor 加载 ⇒ 0.5s 间隔重试。
+static void sbs_installWidgetBgHooks(void) {
+    static BOOL shapeDone = NO, layerDone = NO, winTried = NO, csTried = NO;
+    static int tries = 0;
+    // ⚠️ 即使 gWidgetBgClear=NO（纯观测）也要装 hook —— 抹除与否在 setRect 内判定。
+    if (!shapeDone || !layerDone) {
+        Class clShape = objc_getClass("RBShape");
+        Class clLayer = objc_getClass("RBLayer");
+        if (!clShape || !clLayer) {
+            if (tries++ < 60)
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
+                               dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0),
+                               ^{ sbs_installWidgetBgHooks(); });
+            else
+                sbs_logNow(@"[hook] 小组件渲染类等待超时 (RBShape=%d RBLayer=%d)",
+                           clShape != Nil, clLayer != Nil);
+            if (!clShape || !clLayer)
+                SBS_WLOG(@"渲染类缺失 RBShape=%d RBLayer=%d", clShape != Nil, clLayer != Nil);
+            return;
+        }
+        if (!shapeDone)
+            shapeDone = SBSHook(clShape, @selector(setRect:), SBSHelper.class,
+                                @selector(sbs_wbgRBShapeSetRect:));
+        if (!layerDone)
+            layerDone = SBSHook(clLayer, @selector(display), SBSHelper.class,
+                                @selector(sbs_wbgRBLayerDisplay));
+        sbs_logNow(@"[hook] 小组件渲染层 RBShape.setRect=%d RBLayer.display=%d",
+                   shapeDone, layerDone);
+        SBS_WLOG(@"hook 渲染层 RBShape=%d RBLayer=%d proc=%@",
+                 shapeDone, layerDone, [[NSProcessInfo processInfo] processName]);
+    }
+    if (!winTried) {
+        winTried = YES;
+        BOOL ok = SBSHook([UIWindow class], @selector(initWithWindowScene:), SBSHelper.class,
+                          @selector(sbs_wbgWindowInitWithWindowScene:));
+        // ⭐⭐ 关键招式（此前遗漏）：清 widget 宿主视图的底色 —— 上游 RWB 的核心手段，
+        //    只动 backgroundColor，不碰绘制命令，因此不会把 widget 打成黑块。
+        BOOL clr = SBSHook([UIView class], @selector(layoutSubviews), SBSHelper.class,
+                           @selector(sbs_wbgViewLayoutSubviews));
+        sbs_logNow(@"[hook] 小组件渲染侧 窗口打标=%@ 清底色=%@",
+                   ok ? @"OK" : @"SKIP", clr ? @"OK" : @"SKIP");
+        SBS_WLOG(@"渲染侧 hook 窗口打标=%@ 清底色=%@",
+                 ok ? @"OK" : @"SKIP", clr ? @"OK" : @"SKIP");
+    }
+    // ⭐⭐ chronod 侧强制暗色 hook（CHUISWidgetScene / CHS*PresentationAttributes.colorScheme → 2）。
+    //   这是 RBShape 抹除生效的前提：暗色下背景板才以独立超阈值矩形呈现，可被尺寸分离。
+    if (!csTried) {
+        Class csScene = objc_getClass("CHUISWidgetScene");
+        Class csMut   = objc_getClass("CHSMutableScreenshotPresentationAttributes");
+        Class csAttr  = objc_getClass("CHSScreenshotPresentationAttributes");
+        if (!csScene && !csMut && !csAttr) {
+            if (tries < 60)
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
+                               dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0),
+                               ^{ sbs_installWidgetBgHooks(); });
+            return;
+        }
+        csTried = YES;
+        int cn = 0;
+        if (csScene) cn += SBSHook(csScene, @selector(colorScheme), SBSHelper.class, @selector(sbs_wbgSceneColorScheme)) ? 1 : 0;
+        if (csMut)   cn += SBSHook(csMut,   @selector(colorScheme), SBSHelper.class, @selector(sbs_wbgAttrColorScheme)) ? 1 : 0;
+        if (csAttr)  cn += SBSHook(csAttr,  @selector(colorScheme), SBSHelper.class, @selector(sbs_wbgAttrColorScheme)) ? 1 : 0;
+        sbs_logNow(@"[hook] 小组件强制暗色 scene=%d mut=%d attr=%d 装=%d",
+                   csScene != Nil, csMut != Nil, csAttr != Nil, cn);
+    }
+}
+
+// 安装「小组件背景移除」SpringBoard 侧 hook —— 在 SpringBoard 进程内调用。
+// 相关私有类可能晚于 ctor 加载 ⇒ 0.5s 间隔重试（最多 40 次）。
+static void sbs_installWidgetSbHooks(void) {
+    static BOOL done = NO;
+    static int tries = 0;
+    if (done) return;   // ⚠️ 观测期也要装（用于 dump widget 宿主视图树）
+    Class host  = objc_getClass("CHUISWidgetHostViewController");
+    Class avoc  = objc_getClass("CHUISAvocadoHostViewController");
+    Class stack = objc_getClass("SBHWidgetStackViewController");
+    Class list  = objc_getClass("WGWidgetListItemViewController");
+    Class single= objc_getClass("SBHWidgetViewController");
+    if (!host && !avoc && !stack && !list && !single) {
+        if (tries++ < 40)
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{ sbs_installWidgetSbHooks(); });
+        else
+            sbs_logNow(@"[hook] 小组件 SB 侧：候选类全部不存在（等待超时）");
+        return;
+    }
+    NSMutableArray *classes = [NSMutableArray array];
+    if (host) [classes addObject:host];
+    if (avoc) [classes addObject:avoc];
+    int n = 0, tot = 0;
+    // ⭐⭐ 白名单条件下的入口拦截（对齐上游 RWB 的 SpringBoard 组）：
+    //   ⚠️ 19:14 实测"拦截后 widget 变纯黑块"是**无条件拦截**（连非白名单 widget 一起挡）造成的；
+    //      加上白名单条件后只影响白名单 widget —— 这正是上游 RWB 的做法，其 v2.1.1 实机有效。
+    for (Class c in classes) {
+        if (SBSHook(c, @selector(_updateBackgroundMaterialAndColor), SBSHelper.class,
+                    @selector(sbs_wbgHostUpdateBgMaterial))) n++;
+        if (SBSHook(c, @selector(_updatePersistedSnapshotContent), SBSHelper.class,
+                    @selector(sbs_wbgHostUpdateSnapshot))) n++;
+        if (SBSHook(c, @selector(_updatePersistedSnapshotContentIfNecessary), SBSHelper.class,
+                    @selector(sbs_wbgHostUpdateSnapshot2))) n++;
+        if (SBSHook(c, @selector(colorScheme), SBSHelper.class,
+                    @selector(sbs_wbgHostColorScheme))) n++;
+        tot += 4;
+    }
+    // avoc 专属（iOS 15）：screenshotManager → nil；host 专属（iOS 16.0-16.2）：_snapshotImageFromURL: → nil
+    if (avoc) { if (SBSHook(avoc, @selector(screenshotManager), SBSHelper.class,
+                            @selector(sbs_wbgHostScreenshotManager))) n++; tot++; }
+    if (host)  { if (SBSHook(host, @selector(_snapshotImageFromURL:), SBSHelper.class,
+                            @selector(sbs_wbgHostSnapshotImageFromURL:))) n++; tot++; }
+    // 栈类用【两层 firstObject】取材质；单 widget 宿主用【一层】取 UIVisualEffectView
+    if (stack)  { if (SBSHook(stack, @selector(viewWillAppear:), SBSHelper.class,
+                              @selector(sbs_wbgStackViewWillAppear:))) n++; tot++; }
+    if (list)   { if (SBSHook(list, @selector(viewWillAppear:), SBSHelper.class,
+                              @selector(sbs_wbgStackViewWillAppear:))) n++; tot++; }
+    if (single) { if (SBSHook(single, @selector(viewWillAppear:), SBSHelper.class,
+                              @selector(sbs_wbgSingleViewWillAppear:))) n++; tot++; }
+    sbs_logNow(@"[hook] 小组件 SB 侧 类存在性 host=%d avoc=%d stack=%d list=%d single=%d ⇒ 已装 %d/%d",
+               host != Nil, avoc != Nil, stack != Nil, list != Nil, single != Nil, n, tot);
+    done = (n > 0);
+    if (!done && tries++ < 40)
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{ sbs_installWidgetSbHooks(); });
+}
+
 // ===========================================================================
 // 安装
 // ===========================================================================
@@ -1523,7 +2100,7 @@ static void sbs_install(void) {
         // 有限重试等待类出现（旧代码在此永久返回 → 整次启动都不生效）。
         if (classWaitAttempt == 0)
             NSLog(@"[StatusBarScale] waiting for _UIStatusBarForegroundView");
-        if (classWaitAttempt++ < 10) {
+        if (classWaitAttempt++ < 40) {
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
                                          (int64_t)(0.5 * NSEC_PER_SEC)),
                            dispatch_get_main_queue(), ^{ sbs_install(); });
@@ -1616,13 +2193,44 @@ static void sbs_install(void) {
 
 __attribute__((constructor))
 static void sbs_ctor(void) {
-    // 防御性白名单：绝不在非 SpringBoard 进程安装任何全局 swizzle。
-    if (![[[NSProcessInfo processInfo] processName] isEqualToString:@"SpringBoard"])
+    NSString *proc = [[NSProcessInfo processInfo] processName];
+    NSString *bid  = [[NSBundle mainBundle] bundleIdentifier] ?: @"-";
+    // 无条件构造日志（走 os_log，供 syslog 抓取）：用于判定"插件到底有没有被注入本进程"。
+    NSLog(@"[SBS] v%@ ctor proc=%@ bid=%@ pid=%d", SBS_VERSION, proc, bid, getpid());
+    // ⭐ 注入面诊断（技能 §4.2「载入即落盘」）：把"本进程被注入"的事实写到 /var/tmp，
+    //    respring 后 ls 一次即可看清哪些进程真的被注入（不依赖 syslog 抓取窗口）。
+    // ⚠️ 仅小组件渲染进程写落痕（plist 用 Classes 过滤时会注入所有 App，避免刷出一堆文件）
+    if (sbs_isWidgetRenderProcess()) {
+        NSString *body = [NSString stringWithFormat:@"v%@ proc=%@ bid=%@ pid=%d mode=widget渲染\n",
+                          SBS_VERSION, proc, bid, getpid()];
+        [body writeToFile:[NSString stringWithFormat:@"/private/var/tmp/sbs_inject_%@_%d.txt", proc, getpid()]
+                 atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    }
+
+    // ② 小组件渲染进程（chronod / WidgetRenderer）：只装「小组件背景移除」。
+    if (sbs_isWidgetRenderProcess()) {
+        SBS_WLOG(@"进入小组件背景移除模式 proc=%@ pid=%d", proc, getpid());
+        sbs_logNow(@"[载入] v%@ proc=%@ pid=%d 模式=小组件背景移除",
+                   SBS_VERSION, proc, getpid());
+        // ⚠️⚠️ 实测（2026-10-09）：ctor 里 dispatch_async 到【主队列】的 block **不执行**
+        //    （chronod 的 run loop 尚未启动）⇒ 直接同步试一次，再用【全局队列】重试兜底。
+        sbs_installWidgetBgHooks();
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+            sbs_installWidgetBgHooks();
+        });
+        return;
+    }
+
+    // ① 状态栏缩放 / 资源库背景：防御性白名单 —— 绝不在非 SpringBoard 进程安装全局 swizzle。
+    if (![proc isEqualToString:@"SpringBoard"])
         return;
     NSLog(@"[StatusBarScale] v%@ loaded in SpringBoard (scale=%.4f thr=%.0f lead=%.4f)",
           SBS_VERSION, gScale, gThr, gLeadScale);
     sbs_log(@"[载入] v%@ proc=%@ pid=%d enabled=%d scale=%.4f dy=%.4f thr=%.0f lead=%d/%.4f",
-            SBS_VERSION, [[NSProcessInfo processInfo] processName], getpid(),
+            SBS_VERSION, proc, getpid(),
             gEnabled, gScale, gDy, gThr, gLeadEnabled, gLeadScale);
     sbs_install();
+
+    // ③ 小组件背景移除 · SpringBoard 侧（观测期也装：dump widget 宿主视图/图层结构）
+    dispatch_async(dispatch_get_main_queue(), ^{ sbs_installWidgetSbHooks(); });
 }
