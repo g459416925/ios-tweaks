@@ -64,6 +64,27 @@ SHA256: d64fa6b81fafdf06272d5f32a2cd1cf387972f3d8d79d81154edda9a785b2c63
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
+Version: 1.0.12
+Architecture: iphoneos-arm64e
+Description: 系统键盘全按键圆角增强修复版（完美支持字母与数字键盘按键圆角）。
+ 修复原版键盘圆角在切换为数字键盘输入时按键未显示为圆角矩形的问题，
+ 全面覆盖 UIKBRenderGeometry、10Key 九宫格及数字面板渲染路径。
+Conflicts: com.liuf.jpyj
+Replaces: com.liuf.jpyj, com.xu.kbprobe
+Provides: com.liuf.jpyj
+Maintainer: g459416925
+Author: xu
+Section: Tweaks
+Depends: mobilesubstrate
+Installed-Size: 67
+Tag: purpose::extension
+Filename: ./debs/KeyboardCorner16_1.0.12_iphoneos-arm64e.deb
+Size: 5460
+MD5sum: dcebd243fb7eb06bb5d76f6422dc3f31
+SHA256: 793ee6c09cc581ff81c49817e7f8cacc4897ad018677b135a00265b6546a786c
+
+Package: com.xu.keyboardcorner16
+Name: KeyboardCorner16
 Version: 1.0.1
 Architecture: iphoneos-arm64e
 Description: 系统键盘全按键圆角增强修复版（完美支持字母与数字键盘按键圆角）。
@@ -124,6 +145,426 @@ Filename: ./debs/KeyboardCorner16_1.0.3_iphoneos-arm64e.deb
 Size: 4456
 MD5sum: d6c1d719e1217fcf062150f680e4feea
 SHA256: fca43b5a8cbe2c74178959581f6582c0ef18994d2573af624c27b6f203b7c27c
+
+Package: com.xu.keyboardcorner16
+Name: KeyboardCorner16
+Version: 1.0.4-probe
+Architecture: iphoneos-arm64e
+Description: 系统键盘全按键圆角增强修复版（完美支持字母与数字键盘按键圆角）。
+ 修复原版键盘圆角在切换为数字键盘输入时按键未显示为圆角矩形的问题，
+ 全面覆盖 UIKBRenderGeometry、10Key 九宫格及数字面板渲染路径。
+Conflicts: com.liuf.jpyj
+Replaces: com.liuf.jpyj, com.xu.kbprobe
+Provides: com.liuf.jpyj
+Maintainer: g459416925
+Author: xu
+Section: Tweaks
+Depends: mobilesubstrate
+Installed-Size: 67
+Tag: purpose::extension
+Filename: ./debs/KeyboardCorner16_1.0.4-probe_iphoneos-arm64e.deb
+Size: 5618
+MD5sum: c84fff0bd21494b2875b939b626cad2e
+SHA256: be8ec2b896ec1f7ec79b5751bbf95d00b1bf3d20f0673eda6536b09025f6046a
+
+Package: com.xu.keyboardcorner16
+Name: KeyboardCorner16
+Version: 1.0.40
+Architecture: iphoneos-arm64e
+Description: iOS 16 系统键盘全按键 10pt 圆角增强。
+ 直接修正最终键背景合成蒙版，覆盖字母、数字和特殊符号布局，
+ 不修改 keyplane 键数据，不 Hook useRoundCorner。
+Conflicts: com.liuf.jpyj
+Replaces: com.liuf.jpyj, com.xu.kbprobe
+Provides: com.liuf.jpyj
+Maintainer: g459416925
+Author: xu
+Section: Tweaks
+Depends: mobilesubstrate
+Installed-Size: 68
+Tag: purpose::extension
+Filename: ./debs/KeyboardCorner16_1.0.40_iphoneos-arm64e.deb
+Size: 6582
+MD5sum: 956c56c6cdb9f258c5282681488cc5bf
+SHA256: 8bb4ae2bc0a385f1d50b8a66961c3ad8e9b2bbfa50e5173e3d96247d46b89e1e
+
+Package: com.xu.keyboardcorner16
+Name: KeyboardCorner16
+Version: 1.0.49
+Architecture: iphoneos-arm64e
+Description: iOS 16 系统键盘全按键 10pt 圆角增强。
+ 直接修正最终键背景合成蒙版，覆盖字母、数字和特殊符号布局，
+ 不修改 keyplane 键数据，不 Hook useRoundCorner。
+Conflicts: com.liuf.jpyj
+Replaces: com.liuf.jpyj, com.xu.kbprobe
+Provides: com.liuf.jpyj
+Maintainer: g459416925
+Author: xu
+Section: Tweaks
+Depends: mobilesubstrate
+Installed-Size: 70
+Tag: purpose::extension
+Filename: ./debs/KeyboardCorner16_1.0.49_iphoneos-arm64e.deb
+Size: 10750
+MD5sum: 4bbbdf4ed0df42e97c957b3324ed7023
+SHA256: a5354fbb9e9d20920ee1ab5eadaee19c10628e1979faafe72490cfe2d54cef4b
+
+Package: com.xu.keyboardcorner16
+Name: KeyboardCorner16
+Version: 1.0.50
+Architecture: iphoneos-arm64e
+Description: iOS 16 系统键盘全按键 10pt 圆角增强。
+ 直接修正最终键背景合成蒙版，覆盖字母、数字和特殊符号布局，
+ 不修改 keyplane 键数据，不 Hook useRoundCorner。
+Conflicts: com.liuf.jpyj
+Replaces: com.liuf.jpyj, com.xu.kbprobe
+Provides: com.liuf.jpyj
+Maintainer: g459416925
+Author: xu
+Section: Tweaks
+Depends: mobilesubstrate
+Installed-Size: 70
+Tag: purpose::extension
+Filename: ./debs/KeyboardCorner16_1.0.50_iphoneos-arm64e.deb
+Size: 11828
+MD5sum: cf0d5be5bb40c67fcbd4c5efc02c8bc4
+SHA256: fd579e9bdc883b0232778bf775a7bd31c2e8139b3a2214d308b9ef676de2fe73
+
+Package: com.xu.keyboardcorner16
+Name: KeyboardCorner16
+Version: 1.0.51
+Architecture: iphoneos-arm64e
+Description: iOS 16 系统键盘全按键 10pt 圆角增强。
+ 直接修正最终键背景合成蒙版，覆盖字母、数字和特殊符号布局，
+ 不修改 keyplane 键数据，不 Hook useRoundCorner。
+Conflicts: com.liuf.jpyj
+Replaces: com.liuf.jpyj, com.xu.kbprobe
+Provides: com.liuf.jpyj
+Maintainer: g459416925
+Author: xu
+Section: Tweaks
+Depends: mobilesubstrate
+Installed-Size: 70
+Tag: purpose::extension
+Filename: ./debs/KeyboardCorner16_1.0.51_iphoneos-arm64e.deb
+Size: 10688
+MD5sum: 8a750ab846535bf00b1eb06521945332
+SHA256: d7f2c5ca4cef60d043d965c5e29cefd39d1abef52c5f447926c67403945c5c1a
+
+Package: com.xu.keyboardcorner16
+Name: KeyboardCorner16
+Version: 1.0.52
+Architecture: iphoneos-arm64e
+Description: iOS 16 系统键盘全按键 10pt 圆角增强。
+ 直接修正最终键背景合成蒙版，覆盖字母、数字和特殊符号布局，
+ 不修改 keyplane 键数据，不 Hook useRoundCorner。
+Conflicts: com.liuf.jpyj
+Replaces: com.liuf.jpyj, com.xu.kbprobe
+Provides: com.liuf.jpyj
+Maintainer: g459416925
+Author: xu
+Section: Tweaks
+Depends: mobilesubstrate
+Installed-Size: 71
+Tag: purpose::extension
+Filename: ./debs/KeyboardCorner16_1.0.52_iphoneos-arm64e.deb
+Size: 11362
+MD5sum: 43165b22b57c17ee4e1b65bb51c24e54
+SHA256: 24cc15493860f1c6e2268a5694c6a44f40d3c08578f8a9fbd419bc304c6edfc5
+
+Package: com.xu.keyboardcorner16
+Name: KeyboardCorner16
+Version: 1.0.53
+Architecture: iphoneos-arm64e
+Description: iOS 16 系统键盘全按键 10pt 圆角增强。
+ 直接修正最终键背景合成蒙版，覆盖字母、数字和特殊符号布局，
+ 不修改 keyplane 键数据，不 Hook useRoundCorner。
+Conflicts: com.liuf.jpyj
+Replaces: com.liuf.jpyj, com.xu.kbprobe
+Provides: com.liuf.jpyj
+Maintainer: g459416925
+Author: xu
+Section: Tweaks
+Depends: mobilesubstrate
+Installed-Size: 71
+Tag: purpose::extension
+Filename: ./debs/KeyboardCorner16_1.0.53_iphoneos-arm64e.deb
+Size: 12630
+MD5sum: ae9a18a0a7e0296555cfac202a4b5397
+SHA256: 1fad08c007776910ea09804e7b7e147a2ef3146b3c6be3aeeb994effae69b989
+
+Package: com.xu.keyboardcorner16
+Name: KeyboardCorner16
+Version: 1.0.54
+Architecture: iphoneos-arm64e
+Description: iOS 16 系统键盘全按键 10pt 圆角增强。
+ 直接修正最终键背景合成蒙版，覆盖字母、数字和特殊符号布局，
+ 不修改 keyplane 键数据，不 Hook useRoundCorner。
+Conflicts: com.liuf.jpyj
+Replaces: com.liuf.jpyj, com.xu.kbprobe
+Provides: com.liuf.jpyj
+Maintainer: g459416925
+Author: xu
+Section: Tweaks
+Depends: mobilesubstrate
+Installed-Size: 72
+Tag: purpose::extension
+Filename: ./debs/KeyboardCorner16_1.0.54_iphoneos-arm64e.deb
+Size: 13584
+MD5sum: 9a098afa8604e49b8b0ccfeb092e09e8
+SHA256: 3a67968bc5e78a3a3a1a76e31e862e8ee515f7579297123044a06e85b64b6fe4
+
+Package: com.xu.keyboardcorner16
+Name: KeyboardCorner16
+Version: 1.0.56
+Architecture: iphoneos-arm64e
+Description: iOS 16 系统键盘圆角、OLED 深色背景与 UnderDock 快捷操作整合。
+ 直接修正最终键背景合成蒙版，覆盖字母、数字和特殊符号布局；
+ 同时集成 byg.iosios.net.oledkeyboard 与 com.p2kdev.underdock 的已验证功能。
+Conflicts: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, com.restiveconch.actionbar, com.udevs.dockx
+Replaces: com.liuf.jpyj, com.xu.kbprobe, byg.iosios.net.oledkeyboard, com.p2kdev.underdock
+Provides: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock
+Maintainer: g459416925
+Author: xu
+Section: Tweaks
+Depends: mobilesubstrate
+Installed-Size: 115
+Tag: purpose::extension
+Filename: ./debs/KeyboardCorner16_1.0.56_iphoneos-arm64e.deb
+Size: 27690
+MD5sum: 82bbb43d00836748a87dfb855fa3f3e1
+SHA256: cc993bd549e4a1916045bb95a39df8ccbff3a903e5d49d2eb0ca0fe05e394177
+
+Package: com.xu.keyboardcorner16
+Name: KeyboardCorner16
+Version: 1.0.57
+Architecture: iphoneos-arm64e
+Description: iOS 16 系统键盘圆角、OLED 深色背景与 UnderDock 快捷操作整合。
+ 直接修正最终键背景合成蒙版，覆盖字母、数字和特殊符号布局；
+ 同时集成 byg.iosios.net.oledkeyboard 与 com.p2kdev.underdock 的已验证功能。
+Conflicts: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, com.restiveconch.actionbar, com.udevs.dockx
+Replaces: com.liuf.jpyj, com.xu.kbprobe, byg.iosios.net.oledkeyboard, com.p2kdev.underdock
+Provides: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock
+Maintainer: g459416925
+Author: xu
+Section: Tweaks
+Depends: mobilesubstrate
+Installed-Size: 115
+Tag: purpose::extension
+Filename: ./debs/KeyboardCorner16_1.0.57_iphoneos-arm64e.deb
+Size: 27690
+MD5sum: 1021461f0c414be42f374ee07030b1ee
+SHA256: e3929807817b030b5c062617921b5adad0372f9933b122d696901e09e4118bd8
+
+Package: com.xu.keyboardcorner16
+Name: KeyboardCorner16
+Version: 1.0.58
+Architecture: iphoneos-arm64e
+Description: iOS 16 系统键盘圆角、OLED、UnderDock 与 Kayoko 剪贴板整合。
+ 直接修正最终键背景合成蒙版，覆盖字母、数字和特殊符号布局；
+ 同时集成 byg.iosios.net.oledkeyboard、com.p2kdev.underdock 与 codes.aurora.kayoko 的已验证功能。
+Conflicts: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko, com.restiveconch.actionbar, com.udevs.dockx
+Replaces: com.liuf.jpyj, com.xu.kbprobe, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
+Provides: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
+Maintainer: g459416925
+Author: xu
+Section: Tweaks
+Depends: mobilesubstrate, preferenceloader, com.opa334.libsandy
+Installed-Size: 1270
+Tag: purpose::extension
+Filename: ./debs/KeyboardCorner16_1.0.58_iphoneos-arm64e.deb
+Size: 355186
+MD5sum: 88247bdf9c163a573d680cbad00bc38e
+SHA256: 2ecff665d22162e8ae835645db94ecae346d90ba1bb54c6796eedc59f1037a86
+
+Package: com.xu.keyboardcorner16
+Name: KeyboardCorner16
+Version: 1.0.59
+Architecture: iphoneos-arm64e
+Description: iOS 16 系统键盘圆角、OLED、UnderDock 与 Kayoko 剪贴板整合。
+ 直接修正最终键背景合成蒙版，覆盖字母、数字和特殊符号布局；
+ 同时集成 byg.iosios.net.oledkeyboard、com.p2kdev.underdock 与 codes.aurora.kayoko 的已验证功能。
+Conflicts: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko, com.restiveconch.actionbar, com.udevs.dockx
+Replaces: com.liuf.jpyj, com.xu.kbprobe, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
+Provides: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
+Maintainer: g459416925
+Author: xu
+Section: Tweaks
+Depends: mobilesubstrate, preferenceloader, com.opa334.libsandy
+Installed-Size: 1274
+Tag: purpose::extension
+Filename: ./debs/KeyboardCorner16_1.0.59_iphoneos-arm64e.deb
+Size: 359850
+MD5sum: bcb4d9ed6719cdd3d142623307fbeb2d
+SHA256: e657c9460b24f9af809689f6bb62a7512e7bdfb4ffd506f374fac76d311d0b02
+
+Package: com.xu.keyboardcorner16
+Name: KeyboardCorner16
+Version: 1.0.5
+Architecture: iphoneos-arm64e
+Description: 系统键盘全按键圆角增强修复版（完美支持字母与数字键盘按键圆角）。
+ 修复原版键盘圆角在切换为数字键盘输入时按键未显示为圆角矩形的问题，
+ 全面覆盖 UIKBRenderGeometry、10Key 九宫格及数字面板渲染路径。
+Conflicts: com.liuf.jpyj
+Replaces: com.liuf.jpyj, com.xu.kbprobe
+Provides: com.liuf.jpyj
+Maintainer: g459416925
+Author: xu
+Section: Tweaks
+Depends: mobilesubstrate
+Installed-Size: 66
+Tag: purpose::extension
+Filename: ./debs/KeyboardCorner16_1.0.5_iphoneos-arm64e.deb
+Size: 4210
+MD5sum: 9e51b01db2262d8f103aa5c771bb96a7
+SHA256: d7769d96480ed34cd79004cd0199c8ca4b3e660bb999285bd1ca03f618407a3b
+
+Package: com.xu.keyboardcorner16
+Name: KeyboardCorner16
+Version: 1.0.61
+Architecture: iphoneos-arm64e
+Description: iOS 16 系统键盘圆角、OLED、UnderDock 与 Kayoko 剪贴板整合。
+ 直接修正最终键背景合成蒙版，覆盖字母、数字和特殊符号布局；
+ 同时集成 byg.iosios.net.oledkeyboard、com.p2kdev.underdock 与 codes.aurora.kayoko 的已验证功能。
+Conflicts: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko, com.restiveconch.actionbar, com.udevs.dockx
+Replaces: com.liuf.jpyj, com.xu.kbprobe, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
+Provides: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
+Maintainer: g459416925
+Author: xu
+Section: Tweaks
+Depends: mobilesubstrate, preferenceloader, com.opa334.libsandy
+Installed-Size: 1291
+Tag: purpose::extension
+Filename: ./debs/KeyboardCorner16_1.0.61_iphoneos-arm64e.deb
+Size: 362388
+MD5sum: 19bb96fad23c22a0c56714dff6f66f4c
+SHA256: 94255c7922e890c481c0399900836f65fa983f097f1a1180f0346e1472867117
+
+Package: com.xu.keyboardcorner16
+Name: KeyboardCorner16
+Version: 1.0.62
+Architecture: iphoneos-arm64e
+Description: iOS 16 系统键盘圆角、OLED、UnderDock 与 Kayoko 剪贴板整合。
+ 直接修正最终键背景合成蒙版，覆盖字母、数字和特殊符号布局；
+ 同时集成 byg.iosios.net.oledkeyboard、com.p2kdev.underdock 与 codes.aurora.kayoko 的已验证功能。
+Conflicts: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko, com.restiveconch.actionbar, com.udevs.dockx
+Replaces: com.liuf.jpyj, com.xu.kbprobe, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
+Provides: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
+Maintainer: g459416925
+Author: xu
+Section: Tweaks
+Depends: mobilesubstrate, preferenceloader, com.opa334.libsandy
+Installed-Size: 1291
+Tag: purpose::extension
+Filename: ./debs/KeyboardCorner16_1.0.62_iphoneos-arm64e.deb
+Size: 362506
+MD5sum: baff555159aec3251b538ed2071d5653
+SHA256: c239f819843bdeb7d98997cecc5a31307a6c56308dee69a24866d6a3fd3a24a1
+
+Package: com.xu.keyboardcorner16
+Name: KeyboardCorner16
+Version: 1.0.66
+Architecture: iphoneos-arm64e
+Description: iOS 16 系统键盘圆角、OLED、UnderDock 与 Kayoko 剪贴板整合。
+ 直接修正最终键背景合成蒙版，覆盖字母、数字和特殊符号布局；
+ 同时集成 byg.iosios.net.oledkeyboard、com.p2kdev.underdock 与 codes.aurora.kayoko 的已验证功能。
+Conflicts: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko, com.restiveconch.actionbar, com.udevs.dockx
+Replaces: com.liuf.jpyj, com.xu.kbprobe, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
+Provides: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
+Maintainer: g459416925
+Author: xu
+Section: Tweaks
+Depends: mobilesubstrate, preferenceloader, com.opa334.libsandy
+Installed-Size: 1294
+Tag: purpose::extension
+Filename: ./debs/KeyboardCorner16_1.0.66_iphoneos-arm64e.deb
+Size: 366596
+MD5sum: 524f0f6d182da6ec3d1c598d94eac8b2
+SHA256: c7a4db1b0ed41e6c9d829137fe98e55f3aa17e067a41f0ee1b5f32922c0f350f
+
+Package: com.xu.keyboardcorner16
+Name: KeyboardCorner16
+Version: 1.0.67
+Architecture: iphoneos-arm64e
+Description: iOS 16 系统键盘圆角、OLED、UnderDock 与 Kayoko 剪贴板整合。
+ 直接修正最终键背景合成蒙版，覆盖字母、数字和特殊符号布局；
+ 同时集成 byg.iosios.net.oledkeyboard、com.p2kdev.underdock 与 codes.aurora.kayoko 的已验证功能。
+Conflicts: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko, com.restiveconch.actionbar, com.udevs.dockx
+Replaces: com.liuf.jpyj, com.xu.kbprobe, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
+Provides: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
+Maintainer: g459416925
+Author: xu
+Section: Tweaks
+Depends: mobilesubstrate, preferenceloader, com.opa334.libsandy
+Installed-Size: 1294
+Tag: purpose::extension
+Filename: ./debs/KeyboardCorner16_1.0.67_iphoneos-arm64e.deb
+Size: 366606
+MD5sum: ac783848fce58077e19b557e253ef5ab
+SHA256: 0c645496384519d7bab207aedede20b8715c6a53b2bf33a4030991cd9ba7c240
+
+Package: com.xu.keyboardcorner16
+Name: KeyboardCorner16
+Version: 1.0.6
+Architecture: iphoneos-arm64e
+Description: 系统键盘全按键圆角增强修复版（完美支持字母与数字键盘按键圆角）。
+ 修复原版键盘圆角在切换为数字键盘输入时按键未显示为圆角矩形的问题，
+ 全面覆盖 UIKBRenderGeometry、10Key 九宫格及数字面板渲染路径。
+Conflicts: com.liuf.jpyj
+Replaces: com.liuf.jpyj, com.xu.kbprobe
+Provides: com.liuf.jpyj
+Maintainer: g459416925
+Author: xu
+Section: Tweaks
+Depends: mobilesubstrate
+Installed-Size: 66
+Tag: purpose::extension
+Filename: ./debs/KeyboardCorner16_1.0.6_iphoneos-arm64e.deb
+Size: 3580
+MD5sum: f3f6b8f04615c23c3b540c35ba003f2f
+SHA256: 9e273f02c15bf48e75197d5ea625025e5930b6da7d05cf217a3b074aea757fd6
+
+Package: com.xu.keyboardcorner16
+Name: KeyboardCorner16
+Version: 1.0.70
+Architecture: iphoneos-arm64e
+Description: iOS 16 系统键盘圆角、OLED、UnderDock 与 Kayoko 剪贴板整合。
+ 直接修正最终键背景合成蒙版，覆盖字母、数字和特殊符号布局；
+ 同时集成 byg.iosios.net.oledkeyboard、com.p2kdev.underdock 与 codes.aurora.kayoko 的已验证功能。
+Conflicts: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko, com.restiveconch.actionbar, com.udevs.dockx
+Replaces: com.liuf.jpyj, com.xu.kbprobe, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
+Provides: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
+Maintainer: g459416925
+Author: xu
+Section: Tweaks
+Depends: mobilesubstrate, preferenceloader, com.opa334.libsandy
+Installed-Size: 1312
+Tag: purpose::extension
+Filename: ./debs/KeyboardCorner16_1.0.70_iphoneos-arm64e.deb
+Size: 371204
+MD5sum: 9e19f79a54d0fc8467e01893e1106f83
+SHA256: dde7702ecc9b3b3403acc4bd50906946331222d5c540a92ccb4d902296cab33a
+
+Package: com.xu.keyboardcorner16
+Name: KeyboardCorner16
+Version: 1.0.74
+Architecture: iphoneos-arm64e
+Description: iOS 16 系统键盘圆角、OLED、UnderDock 与 Kayoko 剪贴板整合。
+ 直接修正最终键背景合成蒙版，覆盖字母、数字和特殊符号布局；
+ 同时集成 byg.iosios.net.oledkeyboard、com.p2kdev.underdock 与 codes.aurora.kayoko 的已验证功能。
+Conflicts: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko, com.restiveconch.actionbar, com.udevs.dockx
+Replaces: com.liuf.jpyj, com.xu.kbprobe, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
+Provides: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
+Maintainer: g459416925
+Author: xu
+Section: Tweaks
+Depends: mobilesubstrate, preferenceloader, com.opa334.libsandy
+Installed-Size: 1330
+Tag: purpose::extension
+Filename: ./debs/KeyboardCorner16_1.0.74_iphoneos-arm64e.deb
+Size: 374224
+MD5sum: d7cbc6adbb330b2e3575aa15c74682c7
+SHA256: cc84488b679e27552013aa54d8a8c6244af9212720df1a553925dcdb164e1f1f
 
 Package: com.xu.screentimelocker16
 Name: ScreenTimeLocker16
@@ -194,3 +635,27 @@ Filename: ./debs/StatusBarScale_2.1.1_iphoneos-arm64e.deb
 Size: 19876
 MD5sum: 2eb10aa798851dec4059cc32421d72f4
 SHA256: b7e43d7700033138fa064ca274758096ece94614fab6554aaf9ab7dfec4b1ebb
+
+Package: com.xu.statusbarscale
+Name: StatusBarScale
+Version: 2.3.1
+Architecture: iphoneos-arm64e
+Description: 状态栏图标缩放 + 资源库背景透明。
+ · 状态栏缩放：hook _UIStatusBarForegroundView -layoutSubviews，每次布局后
+   对灵动岛右侧（minX >= 阈值）的图标施加 绕中心缩放 + 垂直微调，与时间对齐；
+   时间右侧、灵动岛左侧的图标（闹钟/定位/录屏等，无法按标识枚举）按 fg 坐标系
+   frame 区间运行时发现，单独缩放。
+ · 资源库背景透明：App 资源库分类卡片的背景板 + 顶部搜索框背景清成透明，只留图标与文字。
+ 参数已硬编码进源码，不含设置面板/配置文件读取。
+ 仅注入 SpringBoard（Filter.Bundles = com.apple.springboard）。
+ 适用 iOS 16.x / RootHide (arm64e)。
+Maintainer: g459416925
+Author: g459416925 (iOS 16.5.1 / RootHide)
+Section: Tweaks
+Depends: mobilesubstrate
+Installed-Size: 114
+Tag: purpose::extension
+Filename: ./debs/StatusBarScale_2.3.1_iphoneos-arm64e.deb
+Size: 25308
+MD5sum: b7791254a41e9e46093fc0cf426d2d6e
+SHA256: bd47947c5fe872ae08a536c4af70b455f764d22c117abdae754fe940cc116a6f

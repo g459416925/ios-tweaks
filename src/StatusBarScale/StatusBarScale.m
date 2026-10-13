@@ -1,4 +1,9 @@
-// StatusBarScale.m —— 状态栏图标缩放 + 资源库背景透明 + 小组件背景移除（v2.2.0）
+// StatusBarScale.m —— 状态栏图标缩放 + 资源库背景透明（v2.3.1）
+//
+// v2.3.1（2026-10-13）：撤销逻辑加「可见性门槛」—— 修「CC 展开隐私后收起时
+//   状态栏图标闪回默认大小」的竞态（2026-10-13 日志实证：undo 恰在 CC 收起
+//   动画中、对象仍可见时执行 0.902→1.0；现改为可见时挂起、不可见后撤销）。
+//   详见 sbs_revalidateManaged 内注释。取证探针 gPrvProbe 默认关。
 //
 // 【功能范围】
 //   ① 主缩放：灵动岛【右侧】（frame.minX >= 阈值）的状态栏图标，整体绕中心缩放 + 垂直微调，
@@ -41,7 +46,7 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 
-#define SBS_VERSION @"2.3.0"
+#define SBS_VERSION @"2.3.1"
 
 // ⭐⭐ 日志路径（2026-10-09 血泪根因）：RootHide 下不同进程的路径解析不一致 ——
 //   SpringBoard 里 `/var/mobile/Documents` 可写；但 chronod（system daemon）里
@@ -71,6 +76,13 @@ static BOOL    gRuntimeDiagnostics = NO;
 // 实时活动树/CA 绘制探针只用于一次性逆向定位。已由日志锁定 key-line ivar，
 // 正式版本关闭，避免全局 CALayer display/draw hook 与每 2 秒视图树日志。
 static BOOL    gApertureProbeEnabled = NO;
+
+// ⭐⭐ PRV-PROBE（v2.3.1「CC 隐私展开」取证专用，已定根因并修复（可见性门槛），
+//   探针代码保留在源码中（全部由 gPrvProbe 门控），默认关闭防日志泛洪；
+//   下次排查同类问题置 YES 重新编译即可。
+//   回放：rv-bad（CC 布局后 237/266）→ 收起时 undo-defer（可见，挂起不闪变）
+//   → 1s 后对象脱窗（win=nil）→ undo（可见=0，安静撤销）。
+static BOOL    gPrvProbe = NO;
 
 // 受管图标视图的弱引用集合（setTransform: hook 据此拦截系统改动）
 static NSHashTable *gManaged     = nil;   // 主缩放
@@ -244,6 +256,9 @@ static void sbs_revalidateManaged(CGAffineTransform want) {
     if (!stamp) stamp = [NSMutableDictionary dictionary];
     if (stamp.count > 400) [stamp removeAllObjects];
     NSTimeInterval now = [NSDate date].timeIntervalSince1970;
+    // ⭐⭐ PRV-PROBE：当前判定不合格的地址集合（翻转即记）
+    static NSMutableSet *prvBad = nil;
+    if (!prvBad) prvBad = [NSMutableSet set];
     for (UIView *v in gManaged.allObjects) {
         NSString *cn = NSStringFromClass(v.class);
         BOOL isItem = ([cn containsString:@"StatusBar"] || [cn containsString:@"Battery"])
@@ -254,17 +269,79 @@ static void sbs_revalidateManaged(CGAffineTransform want) {
         //    切回来又重缩 → 每切一次图标闪一下。位置/尺寸足以表达"是否还在右侧"。
         BOOL ok = isItem && v.bounds.size.width > 0.5 && CGRectGetMinX(v.frame) >= gThr;
         NSString *k = [NSString stringWithFormat:@"%p", (__bridge void *)v];
+        if (gPrvProbe) {
+            if (ok) {
+                if ([prvBad containsObject:k]) {
+                    [prvBad removeObject:k];
+                    sbs_logNow(@"[rv-good] %@ %p minX=%.1f w=%.1f 恢复合格",
+                               cn, (__bridge void *)v,
+                               CGRectGetMinX(v.frame), v.bounds.size.width);
+                }
+            } else if (![prvBad containsObject:k]) {
+                [prvBad addObject:k];
+                if (prvBad.count > 300) [prvBad removeAllObjects];
+                sbs_logNow(@"[rv-bad] %@ %p minX=%.1f y=%.1f w=%.1f h=%.1f a=%.3f alpha=%.2f hid=%d win=%@ sup=%s",
+                           cn, (__bridge void *)v,
+                           CGRectGetMinX(v.frame), CGRectGetMinY(v.frame),
+                           v.bounds.size.width, v.bounds.size.height,
+                           v.transform.a, v.alpha, v.hidden,
+                           v.window ? NSStringFromClass(v.window.class) : @"nil",
+                           v.superview ? class_getName(v.superview.class) : "nil");
+            }
+        }
         if (ok) { [stamp removeObjectForKey:k]; continue; }
         NSNumber *f = stamp[k];
         if (!f) { stamp[k] = @(now); continue; }                  // 首个不合格轮 → 只记时间
         if (now - f.doubleValue < SBS_RV_GRACE) continue;
+
+        // ⭐⭐ v2.3.1 修复（CC 隐私展开闪变，2026-10-13 日志实证）：
+        //   撤销必须避开"对象可见"的时刻 —— CC 收起动画中执行撤销，
+        //   会呈现为"图标从缩放态闪回默认大小"（[undo] 可见=1 实锤）。
+        //   此处加可见性门槛：对象仍在屏幕上（窗口内、未隐藏、alpha>0）
+        //   时保持挂起不撤销，待不可见的布局轮再撤（或对象自行恢复合格）。
+        //   判定有意保守（被上层覆盖也按可见处理）：宁少撤，不闪变。
+        if (v.window != nil && !v.hidden && v.alpha > 0.01f) {
+            CGRect wr = [v convertRect:v.bounds toView:nil];
+            if (CGRectIntersectsRect(wr, v.window.bounds)) {
+                if (gPrvProbe) {
+                    static NSMutableSet *prvDefer = nil;
+                    if (!prvDefer) prvDefer = [NSMutableSet set];
+                    if (![prvDefer containsObject:k]) {
+                        [prvDefer addObject:k];
+                        if (prvDefer.count > 300) [prvDefer removeAllObjects];
+                        sbs_logNow(@"[undo-defer] %@ %p minX=%.1f 可见 "
+                                   @"winRect=(%.0f,%.0f,%.0fx%.0f) → 延迟撤销",
+                                   cn, (__bridge void *)v, CGRectGetMinX(v.frame),
+                                   wr.origin.x, wr.origin.y, wr.size.width, wr.size.height);
+                    }
+                }
+                continue;
+            }
+        }
+
         [stamp removeObjectForKey:k];
         // ⚠️ 必须【先摘登记、再还原】：否则 sbs_viewSetTransform: 会立刻把值改回来
         [gManaged removeObject:v];
+        // ⭐⭐ PRV-PROBE：撤销时刻的可见性判定（决定"用户是否看见闪回默认大小"）
+        CGRect wr = CGRectZero; BOOL vis = NO; CGFloat al = 0;
+        if (gPrvProbe) {
+            al = v.alpha;
+            wr = [v convertRect:v.bounds toView:nil];
+            vis = (v.window != nil) && !v.hidden && (v.alpha > 0.01f)
+                  && CGRectIntersectsRect(wr, v.window.bounds);
+        }
         if (CGAffineTransformEqualToTransform(v.transform, want))
             v.transform = CGAffineTransformIdentity;              // 只还原"确实是我们设的值"
-        sbs_logNow(@"[undo] %@ %p minX=%.1f 已不合格 → 还原变换（防复用黏连）",
-                   cn, (__bridge void *)v, CGRectGetMinX(v.frame));
+        if (gPrvProbe) {
+            sbs_logNow(@"[undo] %@ %p minX=%.1f a_before=%.3f 可见=%d "
+                       @"winRect=(%.0f,%.0f,%.0fx%.0f) alpha=%.2f win=%@",
+                       cn, (__bridge void *)v, CGRectGetMinX(v.frame), want.a, vis,
+                       wr.origin.x, wr.origin.y, wr.size.width, wr.size.height, al,
+                       v.window ? NSStringFromClass(v.window.class) : @"nil");
+        } else {
+            sbs_logNow(@"[undo] %@ %p minX=%.1f 已不合格 → 还原变换（防复用黏连）",
+                       cn, (__bridge void *)v, CGRectGetMinX(v.frame));
+        }
     }
 }
 
@@ -528,6 +605,22 @@ static void sbs_apply(UIView *fg) {
         }
     }
     if (!gEnabled) return;
+    // ⭐⭐ PRV-PROBE：fg 布局心跳（每 fg 地址 2s 节流）——看收起 CC 后布局何时发生
+    if (gPrvProbe) {
+        static NSMutableDictionary *fglSt = nil;
+        if (!fglSt) fglSt = [NSMutableDictionary dictionary];
+        NSTimeInterval nowF = [NSDate date].timeIntervalSince1970;
+        NSString *fk = [NSString stringWithFormat:@"%p", fg];
+        NSNumber *lastF = fglSt[fk];
+        if (!lastF || nowF - lastF.doubleValue > 2.0) {
+            if (fglSt.count > 200) [fglSt removeAllObjects];
+            fglSt[fk] = @(nowF);
+            sbs_logNow(@"[fgl] fg=%p W=%.0f win=%@ sub=%lu",
+                       fg, fg.bounds.size.width,
+                       fg.window ? NSStringFromClass(fg.window.class) : @"nil",
+                       (unsigned long)fg.subviews.count);
+        }
+    }
     if (gRuntimeDiagnostics)
         sbs_dumpScaled(fg, @"apply"); // 诊断模式：递归记录当前带缩放的视图
     // ⭐ 绑定取证：缩放一变就打印实时推算的垂直微调（变更即记，可核对联动）
@@ -552,6 +645,21 @@ static void sbs_apply(UIView *fg) {
         BOOL isItem = ([cn containsString:@"StatusBar"] || [cn containsString:@"Battery"])
                       && ![cn containsString:@"StringView"];
         if (isItem && CGRectGetMinX(v.frame) >= gThr) {
+            // ⭐⭐ PRV-PROBE：登记/重登记事件（每地址 3s 节流）——看到"重新缩放"的时刻
+            if (gPrvProbe) {
+                static NSMutableDictionary *regSt = nil;
+                if (!regSt) regSt = [NSMutableDictionary dictionary];
+                if (regSt.count > 400) [regSt removeAllObjects];
+                NSString *rk = [NSString stringWithFormat:@"%p", (__bridge void *)v];
+                NSTimeInterval nowR = [NSDate date].timeIntervalSince1970;
+                NSNumber *lastR = regSt[rk];
+                if (!lastR || nowR - lastR.doubleValue > 3.0) {
+                    regSt[rk] = @(nowR);
+                    sbs_logNow(@"[reg] %@ %p minX=%.1f a_before=%.3f fg=%p fgW=%.0f",
+                               cn, (__bridge void *)v, CGRectGetMinX(v.frame),
+                               v.transform.a, (__bridge void *)fg, fg.bounds.size.width);
+                }
+            }
             // 登记为受管视图（弱引用，view 销毁自动剔除）
             [gManaged addObject:v];
             if (!CGAffineTransformEqualToTransform(v.transform, t)) v.transform = t;
@@ -737,6 +845,11 @@ static void sbs_leadRevalidate(UIView *fg, NSArray<UIView *> *cands, CGAffineTra
         NSNumber *f = stamp[k];
         if (!f) { stamp[k] = @(now); continue; }  // 首轮脱离 → 宽限
         if (now - f.doubleValue < SBS_RV_GRACE) continue;
+        // ⭐⭐ v2.3.1 修复：同主缩放 —— 可见时不撤销（防收起动画闪变）
+        if (v.window != nil && !v.hidden && v.alpha > 0.01f) {
+            CGRect wrL = [v convertRect:v.bounds toView:nil];
+            if (CGRectIntersectsRect(wrL, v.window.bounds)) continue;
+        }
         [stamp removeObjectForKey:k];
         [gManagedLead removeObject:v];            // 先摘登记再还原
         if (CGAffineTransformEqualToTransform(v.transform, lt))
@@ -1097,6 +1210,22 @@ static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
         else if (gManagedLead && [gManagedLead containsObject:v]) want = sbs_leadTransform();
         else return;
         if (!CGAffineTransformEqualToTransform(t, want)) {
+            // ⭐⭐ PRV-PROBE：系统改写受管视图 transform（每地址 3s 节流）——
+            //    sys_a=1.000 即"系统复原动作"，看它发生在哪个路径、哪个时刻
+            if (gPrvProbe) {
+                static NSMutableDictionary *tsxSt = nil;
+                if (!tsxSt) tsxSt = [NSMutableDictionary dictionary];
+                if (tsxSt.count > 400) [tsxSt removeAllObjects];
+                NSString *tk = [NSString stringWithFormat:@"%p", v];
+                NSTimeInterval nowT = [NSDate date].timeIntervalSince1970;
+                NSNumber *lastT = tsxSt[tk];
+                if (!lastT || nowT - lastT.doubleValue > 3.0) {
+                    tsxSt[tk] = @(nowT);
+                    sbs_logNow(@"[tsx] %@ %p sys_a=%.3f -> want_a=%.3f man=%d",
+                               NSStringFromClass(v.class), v, t.a, want.a,
+                               (gManaged && [gManaged containsObject:v]) ? 1 : 0);
+                }
+            }
             v.transform = want;       // 重新走 setTransform（值已等于 want，不会死循环）
         }
     } @catch (NSException *e) {
