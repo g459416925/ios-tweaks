@@ -1,4 +1,13 @@
-// StatusBarScale.m —— 状态栏图标缩放 + 资源库背景透明（v2.3.1）
+// StatusBarScale.m —— 状态栏图标缩放 + 资源库背景透明 + CC 视频会议控件常显（v2.5.0）
+//
+// v2.5.0（2026-10-13）：新增「CC 视频会议控件常显」—— 控制中心顶部的
+//   「麦克风模式 / 视频效果」两个控件固定显示（系统仅在视频会话时显示）。
+//   机制：hook CCUIModuleInstanceManager -moduleInstances，实例存在时存档、
+//   缺失时塞回 _moduleInstanceByIdentifier 可变字典（详见文件后部模块注释）。
+//
+// v2.4.0（2026-10-13）：新增「CC 隐私指示常显」（许总澄清非所需 → 默认关；
+//   代码保留于 gCCPrivAlwaysShow 门控）。机制：hook
+//   CCUISensorAttributionCompactControl -sensorAttributionsChanged: 补入假条目。
 //
 // v2.3.1（2026-10-13）：撤销逻辑加「可见性门槛」—— 修「CC 展开隐私后收起时
 //   状态栏图标闪回默认大小」的竞态（2026-10-13 日志实证：undo 恰在 CC 收起
@@ -46,7 +55,7 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 
-#define SBS_VERSION @"2.3.1"
+#define SBS_VERSION @"2.5.0"
 
 // ⭐⭐ 日志路径（2026-10-09 血泪根因）：RootHide 下不同进程的路径解析不一致 ——
 //   SpringBoard 里 `/var/mobile/Documents` 可写；但 chronod（system daemon）里
@@ -83,6 +92,19 @@ static BOOL    gApertureProbeEnabled = NO;
 //   回放：rv-bad（CC 布局后 237/266）→ 收起时 undo-defer（可见，挂起不闪变）
 //   → 1s 后对象脱窗（win=nil）→ undo（可见=0，安静撤销）。
 static BOOL    gPrvProbe = NO;
+
+// ⭐ v2.4.0「CC 隐私指示常显」开关（模块实现见文件后部）
+// ⚠️ 2026-10-13 许总澄清：他要的不是"隐私指示圆点"，而是「麦克风模式/视频效果」方块。
+//    本模块非需求所向，默认关闭（代码保留，机制已验证可用，未来按需启用）。
+static BOOL    gCCPrivAlwaysShow = NO;
+
+// ⭐ v2.5.0「CC 视频会议控件常显」——「麦克风模式 / 视频效果」固定显示（许总需求）
+static BOOL    gCCVCAlwaysShow = YES;
+// VCC 模块实例"存货"（存在时存档；缺失时塞回字典）
+#define SBS_VCC_VIDEO_ID @"com.apple.replaykit.VideoConferenceControlCenterModule"
+#define SBS_VCC_AUDIO_ID @"com.apple.replaykit.AudioConferenceControlCenterModule"
+static __strong id gSavedVCCVideo = nil;
+static __strong id gSavedVCCAudio = nil;
 
 // 受管图标视图的弱引用集合（setTransform: hook 据此拦截系统改动）
 static NSHashTable *gManaged     = nil;   // 主缩放
@@ -355,6 +377,8 @@ static void sbs_probeApertureTree(UIView *fg);
 static void sbs_probeApertureLayers(CALayer *x, int depth, int *count);
 static void sbs_probeApertureContentViews(UIView *v, int depth, int *count);
 static BOOL sbs_isApertureLayer(CALayer *layer);
+// v2.4.0 CC 隐私指示常显（定义在文件后部，SBSHelper 方法调用）
+static id sbs_makeFakeSensorData(NSUInteger type, id sample);
 static BOOL gApertureExpandedLayerCaptured = NO;
 
 // System Aperture 的实时活动外框不是普通 CALayer.border：
@@ -1342,6 +1366,65 @@ static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
     [self sbs_podBgSetHidden:h];
 }
 
+// ⭐ v2.4.0 CC 隐私指示常显：attributions 数据更新时补入 摄像头/麦克风 假条目
+//   （机制与实机确证过程见文件后部「CC 隐私指示常显」模块注释）
+- (void)sbs_ccAttributionsChanged:(id)set {
+    @try {
+        if (gCCPrivAlwaysShow && [set isKindOfClass:[NSMutableSet class]]) {
+            NSMutableSet *mset = (NSMutableSet *)set;
+            BOOL hasCam = NO, hasMic = NO;
+            SEL st = NSSelectorFromString(@"sensorType");
+            for (id e in mset) {
+                if ([e respondsToSelector:st]) {
+                    NSUInteger t = ((NSUInteger (*)(id, SEL))objc_msgSend)(e, st);
+                    if (t == 0) hasCam = YES;      // 0 = 摄像头
+                    if (t == 1) hasMic = YES;      // 1 = 麦克风
+                }
+            }
+            id sample = [mset anyObject];          // 字段样本（可能 nil → 兜底值）
+            if (!hasCam) {
+                id f = sbs_makeFakeSensorData(0, sample);
+                if (f) [mset addObject:f];
+            }
+            if (!hasMic) {
+                id f = sbs_makeFakeSensorData(1, sample);
+                if (f) [mset addObject:f];
+            }
+        }
+    } @catch (NSException *e) {
+        sbs_log(@"[exc-ccpriv] %@", e);
+    }
+    [self sbs_ccAttributionsChanged:set];
+}
+
+// ⭐ v2.5.0 CC 视频会议控件常显：实例存在时存档；缺失时塞回可变字典
+//   （机制与实机确证过程见文件后部「CC 视频会议控件常显」模块注释）
+- (id)sbs_ccModuleInstances {
+    @try {
+        if (gCCVCAlwaysShow) {
+            id dict = [self valueForKey:@"moduleInstanceByIdentifier"];
+            if ([dict isKindOfClass:[NSMutableDictionary class]]) {
+                NSMutableDictionary *md = (NSMutableDictionary *)dict;
+                id curV = md[SBS_VCC_VIDEO_ID];
+                id curA = md[SBS_VCC_AUDIO_ID];
+                if (curV) { gSavedVCCVideo = curV; }   // 存档（用于之后复活）
+                if (curA) { gSavedVCCAudio = curA; }
+                if (!curV && gSavedVCCVideo) {         // 缺失 → 塞回
+                    md[SBS_VCC_VIDEO_ID] = gSavedVCCVideo;
+                    sbs_logNow(@"[ccvc] 塞回 VideoConference 实例（常显）");
+                }
+                if (!curA && gSavedVCCAudio) {
+                    md[SBS_VCC_AUDIO_ID] = gSavedVCCAudio;
+                    sbs_logNow(@"[ccvc] 塞回 AudioConference 实例（常显）");
+                }
+            }
+        }
+    } @catch (NSException *e) {
+        sbs_log(@"[exc-ccvc] %@", e);
+    }
+    return [self sbs_ccModuleInstances];
+}
+
 // 资源库搜索框背景透明：hook SBHSearchTextField -layoutSubviews
 - (void)sbs_searchFieldLayout {
     [self sbs_searchFieldLayout];   // 原实现
@@ -1594,6 +1677,119 @@ static void sbs_sweepAll(void) {
     }
 }
 
+// ===========================================================================
+// CC 隐私指示常显（v2.4.0 新增）
+//
+// 许总需求：控制中心顶部的传感器指示胶囊（摄像头/麦克风/定位图标）固定显示，
+//   不因"当前无 App 使用隐私"而消失。
+// 机制（2026-10-13 实机逆向确证）：
+//   · 该胶囊 = CCUISensorAttributionCompactControl（CCUI 框架，UIControl 子类）；
+//   · 显示哪几个图标由 attributions 数据驱动 —— 数据经
+//     -sensorAttributionsChanged:（参数为 __NSSetM 可变集合，元素 = CCUISensorActivityData）
+//     传入；图标是否显示在 _layoutSingleIndicatorView:trailingX:visible: 的
+//     visible 参数处收敛；
+//   · CCUISensorActivityData.sensorType 枚举（实机确证）：0=摄像头 1=麦克风 2=定位；
+//   · 做法：拦截 sensorAttributionsChanged:，集合里缺"摄像头/麦克风"条目时补入假条目
+//     （字段拷贝自集合内现有条目 → 与真实条目同组，胶囊文字与展开面板自然聚合、
+//     布局尺寸全链路正确）；set 已含假条目则跳过（幂等）。
+// 备注：假条目 isSystemService=YES、usedRecently=NO（"正在使用"态，图标彩色点亮）。
+// （开关 gCCPrivAlwaysShow 定义于文件前部开关区；本模块函数被 SBSHelper 方法调用）
+// ===========================================================================
+
+static id sbs_makeFakeSensorData(NSUInteger type, id sample) {
+    Class C = objc_getClass("CCUISensorActivityData");
+    if (!C) return nil;
+    id d = [((id)C) alloc];
+    d = [d init];
+    if (!d) return nil;
+    NSString *name = sample ? [sample valueForKey:@"displayName"] : @"系统服务";
+    NSString *exe  = sample ? [sample valueForKey:@"executableDisplayName"] : @"系统服务";
+    NSString *grp  = sample ? [sample valueForKey:@"attributionGroup"] : @"系统服务";
+    NSString *bid  = sample ? [sample valueForKey:@"bundleIdentifier"] : @"com.apple.springboard";
+    NSNumber *sys  = sample ? [sample valueForKey:@"isSystemService"] : @(YES);
+    if (![name isKindOfClass:[NSString class]]) name = @"系统服务";
+    if (![exe isKindOfClass:[NSString class]])  exe = @"系统服务";
+    if (![grp isKindOfClass:[NSString class]])  grp = @"系统服务";
+    if (![bid isKindOfClass:[NSString class]])  bid = @"com.apple.springboard";
+    BOOL sysB = [sys respondsToSelector:@selector(boolValue)] ? [sys boolValue] : YES;
+    SEL s;
+    s = NSSelectorFromString(@"setSensorType:");
+    if ([d respondsToSelector:s]) ((void (*)(id, SEL, NSUInteger))objc_msgSend)(d, s, type);
+    s = NSSelectorFromString(@"setDisplayName:");
+    if ([d respondsToSelector:s]) ((void (*)(id, SEL, id))objc_msgSend)(d, s, name);
+    s = NSSelectorFromString(@"setExecutableDisplayName:");
+    if ([d respondsToSelector:s]) ((void (*)(id, SEL, id))objc_msgSend)(d, s, exe);
+    s = NSSelectorFromString(@"setAttributionGroup:");
+    if ([d respondsToSelector:s]) ((void (*)(id, SEL, id))objc_msgSend)(d, s, grp);
+    s = NSSelectorFromString(@"setBundleIdentifier:");
+    if ([d respondsToSelector:s]) ((void (*)(id, SEL, id))objc_msgSend)(d, s, bid);
+    s = NSSelectorFromString(@"setIsSystemService:");
+    if ([d respondsToSelector:s]) ((void (*)(id, SEL, BOOL))objc_msgSend)(d, s, sysB);
+    s = NSSelectorFromString(@"setUsedRecently:");
+    if ([d respondsToSelector:s]) ((void (*)(id, SEL, BOOL))objc_msgSend)(d, s, NO);
+    s = NSSelectorFromString(@"setLaunchToSettings:");
+    if ([d respondsToSelector:s]) ((void (*)(id, SEL, BOOL))objc_msgSend)(d, s, NO);
+    return d;
+}
+
+// 安装：CCUI 类通常早于 ctor 就绪；未就绪时 0.5s 间隔有限重试
+static void sbs_installCCPrivHook(void) {
+    static BOOL done = NO;
+    static int tries = 0;
+    if (done) return;
+    Class C = objc_getClass("CCUISensorAttributionCompactControl");
+    if (!C) {
+        if (tries++ < 40)
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{ sbs_installCCPrivHook(); });
+        else
+            sbs_logNow(@"[hook] CC隐私指示：类等待超时");
+        return;
+    }
+    done = SBSHook(C, @selector(sensorAttributionsChanged:),
+                   SBSHelper.class, @selector(sbs_ccAttributionsChanged:));
+    sbs_logNow(@"[hook] CC隐私指示常显 sensorAttributionsChanged: → %@",
+               done ? @"已安装" : @"失败");
+}
+
+// ===========================================================================
+// CC 视频会议控件常显（v2.5.0 新增）——「麦克风模式 / 视频效果」固定显示
+//
+// 许总需求：CC 顶部两个控件「麦克风模式」「视频效果」固定显示
+//   （系统仅在视频会话类 App 使用摄像头/麦克风时显示，+粘性残留后消失）。
+// 机制（2026-10-13 实机逆向确证）：
+//   · 两控件 = ReplayKit 模块 RPCCAudioSettingsModule / RPCCVideoSettingsModule
+//     （/System/Library/ControlCenter/Bundles/{Audio,Video}ConferenceControlCenterModule.bundle）；
+//   · CC 是否显示模块 = CCUIModuleInstanceManager._moduleInstanceByIdentifier
+//     （NSMutableDictionary，identifier → CCUIModuleInstance）里有无该实例：
+//     有会话时系统创建实例加入字典；无会话（含粘性超时）时移除实例；
+//   · 模块 identifier 常驻 _enabledModuleIdentifiers —— 该列表不控制显示。
+// 做法：hook -[CCUIModuleInstanceManager moduleInstances]（CC 每次布局必经）：
+//   · 实例存在时保存强引用（"存货"）；
+//   · 实例缺失时把存货塞回 _moduleInstanceByIdentifier（可变字典）→ 模块永驻。
+// 特性说明：需至少经历一次真实视频会话以捕获实例（此后直到 respring 一直有效；
+//   respring 后系统若仍记得"最近会话"会自动再次捕获，无需任何手动操作）。
+// ===========================================================================
+// v2.5.0 安装：CC 视频会议控件（麦克风模式/视频效果）常显
+static void sbs_installVCCModuleHook(void) {
+    static BOOL done = NO;
+    static int tries = 0;
+    if (done) return;
+    Class IM = objc_getClass("CCUIModuleInstanceManager");
+    if (!IM) {
+        if (tries++ < 40)
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{ sbs_installVCCModuleHook(); });
+        else
+            sbs_logNow(@"[hook] CC视频会议控件：类等待超时");
+        return;
+    }
+    done = SBSHook(IM, @selector(moduleInstances), SBSHelper.class,
+                   @selector(sbs_ccModuleInstances));
+    sbs_logNow(@"[hook] CC视频会议控件常显 moduleInstances → %@",
+               done ? @"已安装" : @"失败");
+}
+
 // 延迟安装资源库相关 hook（类可能晚于 ctor 加载；避开 ctor 阶段触发 +initialize 的风险）
 static void sbs_installLibBgHook(void) {
     static int tries = 0;
@@ -1735,6 +1931,12 @@ static void sbs_install(void) {
 
     // 精确 hook 私有容器；类晚加载时有限重试。
     sbs_installApertureKeylineHook();
+
+    // ⭐ v2.4.0 CC 隐私指示常显（CCUI 类通常早已就绪；未就绪时自行重试）
+    sbs_installCCPrivHook();
+
+    // ⭐ v2.5.0 CC 视频会议控件常显（麦克风模式/视频效果）
+    sbs_installVCCModuleHook();
 
     // ③ fg 重新挂窗（App↔主屏切换/解锁）时补施
     BOOL windowOK = SBSHook(FG, @selector(didMoveToWindow),
