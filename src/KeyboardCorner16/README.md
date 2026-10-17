@@ -90,6 +90,14 @@ iOS 16 系统键盘全按键圆角增强修复版，并整合 OLED 深色键盘�
 3. 立即安装与延迟安装现在统一经过 `kbc_installKayokoPageHooksIfAvailable`，只有成功安装 `layoutSubviews` 和 `hitTest:` 后才设置全局安装状态，每个进程最多安装一次。
 4. 修复后全新 Spotlight 进程 PID `15139` 持续稳定，日志中 `kayoko-pagebar-once source=constructor` 恰好一次，旧的重复安装路径为零；英文预测和简体拼音候选回归也均保持 `visibleText=1 hidden=1 gesture=0`。
 
+### v1.0.76 Kayoko 栏字体统一（数字页/字母页一致）
+
+1. 真机截图逐像素测量：数字符号页「历史」字高 46px（15.3pt），字母页 40px（13.3pt），同一切换动作字号会变。
+2. 根因是 `UIButtonTypeSystem`：iOS 15+ 该类型的标题样式归 `UIButtonConfiguration` 管理，`titleLabel.font` 在 keyplane 切换、页面重建时会被系统配置覆盖，纯设 `systemFontOfSize:15` 并不稳定。
+3. 改为 `UIButtonTypeCustom`，显式 `systemFontOfSize:17 weight:Regular`、`adjustsFontSizeToFitWidth=NO`、水平/垂直居中，字重与基线一并锁定。
+4. 背景维持 `clearColor` + `opaque=NO`，不合成任何自定义底色，直接露出 `TUISystemInputAssistantPageView` 的原生键盘材质（浅色/深色跟随系统）。
+5. 真机复测：字母页与数字页「历史 / 拷贝 / 粘贴」字号、字重、行高一致；日志记录 `kayoko bar create background=inherit(clear) ... type=custom font=17.0`。
+
 ### v1.0.75 中文候选判据修复（TUICandidateLabel）
 
 1. 抖音评论框实测复现：中文键盘空闲候选栏（我/你/好/可爱/那/哈哈哈）与 Kayoko 三按钮（历史/拷贝/粘贴）文字重叠同屏。

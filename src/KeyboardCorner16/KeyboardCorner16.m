@@ -7,7 +7,7 @@
 #import <stdlib.h>
 #import <string.h>
 
-#define KBC_VERSION "1.0.75"
+#define KBC_VERSION "1.0.76"
 #define TARGET_RADIUS 10.0
 
 extern void MSHookMessageEx(Class cls, SEL sel, IMP newImp, IMP *oldImp);
@@ -894,11 +894,20 @@ static BOOL kbc_activateKayoko(id sender) {
     // single visual source in both portrait and landscape.
     self.backgroundColor = UIColor.clearColor;
     self.opaque = NO;
+    // 统一字体：UIButtonTypeSystem 在 iOS 15+ 会被 UIButtonConfiguration
+    // 接管标题样式，切换 keyplane 时字体会在 13pt/15pt 之间漂移（真机
+    // 截图实测数字页 15.3pt、字母页 13.3pt）。这里改用 Custom 按钮，
+    // 显式锁定字号与基线，保证任意键盘布局下视觉一致。
     NSArray<NSString *> *titles = @[@"历史", @"拷贝", @"粘贴"];
     for (NSUInteger index = 0; index < titles.count; index++) {
-        UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+        UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
         button.tag = index;
-        button.titleLabel.font = [UIFont systemFontOfSize:15.0];
+        button.titleLabel.font = [UIFont systemFontOfSize:17.0
+                                                 weight:UIFontWeightRegular];
+        button.titleLabel.adjustsFontSizeToFitWidth = NO;
+        button.titleLabel.textAlignment = NSTextAlignmentCenter;
+        button.contentHorizontalAlignment = UIControlContentHorizontalAlignmentCenter;
+        button.contentVerticalAlignment = UIControlContentVerticalAlignmentCenter;
         [button setTitle:titles[index] forState:UIControlStateNormal];
         [button setTitleColor:UIColor.labelColor forState:UIControlStateNormal];
         [button addTarget:self action:@selector(kbc_action:) forControlEvents:UIControlEventTouchUpInside];
@@ -916,9 +925,11 @@ static BOOL kbc_activateKayoko(id sender) {
             ]];
         }
     }
+    UIButton *firstButton = self.arrangedSubviews.firstObject;
     kbc_log([NSString stringWithFormat:
-        @"kayoko bar create background=inherit(clear) opaque=%d buttons=%lu",
-        self.opaque, (unsigned long)titles.count]);
+        @"kayoko bar create background=inherit(clear) opaque=%d buttons=%lu type=custom font=%.1f",
+        self.opaque, (unsigned long)titles.count,
+        firstButton.titleLabel.font.pointSize]);
     return self;
 }
 
