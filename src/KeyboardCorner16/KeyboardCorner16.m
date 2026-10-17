@@ -7,7 +7,7 @@
 #import <stdlib.h>
 #import <string.h>
 
-#define KBC_VERSION "1.0.76"
+#define KBC_VERSION "1.0.82"
 #define TARGET_RADIUS 10.0
 
 extern void MSHookMessageEx(Class cls, SEL sel, IMP newImp, IMP *oldImp);
@@ -41,6 +41,21 @@ static unsigned int sUnderDockLogCount = 0;
 static unsigned int sKayokoProbeLogCount = 0;
 static unsigned int sKayokoListProbeLogCount = 0;
 static unsigned int sKayokoBarLogCount = 0;
+static unsigned int sKayokoMigrateLogCount = 0;
+static unsigned int sKayokoHitLogCount = 0;
+
+// 自绘栏的按钮文案。系统预测栏的 TUIPredictionViewCell 会通过 accessibility
+// 把覆盖其上的按钮标签"借"成自己的 label，导致候选检测把我们自己的按钮
+// 当成系统候选（真机实测：数字页 cell 的 text 就是 历史/拷贝/粘贴），
+// 进而把 bar 隐藏/重新挂载来回抖。检测时必须排除这三个词。
+static NSArray<NSString *> *kbc_kayokoBarTitles(void) {
+    return @[@"历史", @"拷贝", @"粘贴"];
+}
+
+static BOOL kbc_textIsKayokoBarTitle(NSString *text) {
+    if (!text.length) return NO;
+    return [kbc_kayokoBarTitles() containsObject:text];
+}
 static unsigned int sKayokoCandidateTreeLogCount = 0;
 static unsigned int sKayokoTextChangeLogCount = 0;
 
@@ -898,7 +913,7 @@ static BOOL kbc_activateKayoko(id sender) {
     // 接管标题样式，切换 keyplane 时字体会在 13pt/15pt 之间漂移（真机
     // 截图实测数字页 15.3pt、字母页 13.3pt）。这里改用 Custom 按钮，
     // 显式锁定字号与基线，保证任意键盘布局下视觉一致。
-    NSArray<NSString *> *titles = @[@"历史", @"拷贝", @"粘贴"];
+    NSArray<NSString *> *titles = kbc_kayokoBarTitles();
     for (NSUInteger index = 0; index < titles.count; index++) {
         UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
         button.tag = index;
@@ -931,6 +946,26 @@ static BOOL kbc_activateKayoko(id sender) {
         self.opaque, (unsigned long)titles.count,
         firstButton.titleLabel.font.pointSize]);
     return self;
+}
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    // 兜底：无论系统在哪个 keyplane 回写按钮配置，布局结束后都把字号
+    // 拉回统一值，保证三个按钮在任何键盘布局下视觉完全一致。
+    for (UIView *view in self.arrangedSubviews) {
+        if (![view isKindOfClass:[UIButton class]]) continue;
+        UIButton *button = (UIButton *)view;
+        UIFont *unified = [UIFont systemFontOfSize:17.0
+                                           weight:UIFontWeightRegular];
+        if (fabs(button.titleLabel.font.pointSize - unified.pointSize) > 0.01 ||
+            button.titleLabel.adjustsFontSizeToFitWidth ||
+            button.contentVerticalAlignment != UIControlContentVerticalAlignmentCenter) {
+            button.titleLabel.font = unified;
+            button.titleLabel.adjustsFontSizeToFitWidth = NO;
+            button.contentHorizontalAlignment = UIControlContentHorizontalAlignmentCenter;
+            button.contentVerticalAlignment = UIControlContentVerticalAlignmentCenter;
+        }
+    }
 }
 
 - (void)kbc_action:(UIButton *)sender {
@@ -1510,7 +1545,8 @@ static void kbc_collectCandidateNodes(UIView *view, UIView *page,
                              [className containsString:@"PredictionViewCell"] ||
                              [className containsString:@"CandidateLabel"] ||
                              ([view isKindOfClass:[UILabel class]] && text.length > 0);
-        if (candidateCell && visible && text.length)
+        if (candidateCell && visible && text.length &&
+            !kbc_textIsKayokoBarTitle(text))
             *hasVisibleCandidateText = YES;
         [parts addObject:[NSString stringWithFormat:
             @"%@<%p> visible=%d hidden=%d alpha=%.2f frame=(%.0f,%.0f,%.0f,%.0f) text=%@",
@@ -1537,23 +1573,59 @@ static void kbc_updateKayokoPage(UIView *page, NSString *reason) {
     if (!page) return;
     KBCKayokoPredictionBar *bar = objc_getAssociatedObject(page, &sKayokoPredictionBarKey);
     if (!bar) return;
+    // 系统在切换 keyplane 时会把 page 的非系统子视图搬进预测栏内容区
+    // （TUIPredictionViewStackContentView）。一旦被搬走，bar 就会被预测栏
+    // 的排版规则接管：字号、内边距、基线都随之变化，表现为数字页/字母页
+    // 字体和位置不一致。这里检测到父视图漂移就立即搬回 page 顶层。
+    if (bar.superview != page) {
+        UIView *oldParent = bar.superview;
+        unsigned int migrateSeq = __sync_fetch_and_add(&sKayokoMigrateLogCount, 1);
+        if (migrateSeq < 40) {
+            kbc_log([NSString stringWithFormat:
+                @"kayoko bar migrate seq=%u reason=%@ from=%@ to=%@ size=(%.0f,%.0f)",
+                migrateSeq, reason, NSStringFromClass([oldParent class]),
+                NSStringFromClass([page class]),
+                bar.bounds.size.width, bar.bounds.size.height]);
+        }
+        [page addSubview:bar];
+        bar.frame = page.bounds;
+    }
     BOOL visibleCandidateText = NO;
     NSString *tree = kbc_candidateTreeSummary(page, &visibleCandidateText);
     BOOL composing = kbc_inputHasMarkedText();
     BOOL listCandidates = sKayokoHasSystemCandidates;
     BOOL hasCandidates = visibleCandidateText || listCandidates;
-    bar.hidden = composing || hasCandidates;
+    BOOL shouldHide = composing || hasCandidates;
+    // 只设 hidden 不够：本页的预测栏会把子视图的文字"投影"成 TUIPredictionViewCell
+    // 继续渲染（真机实测 hidden=1 时屏幕上仍有 历史/拷贝/粘贴，且那三个词
+    // 由系统 cell 排版，字号/基线与我们的按钮不同）。隐藏时必须从视图树
+    // 彻底摘掉，显示时再挂回，才能保证数字页/字母页只有一套渲染来源。
+    if (shouldHide) {
+        if (bar.superview) [bar removeFromSuperview];
+        bar.hidden = YES;
+    } else {
+        bar.hidden = NO;
+        if (bar.superview != page) {
+            [page addSubview:bar];
+            bar.frame = page.bounds;
+        }
+        [page bringSubviewToFront:bar];
+    }
     UIGestureRecognizer *tap = objc_getAssociatedObject(page, &sKayokoPredictionTapKey);
-    tap.enabled = !bar.hidden;
-    if (!bar.hidden) [page bringSubviewToFront:bar];
+    tap.enabled = !shouldHide;
     unsigned int sequence = __sync_fetch_and_add(&sKayokoBarLogCount, 1);
     if (sequence < 240) {
+        UIView *firstButton = bar.arrangedSubviews.firstObject;
         kbc_log([NSString stringWithFormat:
-            @"kayoko pagebar seq=%u reason=%@ page=%p keyplane=%@ delegate=%@ composing=%d list=%d visibleText=%d hidden=%d gesture=%d frame=(%.0f,%.0f)",
-            sequence, reason, page, sKayokoProbeKeyplane ?: @"unknown",
+            @"kayoko pagebar seq=%u reason=%@ page=%p bar=%p super=%@ keyplane=%@ delegate=%@ composing=%d list=%d visibleText=%d hidden=%d gesture=%d frame=(%.0f,%.0f) pageBounds=(%.0f,%.0f) barOrigin=(%.1f,%.1f) btnH=%.1f",
+            sequence, reason, page, bar, NSStringFromClass([bar.superview class]),
+            sKayokoProbeKeyplane ?: @"unknown",
             NSStringFromClass([kbc_inputDelegate() class]), composing,
             listCandidates, visibleCandidateText, bar.hidden, tap.enabled,
-            bar.bounds.size.width, bar.bounds.size.height]);
+            bar.bounds.size.width, bar.bounds.size.height,
+            page.bounds.size.width, page.bounds.size.height,
+            bar.frame.origin.x, bar.frame.origin.y,
+            firstButton.bounds.size.height]);
     }
     unsigned int treeSequence = __sync_fetch_and_add(&sKayokoCandidateTreeLogCount, 1);
     if (treeSequence < 160) {
@@ -1623,10 +1695,33 @@ static void kbc_kayokoPageLayout(id self, SEL command) {
     }
     bar.frame = page.bounds;
     kbc_updateKayokoPage(page, @"page-layout");
+    // 直接回答「是否存在多个 Kayoko 栏」：统计该 page 下所有 bar 实例。
+    NSUInteger barCount = 0;
+    for (UIView *subview in page.subviews)
+        if ([subview isKindOfClass:[KBCKayokoPredictionBar class]]) barCount++;
+    unsigned int countSeq = __sync_fetch_and_add(&sKayokoMigrateLogCount, 1);
+    if (countSeq < 60) {
+        kbc_log([NSString stringWithFormat:
+            @"kayoko pagebars page=%p count=%lu subviews=%lu window=%@",
+            page, (unsigned long)barCount, (unsigned long)page.subviews.count,
+            NSStringFromClass([page.window class])]);
+    }
 }
 
 static id kbc_kayokoPageHitTest(id self, SEL command, CGPoint point, UIEvent *event) {
     KBCKayokoPredictionBar *bar = objc_getAssociatedObject(self, &sKayokoPredictionBarKey);
+    if (bar) {
+        unsigned int hitSeq = __sync_fetch_and_add(&sKayokoHitLogCount, 1);
+        if (hitSeq < 40) {
+            kbc_log([NSString stringWithFormat:
+                @"kayoko hit seq=%u page=%p bar=%p hidden=%d alpha=%.2f super=%@ frame=(%.1f,%.1f,%.1f,%.1f) window=%@ point=(%.1f,%.1f)",
+                hitSeq, self, bar, bar.hidden, bar.alpha,
+                NSStringFromClass([bar.superview class]),
+                bar.frame.origin.x, bar.frame.origin.y,
+                bar.frame.size.width, bar.frame.size.height,
+                NSStringFromClass([bar.window class]), point.x, point.y]);
+        }
+    }
     if (bar && !bar.hidden && bar.userInteractionEnabled) {
         CGPoint barPoint = [bar convertPoint:point fromView:self];
         UIView *hit = [bar hitTest:barPoint withEvent:event];

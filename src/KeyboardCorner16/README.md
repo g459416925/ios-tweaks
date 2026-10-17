@@ -90,6 +90,17 @@ iOS 16 系统键盘全按键圆角增强修复版，并整合 OLED 深色键盘�
 3. 立即安装与延迟安装现在统一经过 `kbc_installKayokoPageHooksIfAvailable`，只有成功安装 `layoutSubviews` 和 `hitTest:` 后才设置全局安装状态，每个进程最多安装一次。
 4. 修复后全新 Spotlight 进程 PID `15139` 持续稳定，日志中 `kayoko-pagebar-once source=constructor` 恰好一次，旧的重复安装路径为零；英文预测和简体拼音候选回归也均保持 `visibleText=1 hidden=1 gesture=0`。
 
+### v1.0.82 Kayoko 栏跨键盘布局字体/位置统一（自指误判根治）
+
+1. 现象：切换数字页与字母页，上方 Kayoko 三按钮字号和位置跳动。像素测量：数字页「历史」46px@3x（15.3pt）、字母页 40px（13.3pt）。
+2. 先排除多实例：日志 `kayoko pagebars count=1 subviews=3`、`bar create` 全程仅 1 次、跨 keyplane 的 `page` 与 `bar` 指针不变 —— 每页始终只有一个 bar。
+3. 字体真因：`UIButtonTypeSystem` 在 iOS 15+ 的标题样式由 `UIButtonConfiguration` 管理，`titleLabel.font` 会在 keyplane 切换/页面重建时被系统覆盖。改为 `UIButtonTypeCustom` + `systemFontOfSize:17 weight:Regular` + `adjustsFontSizeToFitWidth=NO`，并在 `layoutSubviews` 中强制校验回写。
+4. 位置真因（自指误判）：`TUIPredictionViewCell` 会通过 accessibility 把覆盖其上的按钮标签借用为自己的 `accessibilityLabel`（真机日志：cell `text=历史 / 拷贝 / 粘贴`）。候选检测因此把我们自己的按钮当成系统候选，`hidden` 在 0/1 之间反复抖动，表现为文字忽上忽下。
+5. 修复：候选统计排除 bar 自身的三个标题文本；隐藏时 `removeFromSuperview` 彻底摘除，显示时挂回 page 顶层并置顶，保证任一时刻只有一套渲染来源。
+6. 排除 Kayoko 原版注入：临时禁用 `KayokoHelper.plist`、以及把 `ActivationMethod` 从 9 改 8，现象均不变，确认与 Kayoko 的 Prediction Bar 激活方式无关。
+7. 探针实证：临时把标题改成 `AAA/BBB/CCC`，数字页显示的正是 `AAA/BBB/CCC`，证明屏幕上那三个词始终来自我们的 bar。
+8. 真机回归：数字页与字母页「历史」包围盒 `x=57..88 / y=625..639` 一致（误差 ≤2px@3x），连拍无跳动；背景保持 clear，直接露出键盘原生材质。
+
 ### v1.0.76 Kayoko 栏字体统一（数字页/字母页一致）
 
 1. 真机截图逐像素测量：数字符号页「历史」字高 46px（15.3pt），字母页 40px（13.3pt），同一切换动作字号会变。
