@@ -10,6 +10,8 @@ __pycache__/
 # 编译中间产物（只保留 debs/ 下的最终 .deb）
 src/**/build/
 src/**/*.dylib
+!src/KeyboardCorner16/vendor/Kayoko/Library/MobileSubstrate/DynamicLibraries/KayokoCore.dylib
+!src/KeyboardCorner16/vendor/Kayoko/Library/MobileSubstrate/DynamicLibraries/KayokoHelper.dylib
 src/**/*.deb
 src/**/*.plist.bak
 src/**/*.broken*

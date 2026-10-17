@@ -11,7 +11,7 @@ SDK=$(xcrun --sdk iphoneos --show-sdk-path)
 echo "== 1) 编译 =="
 clang -arch arm64e -miphoneos-version-min=14.0 -isysroot "$SDK" \
   -dynamiclib -fobjc-arc -O2 -Wall -Wno-deprecated-declarations \
-  -undefined dynamic_lookup -framework Foundation \
+  -undefined dynamic_lookup -framework Foundation -framework UIKit \
   -install_name "/Library/MobileSubstrate/DynamicLibraries/$NAME.dylib" \
   -o "$NAME.dylib" "$NAME.m"
 echo "   ok $(stat -f%z "$NAME.dylib") bytes"
@@ -33,24 +33,33 @@ import io,os,tarfile,time,gzip
 HERE=os.getcwd()
 VER=os.environ["VER"]; NAME=os.environ["NAME"]; PKG=os.environ["PKG"]; ARCH=os.environ["ARCH"]
 DYLIB=os.path.join(HERE,NAME+".signed.dylib"); PLIST=os.path.join(HERE,NAME+".plist")
+KAYOKO=os.path.join(HERE,"vendor","Kayoko")
 OUT=os.path.join(HERE,"%s_%s_%s.deb"%(NAME,VER,ARCH))
+payload_size=os.path.getsize(DYLIB)
+for root,dirs,files in os.walk(KAYOKO):
+    dirs[:] = [d for d in dirs if not d.startswith(".")]
+    payload_size += sum(os.path.getsize(os.path.join(root,f)) for f in files if not f.startswith("."))
 CTRL="\n".join([
  "Package: %s"%PKG,"Name: %s"%NAME,"Version: %s"%VER,"Architecture: %s"%ARCH,
- "Description: 系统键盘全按键圆角增强修复版（完美支持字母与数字键盘按键圆角）。",
- " 修复原版键盘圆角在切换为数字键盘输入时按键未显示为圆角矩形的问题，",
- " 全面覆盖 UIKBRenderGeometry、10Key 九宫格及数字面板渲染路径。",
- "Conflicts: com.liuf.jpyj",
- "Replaces: com.liuf.jpyj, com.xu.kbprobe",
- "Provides: com.liuf.jpyj",
+ "Description: iOS 16 系统键盘圆角、OLED、UnderDock 与 Kayoko 剪贴板整合。",
+ " 直接修正最终键背景合成蒙版，覆盖字母、数字和特殊符号布局；",
+ " 同时集成 byg.iosios.net.oledkeyboard、com.p2kdev.underdock 与 codes.aurora.kayoko 的已验证功能。",
+ "Conflicts: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko, com.restiveconch.actionbar, com.udevs.dockx",
+ "Replaces: com.liuf.jpyj, com.xu.kbprobe, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko",
+ "Provides: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko",
  "Maintainer: g459416925","Author: xu","Section: Tweaks",
- "Depends: mobilesubstrate","Installed-Size: %d"%(os.path.getsize(DYLIB)//1024),
+ "Depends: mobilesubstrate, preferenceloader, com.opa334.libsandy","Installed-Size: %d"%(payload_size//1024),
  "Tag: purpose::extension",""])
 def tg(es):
     b=io.BytesIO()
     with tarfile.open(fileobj=b,mode="w") as tf:
         for n,d,m in es:
-            ti=tarfile.TarInfo(n); ti.size=len(d); ti.mode=m; ti.uid=ti.gid=0
-            ti.uname="root"; ti.gname="wheel"; ti.mtime=int(time.time()); tf.addfile(ti,io.BytesIO(d))
+            ti=tarfile.TarInfo(n); ti.mode=m; ti.uid=ti.gid=0
+            ti.uname="root"; ti.gname="wheel"; ti.mtime=int(time.time())
+            if n.endswith("/"):
+                ti.type=tarfile.DIRTYPE; ti.size=0; tf.addfile(ti)
+            else:
+                ti.size=len(d); tf.addfile(ti,io.BytesIO(d))
     return gzip.compress(b.getvalue(),9)
 def arw(p,ms):
     def h(n,s): return ("%-16s%-12d%-6d%-6d%-8s%-10d`\n"%(n,int(time.time()),0,0,"100644",s)).encode()
@@ -60,12 +69,29 @@ def arw(p,ms):
         if len(d)%2: out+=b"\n"
     open(p,"wb").write(out)
 ID="Library/MobileSubstrate/DynamicLibraries"
+data_entries=[("./%s/%s.dylib"%(ID,NAME),open(DYLIB,"rb").read(),0o755),
+              ("./%s/%s.plist"%(ID,NAME),open(PLIST,"rb").read(),0o644)]
+for root,dirs,files in os.walk(KAYOKO):
+    dirs[:] = sorted(d for d in dirs if not d.startswith("."))
+    files = sorted(f for f in files if not f.startswith("."))
+    relative_root=os.path.relpath(root,KAYOKO)
+    if relative_root != ".":
+        data_entries.append(("./"+relative_root+"/",b"",0o755))
+    for filename in files:
+        source=os.path.join(root,filename)
+        relative=os.path.relpath(source,KAYOKO)
+        mode=os.stat(source).st_mode & 0o777
+        data_entries.append(("./"+relative,open(source,"rb").read(),mode))
 arw(OUT,[("debian-binary",b"2.0\n"),
  ("control.tar.gz",tg([("./control",CTRL.encode(),0o644)])),
- ("data.tar.gz",tg([("./%s/%s.dylib"%(ID,NAME),open(DYLIB,"rb").read(),0o755),
-                    ("./%s/%s.plist"%(ID,NAME),open(PLIST,"rb").read(),0o644)]))])
+ ("data.tar.gz",tg(data_entries))])
 print("   deb: %s (%d bytes)"%(OUT,os.path.getsize(OUT)))
 PY
+
+if [ "${BUILD_ONLY:-0}" = "1" ]; then
+  echo "   build-only: skip repo sync and device deployment"
+  exit 0
+fi
 
 # 同步到仓库 debs/ 目录并重建 Packages 索引
 cp -f "${NAME}_${VER}_${ARCH}.deb" "../../debs/"
@@ -76,6 +102,7 @@ ssh iphone-root "rm -f /var/mobile/Documents/kbc_round.log /rootfs/private/var/m
 # 如果安装了测试探针包或旧包，先清理
 ssh iphone-root "dpkg -r com.xu.kbprobe 2>/dev/null || true"
 ssh iphone-root "dpkg -r com.liuf.jpyj 2>/dev/null || true"
+ssh iphone-root "dpkg -r byg.iosios.net.oledkeyboard com.p2kdev.underdock codes.aurora.kayoko 2>/dev/null || true"
 scp -q "${NAME}_${VER}_${ARCH}.deb" iphone:/var/tmp/
 ssh iphone-root "dpkg -i /var/tmp/${NAME}_${VER}_${ARCH}.deb 2>&1 | tail -5"
 

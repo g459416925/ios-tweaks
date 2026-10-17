@@ -1,6 +1,6 @@
 # StatusBarScale — 状态栏图标缩放
 
-**包名** `com.xu.statusbarscale` · **版本** 2.1.24 · **宿主** 仅 SpringBoard
+**包名** `com.xu.statusbarscale` · **版本** 2.6.8 · **宿主** 仅 SpringBoard
 
 > v2.1.23：实时活动边框改为精确 hook `SBSystemApertureContainerView` 的 key-line，
 > 移除状态栏布局中的全窗口/全图层遍历及高频 CALayer 边框、描边、阴影 hook；
@@ -38,7 +38,7 @@ transform = Translate(Scale(s, s), 0, dy/s)   // 绕中心缩放 s 倍 + 下移 
 
 ### ① 主缩放（灵动岛右侧）
 
-`frame.minX >= gThr(280)` 的状态栏图标（类名含 `StatusBar`/`Battery`）整体 × **0.9025**。
+`frame.minX >= gThr(280)`（按当前屏幕逻辑宽度相对 430pt 基准动态换算） 的状态栏图标（类名含 `StatusBar`/`Battery`）整体按设备分辨率换算比例缩放；18 Pro Max 校准值 **0.9235**。
 
 垂直下移与缩放**绑定**：`dy(s) = K·(1 − s)`，`K = dh / (1 − 0.84847)`。
 锚点取自实机调定工作点（`scale=0.84847` 时 `dy=0.6687`）→ 当前 `score=0.9025`
@@ -49,7 +49,7 @@ transform = Translate(Scale(s, s), 0, dy/s)   // 绕中心缩放 s 倍 + 下移 
 ### ② 时间旁缩放（时间右侧、灵动岛左侧）
 
 这批图标（实测类名 `_UIStatusBarImageView`，如闹钟/定位/录屏/麦克风）无法按标识枚举，
-改为**运行时按 fg 坐标系 frame 区间发现**（时间右缘 → 岛左缘），单独 × **0.5038**：
+改为**运行时按 fg 坐标系 frame 区间发现**（时间右缘 → 岛左缘），按设备分辨率换算比例单独缩放；18 Pro Max 校准值 **0.5155**：
 
 - 判定：非 StringView + class 含 StatusBar/Battery + 3pt ≤ 宽高且宽 < 200pt
   + `minX > timeMaxX` 且 `maxX ≤ leadLimit`（岛左缘，实测 152.0）；递归深度 3 +
@@ -120,10 +120,10 @@ SBHSearchBar {430×147}
 
 | 变量 | 值 | 说明 |
 |---|---|---|
-| `gScale` | 0.9025 | 右侧图标缩放倍率 |
+| `gScale` | 0.9235 | 18 Pro Max 校准基准，运行时按渲染比例补偿 |
 | `gDy` | 0.6687 | 垂直微调「锚点强度」（实际 dy 由 `sbs_dyForScale` 推算） |
-| `gThr` | 280 | 右侧判定阈值（`frame.minX ≥` 该值） |
-| `gLeadScale` | 0.5038 | leading 图标缩放倍率 |
+| `gThr` | 280 | 430pt 基准右侧判定阈值，按当前逻辑宽度动态换算 |
+| `gLeadScale` | 0.5155 | 18 Pro Max 校准基准，运行时按渲染比例补偿 |
 | `gLeadDy` | 0.0 | leading 图标额外下移（默认不位移） |
 | `gEnabled` | YES | 总开关 |
 | `gDiag` | YES | 关键事件直写日志 |
@@ -170,3 +170,10 @@ python3 build_deb.py  # 只打 .deb（版本自动取自源码 #define SBS_VERSI
 - 架构 `iphoneos-arm64e`；宿主进程 `SpringBoard`
 - ⚠️ dylib 内**绝不能出现完整 `/System/Library/...` 路径字面量**（RootHide patch 会破坏签名）
 - ⚠️ 部署**必须走 `dpkg -i`**（直接 cp 到 TweakInject 会被 jbroot 不完整 patch → dyld `Invalid Page`）
+
+### v2.6.0（2026-10-13）—— 18 Pro Max 渲染适配
+
+- 由 `UIScreen.nativeBounds / UIScreen.bounds` 实时计算像素/点比例。
+- 右侧与 leading 图标变换、撤销复核使用同一有效缩放值，避免缩放撤销判据错位。
+- 主缩放右侧阈值按逻辑宽度相对 430pt 基准同比例换算。
+- `[scale]` 日志记录渲染比例、有效缩放值、leading 值及动态阈值。

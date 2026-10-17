@@ -1,5 +1,8 @@
 // StatusBarScale.m —— 状态栏图标缩放 + 资源库背景透明 + CC 视频会议控件常显（v2.5.0）
 //
+// v2.6.0（2026-10-13）：状态栏辅助缩放改为运行时读取 nativeBounds/bounds，
+//   在 18 Pro Max 的渲染比例变化后同步补偿右侧、leading 图标与坐标阈值。
+//
 // v2.5.0（2026-10-13）：新增「CC 视频会议控件常显」—— 控制中心顶部的
 //   「麦克风模式 / 视频效果」两个控件固定显示（系统仅在视频会话时显示）。
 //   机制：hook CCUIModuleInstanceManager -moduleInstances，实例存在时存档、
@@ -36,7 +39,8 @@
 //      CGAffineTransformTranslate(Scale(s,s),0,dys) 的屏幕位移 = s*dys → dys = dy/s。
 //
 // 【参数全部硬编码】原 com.xu.statusbarscale.plist 配置项已废弃（不再读取任何配置文件）。
-//   当前值取自设备实测调定：scale=0.9025 / dy(锚点)=0.6687 / threshold=280 / leadScale=0.5038
+//   当前值取自设备实测调定：scale=0.9235 / dy(锚点)=0.6687 / threshold=280 / leadScale=0.5155
+//   ⭐ v2.6.0：分辨率补偿由 sbs_currentRenderScale() 动态计算。
 //
 // 【日志】/var/mobile/Documents/sbs_log.txt
 //   diag=YES（默认）：关键事件直写（[hook]/[lead]/[leadApply]/[scaled]/[undo]/[leadUndo]）
@@ -54,8 +58,17 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
+#import <pthread.h>
+#import <signal.h>
+#import <string.h>
+#import <unistd.h>
+#import <dlfcn.h>
 
-#define SBS_VERSION @"2.5.0"
+#define SBS_VERSION @"2.6.27"
+
+// RootHide/ElleKit 运行时提供。状态栏核心入口必须进入 substrate 链，避免启动早期
+// method_exchangeImplementations 后被 UIKit 或其他 tweak 的后续 hook 覆盖。
+typedef void (*SBSMSHookMessageExFn)(Class cls, SEL sel, IMP replacement, IMP *original);
 
 // ⭐⭐ 日志路径（2026-10-09 血泪根因）：RootHide 下不同进程的路径解析不一致 ——
 //   SpringBoard 里 `/var/mobile/Documents` 可写；但 chronod（system daemon）里
@@ -67,15 +80,53 @@ static NSString *sbs_logPath(void);
 // ─────────────── 硬编码参数（原 plist 配置 / 设置面板已移除）───────────────
 static BOOL    gEnabled     = YES;
 // 右侧图标缩放（实机调定值）
-static CGFloat gScale       = 0.9025f;
+// 18 Pro Max 校准值；最终有效值由运行时屏幕渲染比例计算。
+static CGFloat gScale       = 0.9235f;
 // 垂直微调「锚点强度」：scale=0.84847 时的下移量；实际 dy 由 sbs_dyForScale(gScale) 实时推算
 static CGFloat gDy          = 0.6687f;
 // 右侧判定阈值：frame.minX >= 该值（灵动岛右缘，实机调定 280）
 static CGFloat gThr         = 280.0f;
 // leading 区（时间右侧、灵动岛左侧）图标缩放
 static BOOL    gLeadEnabled = YES;
-static CGFloat gLeadScale   = 0.5038f;
+static CGFloat gLeadScale   = 0.5155f;
 static CGFloat gLeadDy      = 0.0f;
+
+// StatusBarScale 辅助缩放的校准基准：旧校准点宽 430pt、渲染比例 3.0。
+// 18 Pro Max 分辨率 440pt 对应实测渲染比例 2.931818，因此等比补偿必须是
+// currentRenderScale / 3.0（约 0.977273），不能把当前值当作参考值后得到 1.0。
+#define SBS_REFERENCE_SCREEN_WIDTH 430.0f
+#define SBS_REFERENCE_RENDER_SCALE 3.0f
+static UIScreen *sbs_screenSafe(void) {
+    return UIScreen.screens.firstObject;
+}
+static void sbs_triggerExistingStatusBarScanIfReady(NSString *reason);
+
+static CGFloat sbs_currentRenderScale(void) {
+    UIScreen *screen = sbs_screenSafe();
+    if (!screen) return SBS_REFERENCE_RENDER_SCALE;
+    CGFloat width = screen.bounds.size.width;
+    CGFloat pixelWidth = screen.nativeBounds.size.width;
+    CGFloat value = (width > 1.0f && pixelWidth > 1.0f) ? pixelWidth / width : screen.scale;
+    return (value >= 1.0f && value <= 4.0f) ? value : SBS_REFERENCE_RENDER_SCALE;
+}
+
+static CGFloat sbs_statusBarScale(void) {
+    CGFloat factor = sbs_currentRenderScale() / SBS_REFERENCE_RENDER_SCALE;
+    CGFloat value = gScale * factor;
+    return fminf(fmaxf(value, 0.50f), 1.0f);
+}
+
+static CGFloat sbs_statusBarLeadScale(void) {
+    CGFloat factor = sbs_currentRenderScale() / SBS_REFERENCE_RENDER_SCALE;
+    CGFloat value = gLeadScale * factor;
+    return fminf(fmaxf(value, 0.25f), 0.95f);
+}
+
+static CGFloat sbs_statusBarThreshold(void) {
+    CGFloat width = sbs_screenSafe().bounds.size.width;
+    CGFloat factor = (width > 1.0f) ? width / SBS_REFERENCE_SCREEN_WIDTH : 1.0f;
+    return gThr * factor;
+}
 // 日志门控：diag=关键事件直写（默认开）；verbose=高频/批量诊断（默认关）
 static BOOL    gDiag        = YES;
 static BOOL    gVerbose     = NO;
@@ -124,14 +175,15 @@ static CGFloat sbs_dyForScale(CGFloat s) {
 }
 
 static CGAffineTransform sbs_targetTransform(void) {
+    CGFloat scale = sbs_statusBarScale();
     return CGAffineTransformTranslate(
-        CGAffineTransformMakeScale(gScale, gScale), 0, sbs_dyForScale(gScale) / gScale);
+        CGAffineTransformMakeScale(scale, scale), 0, sbs_dyForScale(scale) / scale);
 }
 
 // leading 图标的目标变换：绕中心缩放 gLeadScale（+ 可选下移 gLeadDy pt）
 // 注：Translate(Scale(s,s),0,dys) 的屏幕位移 = s*dys → dys = dy/s（同 sbs_targetTransform）
 static CGAffineTransform sbs_leadTransform(void) {
-    CGFloat s = (gLeadScale > 0.05f && gLeadScale < 1.0f) ? gLeadScale : 0.60f;
+    CGFloat s = sbs_statusBarLeadScale();
     return CGAffineTransformTranslate(CGAffineTransformMakeScale(s, s), 0, gLeadDy / s);
 }
 
@@ -289,7 +341,7 @@ static void sbs_revalidateManaged(CGAffineTransform want) {
         //    主屏 fg 在 App 前台会被系统摘窗（实测 window=nil），若据此判不合格，
         //    App 切换瞬间会把右侧图标误还原（22:52:03 实测 minX=305~361 仍被判"不合格"），
         //    切回来又重缩 → 每切一次图标闪一下。位置/尺寸足以表达"是否还在右侧"。
-        BOOL ok = isItem && v.bounds.size.width > 0.5 && CGRectGetMinX(v.frame) >= gThr;
+        BOOL ok = isItem && v.bounds.size.width > 0.5 && CGRectGetMinX(v.frame) >= sbs_statusBarThreshold();
         NSString *k = [NSString stringWithFormat:@"%p", (__bridge void *)v];
         if (gPrvProbe) {
             if (ok) {
@@ -369,6 +421,8 @@ static void sbs_revalidateManaged(CGAffineTransform want) {
 
 // ─────────────── 前向声明 ───────────────
 static void sbs_applyLead(UIView *fg);
+static void sbs_apply(UIView *fg);
+static NSArray<UIWindow *> *sbs_allWindows(void);
 static CGRect sbs_islandFrameInFG(UIView *fg);
 static void sbs_dumpScaled(UIView *fg, NSString *by);
 static void sbs_clearLibFolderBg(UIView *bgv);
@@ -380,6 +434,143 @@ static BOOL sbs_isApertureLayer(CALayer *layer);
 // v2.4.0 CC 隐私指示常显（定义在文件后部，SBSHelper 方法调用）
 static id sbs_makeFakeSensorData(NSUInteger type, id sample);
 static BOOL gApertureExpandedLayerCaptured = NO;
+
+static void (*sbs_origForegroundLayoutSubviews)(id, SEL) = NULL;
+static void (*sbs_origForegroundDidMoveToWindow)(id, SEL) = NULL;
+static void (*sbs_origSetHasFinishedLaunching)(id, SEL, BOOL) = NULL;
+static void (*sbs_origPerformDeferredLaunchWork)(id, SEL) = NULL;
+static NSInteger (*sbs_origActiveInterfaceOrientation)(id, SEL) = NULL;
+static id (*sbs_origMainDisplayWindowScene)(id, SEL) = NULL;
+static id (*sbs_origForegroundInitWithFrame)(id, SEL, CGRect) = NULL;
+static void (*sbs_origForegroundDidAddSubview)(id, SEL, UIView *) = NULL;
+static void sbs_substrateForegroundLayoutSubviews(id self, SEL selector) {
+    if (sbs_origForegroundLayoutSubviews)
+        sbs_origForegroundLayoutSubviews(self, selector);
+    static BOOL entered = NO;
+    if (!entered) {
+        entered = YES;
+        NSLog(@"[StatusBarScale] [substrate-layout] first self=%@ frame=%@ main=%d",
+              NSStringFromClass([self class]),
+              [self isKindOfClass:UIView.class] ? NSStringFromCGRect(((UIView *)self).frame) : @"n/a",
+              NSThread.isMainThread);
+    }
+    @try { sbs_apply((UIView *)self); }
+    @catch (NSException *exception) {
+        NSLog(@"[StatusBarScale] [substrate-layout] exception=%@", exception);
+    }
+}
+
+static void sbs_substrateForegroundDidMoveToWindow(id self, SEL selector) {
+    if (sbs_origForegroundDidMoveToWindow)
+        sbs_origForegroundDidMoveToWindow(self, selector);
+    UIView *foreground = [self isKindOfClass:UIView.class] ? (UIView *)self : nil;
+    NSLog(@"[StatusBarScale] [substrate-mount] self=%@ frame=%@ window=%@ subviews=%lu main=%d",
+          NSStringFromClass([self class]),
+          foreground ? NSStringFromCGRect(foreground.frame) : @"n/a",
+          foreground.window ? NSStringFromClass(foreground.window.class) : @"nil",
+          (unsigned long)foreground.subviews.count, NSThread.isMainThread);
+    if (!foreground) return;
+    @try { sbs_apply(foreground); }
+    @catch (NSException *exception) {
+        NSLog(@"[StatusBarScale] [substrate-mount] immediate exception=%@", exception);
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+        @try { sbs_apply(foreground); }
+        @catch (NSException *exception) {
+            NSLog(@"[StatusBarScale] [substrate-mount] deferred exception=%@", exception);
+        }
+    });
+}
+
+static void sbs_substrateSetHasFinishedLaunching(id self, SEL selector, BOOL finished) {
+    if (sbs_origSetHasFinishedLaunching)
+        sbs_origSetHasFinishedLaunching(self, selector, finished);
+    NSLog(@"[StatusBarScale] [launch-hook] setHasFinishedLaunching=%d main=%d screen=%@",
+          finished, NSThread.isMainThread,
+          sbs_screenSafe() ? NSStringFromCGRect(sbs_screenSafe().bounds) : @"nil");
+    if (finished) sbs_triggerExistingStatusBarScanIfReady(@"setHasFinishedLaunching");
+}
+
+static void sbs_substratePerformDeferredLaunchWork(id self, SEL selector) {
+    if (sbs_origPerformDeferredLaunchWork)
+        sbs_origPerformDeferredLaunchWork(self, selector);
+    NSLog(@"[StatusBarScale] [launch-hook] performDeferredLaunchWork main=%d screen=%@",
+          NSThread.isMainThread,
+          sbs_screenSafe() ? NSStringFromCGRect(sbs_screenSafe().bounds) : @"nil");
+    sbs_triggerExistingStatusBarScanIfReady(@"performDeferredLaunchWork");
+}
+
+static NSInteger sbs_substrateActiveInterfaceOrientation(id self, SEL selector) {
+    NSInteger orientation = sbs_origActiveInterfaceOrientation
+        ? sbs_origActiveInterfaceOrientation(self, selector) : 0;
+    static BOOL entered = NO;
+    if (!entered) {
+        entered = YES;
+        NSLog(@"[StatusBarScale] [scene-hook] activeInterfaceOrientation=%ld main=%d screen=%@",
+              (long)orientation, NSThread.isMainThread,
+              sbs_screenSafe() ? NSStringFromCGRect(sbs_screenSafe().bounds) : @"nil");
+    }
+    static BOOL scanning = NO;
+    if (!scanning) {
+        scanning = YES;
+        sbs_triggerExistingStatusBarScanIfReady(@"activeInterfaceOrientation");
+        scanning = NO;
+    }
+    return orientation;
+}
+
+static id sbs_substrateMainDisplayWindowScene(id self, SEL selector) {
+    id scene = sbs_origMainDisplayWindowScene
+        ? sbs_origMainDisplayWindowScene(self, selector) : nil;
+    static BOOL entered = NO;
+    if (!entered) {
+        entered = YES;
+        NSLog(@"[StatusBarScale] [scene-hook] mainDisplayWindowScene=%@ main=%d screen=%@",
+              scene ? NSStringFromClass([scene class]) : @"nil", NSThread.isMainThread,
+              sbs_screenSafe() ? NSStringFromCGRect(sbs_screenSafe().bounds) : @"nil");
+    }
+    static BOOL scanning = NO;
+    if (!scanning) {
+        scanning = YES;
+        sbs_triggerExistingStatusBarScanIfReady(@"mainDisplayWindowScene");
+        scanning = NO;
+    }
+    return scene;
+}
+
+static id sbs_substrateForegroundInitWithFrame(id self, SEL selector, CGRect frame) {
+    id result = sbs_origForegroundInitWithFrame
+        ? sbs_origForegroundInitWithFrame(self, selector, frame) : self;
+    UIView *foreground = [result isKindOfClass:UIView.class] ? (UIView *)result : nil;
+    NSLog(@"[StatusBarScale] [foreground-build] init class=%@ frame=%@ main=%d screen=%@",
+          NSStringFromClass([result class]), NSStringFromCGRect(frame),
+          NSThread.isMainThread,
+          sbs_screenSafe() ? NSStringFromCGRect(sbs_screenSafe().bounds) : @"nil");
+    if (foreground) {
+        @try { sbs_apply(foreground); }
+        @catch (NSException *exception) {
+            NSLog(@"[StatusBarScale] [foreground-build] init apply exception=%@", exception);
+        }
+    }
+    return result;
+}
+
+static void sbs_substrateForegroundDidAddSubview(id self, SEL selector, UIView *subview) {
+    if (sbs_origForegroundDidAddSubview)
+        sbs_origForegroundDidAddSubview(self, selector, subview);
+    UIView *foreground = [self isKindOfClass:UIView.class] ? (UIView *)self : nil;
+    NSLog(@"[StatusBarScale] [foreground-build] didAdd class=%@ sub=%@ count=%lu main=%d screen=%@",
+          NSStringFromClass([self class]), NSStringFromClass([subview class]),
+          (unsigned long)foreground.subviews.count, NSThread.isMainThread,
+          sbs_screenSafe() ? NSStringFromCGRect(sbs_screenSafe().bounds) : @"nil");
+    if (!foreground) return;
+    @try {
+        sbs_apply(foreground);
+        sbs_triggerExistingStatusBarScanIfReady(@"foreground-didAddSubview");
+    } @catch (NSException *exception) {
+        NSLog(@"[StatusBarScale] [foreground-build] didAdd apply exception=%@", exception);
+    }
+}
 
 // System Aperture 的实时活动外框不是普通 CALayer.border：
 // SBSystemApertureContainerView 内部通过 _darkBkgKeyLineView /
@@ -615,8 +806,280 @@ static BOOL sbs_isSearchBackgroundView(UIView *v) {
     return candidate && sbs_librarySearchOwner(v) != nil;
 }
 
+// v2.6.2: one-shot unified-log evidence for the 440pt layout. This is kept
+// deliberately bounded and read-only: it records where UIKit placed status
+// bar items, so matching logic is based on the live hierarchy rather than
+// assumptions inherited from the old 430pt layout.
+static void sbs_logStatusBarTreeOnce(UIView *view, UIView *fg, int depth, int *count) {
+    if (!view || !fg || !count || depth > 6 || *count >= 80) return;
+    NSString *cn = NSStringFromClass(view.class);
+    if ([cn containsString:@"StatusBar"] || [cn containsString:@"Battery"] ||
+        [cn containsString:@"Foreground"]) {
+        CGRect r = [view convertRect:view.bounds toView:fg];
+        CGAffineTransform t = view.transform;
+        NSLog(@"[StatusBarScale] [tree] depth=%d class=%@ super=%@ fgRect=%@ bounds=%@ transform=(%.4f,%.4f) hidden=%d alpha=%.2f",
+              depth, cn, NSStringFromClass(view.superview.class),
+              NSStringFromCGRect(r), NSStringFromCGRect(view.bounds),
+              t.a, t.d, view.hidden, view.alpha);
+        (*count)++;
+    }
+    for (UIView *subview in view.subviews)
+        sbs_logStatusBarTreeOnce(subview, fg, depth + 1, count);
+}
+
+static void sbs_logAllStatusBarWindowsOnce(void) {
+    SEL selector = NSSelectorFromString(@"allWindowsIncludingInternalWindows:onlyVisibleWindows:");
+    NSArray<UIWindow *> *windows = sbs_allWindows();
+    UIScreen *screen = UIScreen.screens.firstObject;
+    NSLog(@"[StatusBarScale] [windows] begin count=%lu internalSelector=%d screen=%@",
+          (unsigned long)windows.count, [UIWindow respondsToSelector:selector],
+          screen ? NSStringFromCGRect(screen.bounds) : @"nil");
+    NSUInteger index = 0;
+    for (UIWindow *window in windows) {
+        NSLog(@"[StatusBarScale] [windows] index=%lu class=%@ frame=%@ hidden=%d alpha=%.2f level=%.1f",
+              (unsigned long)index++, NSStringFromClass(window.class),
+              NSStringFromCGRect(window.frame), window.hidden, window.alpha,
+              window.windowLevel);
+        int count = 0;
+        sbs_logStatusBarTreeOnce(window, window, 0, &count);
+    }
+    NSLog(@"[StatusBarScale] [windows] end");
+}
+
+static void sbs_applyExistingInTree(UIView *view, Class foregroundClass, int depth, int *hits) {
+    if (!view || !foregroundClass || !hits || depth > 24) return;
+    if ([view isKindOfClass:foregroundClass]) {
+        sbs_apply(view);
+        (*hits)++;
+    }
+    for (UIView *subview in view.subviews)
+        sbs_applyExistingInTree(subview, foregroundClass, depth + 1, hits);
+}
+
+static int sbs_applyExistingStatusBars(NSString *reason) {
+    Class foregroundClass = objc_getClass("_UIStatusBarForegroundView");
+    int hits = 0;
+    for (UIWindow *window in sbs_allWindows())
+        sbs_applyExistingInTree(window, foregroundClass, 0, &hits);
+    NSLog(@"[StatusBarScale] [existing] reason=%@ foregroundHits=%d main=%lu leading=%lu",
+          reason, hits, (unsigned long)(gManaged ? gManaged.count : 0),
+          (unsigned long)(gManagedLead ? gManagedLead.count : 0));
+    return hits;
+}
+
+// UIKit screen 在 SpringBoard constructor/hook 安装阶段尚未就绪。等待任一真实
+// UIView 生命周期/setter 回调，并且只以 screens.firstObject 作为就绪条件；不能再用
+// UIApplication.windows.count，因为状态栏位于 internal window，公开数组可恒为 0。
+static BOOL gExistingStatusBarScanComplete = NO;
+static void sbs_triggerExistingStatusBarScanIfReady(NSString *reason) {
+    static NSTimeInterval lastAttempt = 0;
+    static NSUInteger attempts = 0;
+    static BOOL windowsLogged = NO;
+    if (gExistingStatusBarScanComplete || !NSThread.isMainThread || !sbs_screenSafe()) return;
+    NSTimeInterval now = NSDate.date.timeIntervalSince1970;
+    if (now - lastAttempt < 0.25 || attempts >= 40) return;
+    lastAttempt = now;
+    attempts++;
+    @try {
+        NSLog(@"[StatusBarScale] [ui-trigger] reason=%@ screen=%@",
+              reason, NSStringFromCGRect(sbs_screenSafe().bounds));
+        if (!windowsLogged) {
+            windowsLogged = YES;
+            sbs_logAllStatusBarWindowsOnce();
+        }
+        int hits = sbs_applyExistingStatusBars(reason);
+        if (hits > 0) gExistingStatusBarScanComplete = YES;
+        else NSLog(@"[StatusBarScale] [ui-trigger] pending attempt=%lu foregroundHits=0",
+                   (unsigned long)attempts);
+    } @catch (NSException *exception) {
+        NSLog(@"[StatusBarScale] [ui-trigger] exception=%@", exception);
+    }
+}
+
+static CFRunLoopObserverRef gStatusBarRunLoopObserver = NULL;
+static void sbs_statusBarRunLoopCallback(__unused CFRunLoopObserverRef observer,
+                                         __unused CFRunLoopActivity activity,
+                                         __unused void *info) {
+    sbs_triggerExistingStatusBarScanIfReady(@"main-runloop");
+    if (gExistingStatusBarScanComplete && gStatusBarRunLoopObserver) {
+        CFRunLoopObserverInvalidate(gStatusBarRunLoopObserver);
+        CFRelease(gStatusBarRunLoopObserver);
+        gStatusBarRunLoopObserver = NULL;
+        NSLog(@"[StatusBarScale] [runloop] observer completed");
+    }
+}
+
+static void sbs_installStatusBarRunLoopObserver(void) {
+    if (gStatusBarRunLoopObserver) return;
+    CFRunLoopObserverContext context = {0, NULL, NULL, NULL, NULL};
+    gStatusBarRunLoopObserver = CFRunLoopObserverCreate(kCFAllocatorDefault,
+        kCFRunLoopBeforeWaiting | kCFRunLoopAfterWaiting, true, 0,
+        sbs_statusBarRunLoopCallback, &context);
+    if (gStatusBarRunLoopObserver) {
+        CFRunLoopAddObserver(CFRunLoopGetMain(), gStatusBarRunLoopObserver,
+                             kCFRunLoopCommonModes);
+        NSLog(@"[StatusBarScale] [runloop] observer installed");
+    } else {
+        NSLog(@"[StatusBarScale] [runloop] observer creation failed");
+    }
+}
+
+static void sbs_installStatusBarWorkerTrigger(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+            for (NSUInteger attempt = 1; attempt <= 40; attempt++) {
+                [NSThread sleepForTimeInterval:0.25];
+                UIScreen *screen = sbs_screenSafe();
+                if (!screen) continue;
+                NSLog(@"[StatusBarScale] [worker] screen ready attempt=%lu bounds=%@",
+                      (unsigned long)attempt, NSStringFromCGRect(screen.bounds));
+                CFRunLoopPerformBlock(CFRunLoopGetMain(), kCFRunLoopCommonModes, ^{
+                    NSLog(@"[StatusBarScale] [worker-main] runloop block entered main=%d",
+                          NSThread.isMainThread);
+                    sbs_triggerExistingStatusBarScanIfReady(@"worker-main-runloop");
+                });
+                CFRunLoopWakeUp(CFRunLoopGetMain());
+                return;
+            }
+            NSLog(@"[StatusBarScale] [worker] screen unavailable after polling");
+        });
+    });
+}
+
+static void *sbs_statusBarPosixWorker(void *context) {
+    (void)context;
+    NSLog(@"[StatusBarScale] [pthread] worker started");
+    // 严禁在后台线程读取 UIScreen.screens：iOS 16 SpringBoard 会在该调用内阻塞。
+    // 这里只等待 UIApplicationMain 建立 UI 环境，再把读取和扫描送回主线程。
+    usleep(3000000);
+    NSLog(@"[StatusBarScale] [pthread] wake; scheduling main-thread scan");
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSLog(@"[StatusBarScale] [pthread-main-gcd] entered main=%d screen=%@",
+              NSThread.isMainThread,
+              sbs_screenSafe() ? NSStringFromCGRect(sbs_screenSafe().bounds) : @"nil");
+        sbs_triggerExistingStatusBarScanIfReady(@"pthread-main-gcd");
+    });
+    CFRunLoopPerformBlock(CFRunLoopGetMain(), kCFRunLoopCommonModes, ^{
+        NSLog(@"[StatusBarScale] [pthread-main-runloop] entered main=%d screen=%@",
+              NSThread.isMainThread,
+              sbs_screenSafe() ? NSStringFromCGRect(sbs_screenSafe().bounds) : @"nil");
+        sbs_triggerExistingStatusBarScanIfReady(@"pthread-main-runloop");
+    });
+    CFRunLoopWakeUp(CFRunLoopGetMain());
+    return NULL;
+}
+
+static void sbs_installStatusBarPosixWorker(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        pthread_t thread;
+        int result = pthread_create(&thread, NULL, sbs_statusBarPosixWorker, NULL);
+        if (result == 0) pthread_detach(thread);
+        NSLog(@"[StatusBarScale] [pthread] create result=%d", result);
+    });
+}
+
+static void sbs_statusBarDarwinScanCallback(__unused CFNotificationCenterRef center,
+                                            __unused void *observer,
+                                            __unused CFStringRef name,
+                                            __unused const void *object,
+                                            __unused CFDictionaryRef userInfo) {
+    NSLog(@"[StatusBarScale] [darwin] scan notification received main=%d",
+          NSThread.isMainThread);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSLog(@"[StatusBarScale] [darwin-main] entered main=%d screen=%@",
+              NSThread.isMainThread,
+              sbs_screenSafe() ? NSStringFromCGRect(sbs_screenSafe().bounds) : @"nil");
+        sbs_triggerExistingStatusBarScanIfReady(@"darwin-notification");
+    });
+}
+
+static void sbs_installStatusBarDarwinScanObserver(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
+            NULL, sbs_statusBarDarwinScanCallback,
+            CFSTR("com.xu.statusbarscale.scan"), NULL,
+            CFNotificationSuspensionBehaviorDeliverImmediately);
+        NSLog(@"[StatusBarScale] [darwin] observer installed name=com.xu.statusbarscale.scan");
+    });
+}
+
+static void *sbs_statusBarSignalWorker(void *context) {
+    (void)context;
+    @autoreleasepool {
+        NSLog(@"[StatusBarScale] [signal-worker] started");
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSLog(@"[StatusBarScale] [signal-main] entered main=%d screen=%@",
+                  NSThread.isMainThread,
+                  sbs_screenSafe() ? NSStringFromCGRect(sbs_screenSafe().bounds) : @"nil");
+            sbs_triggerExistingStatusBarScanIfReady(@"SIGWINCH");
+        });
+    }
+    return NULL;
+}
+
+static void sbs_statusBarSignalHandler(int signalNumber) {
+    (void)signalNumber;
+    static const char marker[] = "[StatusBarScale] [signal] SIGWINCH received\n";
+    write(STDERR_FILENO, marker, sizeof(marker) - 1);
+    pthread_t thread;
+    if (pthread_create(&thread, NULL, sbs_statusBarSignalWorker, NULL) == 0)
+        pthread_detach(thread);
+}
+
+static void sbs_installStatusBarSignalHandler(void) {
+    struct sigaction action;
+    memset(&action, 0, sizeof(action));
+    action.sa_handler = sbs_statusBarSignalHandler;
+    sigemptyset(&action.sa_mask);
+    action.sa_flags = SA_RESTART;
+    int result = sigaction(SIGWINCH, &action, NULL);
+    NSLog(@"[StatusBarScale] [signal] SIGWINCH handler install=%d", result);
+}
+
+static void sbs_installStatusBarLifecycleObservers(void) {
+    static dispatch_once_t once;
+    static id finishToken = nil;
+    static id activeToken = nil;
+    dispatch_once(&once, ^{
+        NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+        finishToken = [center addObserverForName:UIApplicationDidFinishLaunchingNotification
+                                          object:nil queue:nil
+                                      usingBlock:^(__unused NSNotification *note) {
+            NSLog(@"[StatusBarScale] [lifecycle] didFinishLaunching screen=%@",
+                  sbs_screenSafe() ? NSStringFromCGRect(sbs_screenSafe().bounds) : @"nil");
+            sbs_triggerExistingStatusBarScanIfReady(@"UIApplicationDidFinishLaunching");
+        }];
+        activeToken = [center addObserverForName:UIApplicationDidBecomeActiveNotification
+                                          object:nil queue:nil
+                                      usingBlock:^(__unused NSNotification *note) {
+            NSLog(@"[StatusBarScale] [lifecycle] didBecomeActive screen=%@",
+                  sbs_screenSafe() ? NSStringFromCGRect(sbs_screenSafe().bounds) : @"nil");
+            sbs_triggerExistingStatusBarScanIfReady(@"UIApplicationDidBecomeActive");
+        }];
+        NSLog(@"[StatusBarScale] [lifecycle] observers installed finish=%d active=%d",
+              finishToken != nil, activeToken != nil);
+    });
+}
+
 // ─────────────── 主流程：右侧缩放 + leading 缩放 ───────────────
 static void sbs_apply(UIView *fg) {
+    static BOOL treeLogged = NO;
+    UIScreen *screen = sbs_screenSafe();
+    CGFloat screenWidth = screen.bounds.size.width;
+    if (!treeLogged && screenWidth > 1.0 &&
+        fabs(fg.bounds.size.width - screenWidth) <= 1.0 && fg.subviews.count > 0) {
+        treeLogged = YES;
+        int count = 0;
+        NSLog(@"[StatusBarScale] [tree] begin fg=%@ frame=%@ bounds=%@ subviews=%lu screen=%@",
+              NSStringFromClass(fg.class), NSStringFromCGRect(fg.frame),
+              NSStringFromCGRect(fg.bounds), (unsigned long)fg.subviews.count,
+              screen ? NSStringFromCGRect(screen.bounds) : @"nil");
+        sbs_logStatusBarTreeOnce(fg, fg, 0, &count);
+        NSLog(@"[StatusBarScale] [tree] end count=%d", count);
+    }
     // ⭐ 上游探针：确认 fg layoutSubviews hook 真的触发（App 内诊断）
     if (gVerbose) {
         static NSTimeInterval lastApply = 0;
@@ -650,11 +1113,12 @@ static void sbs_apply(UIView *fg) {
     // ⭐ 绑定取证：缩放一变就打印实时推算的垂直微调（变更即记，可核对联动）
     {
         static CGFloat lastS = -1.0f, lastD = -1.0f;
-        CGFloat dyNow = sbs_dyForScale(gScale);
-        if (fabs(lastS - gScale) > 0.0005f || fabs(lastD - dyNow) > 0.005f) {
-            lastS = gScale; lastD = dyNow;
+        CGFloat effectiveScale = sbs_statusBarScale();
+        CGFloat dyNow = sbs_dyForScale(effectiveScale);
+        if (fabs(lastS - effectiveScale) > 0.0005f || fabs(lastD - dyNow) > 0.005f) {
+            lastS = effectiveScale; lastD = dyNow;
             sbs_logNow(@"[bind] 缩放 %.4f → 垂直微调 %.2f pt（锚点 %.2fpt@%.5f）",
-                       gScale, dyNow, gDy, SBS_DY_ANCHOR_SCALE);
+                       effectiveScale, dyNow, gDy, SBS_DY_ANCHOR_SCALE);
         }
     }
     CGAffineTransform t = sbs_targetTransform();
@@ -668,7 +1132,7 @@ static void sbs_apply(UIView *fg) {
         //    被登记后一旦被复用池拿去渲染时间，就会「缩时间」（锁屏日志实证 a=0.848）。
         BOOL isItem = ([cn containsString:@"StatusBar"] || [cn containsString:@"Battery"])
                       && ![cn containsString:@"StringView"];
-        if (isItem && CGRectGetMinX(v.frame) >= gThr) {
+        if (isItem && CGRectGetMinX(v.frame) >= sbs_statusBarThreshold()) {
             // ⭐⭐ PRV-PROBE：登记/重登记事件（每地址 3s 节流）——看到"重新缩放"的时刻
             if (gPrvProbe) {
                 static NSMutableDictionary *regSt = nil;
@@ -696,6 +1160,32 @@ static void sbs_apply(UIView *fg) {
     if (gApertureProbeEnabled) sbs_probeApertureTree(fg);
     // ⭐ v1.7.0 leading 区（时间右侧、灵动岛左侧）图标独立缩放 —— 与右侧互斥
     @try { sbs_applyLead(fg); } @catch (NSException *e) { sbs_logNow(@"[exc-lead] %@", e); }
+// ⭐ v2.6.0 观测：登记集变更即记（"缩放是否在跑"的运行时证据；+60s 心跳）
+    {
+        static NSUInteger lastM = (NSUInteger)-1, lastL = (NSUInteger)-1;
+        static NSTimeInterval lastT2 = 0;
+        NSUInteger mc = gManaged ? gManaged.count : 0;
+        NSUInteger lc = gManagedLead ? gManagedLead.count : 0;
+        NSTimeInterval now2 = [NSDate date].timeIntervalSince1970;
+        if (mc != lastM || lc != lastL || now2 - lastT2 > 60.0) {
+            lastM = mc; lastL = lc; lastT2 = now2;
+            sbs_logNow(@"[scale] 主缩放登记=%lu leading登记=%lu（fgW=%.0f render=%.4f right=%.4f lead=%.4f thr=%.1f）",
+                       (unsigned long)mc, (unsigned long)lc, fg.bounds.size.width,
+                       sbs_currentRenderScale(), sbs_statusBarScale(),
+                       sbs_statusBarLeadScale(), sbs_statusBarThreshold());
+            // SpringBoard on this RootHide build cannot create the legacy
+            // /var/mobile/Documents log file. Emit the first effective
+            // registration to unified logging as installation evidence.
+            static BOOL unifiedScaleEvidenceLogged = NO;
+            if (!unifiedScaleEvidenceLogged && (mc > 0 || lc > 0)) {
+                unifiedScaleEvidenceLogged = YES;
+                NSLog(@"[StatusBarScale] [scale] main=%lu leading=%lu fgW=%.0f render=%.4f right=%.4f lead=%.4f threshold=%.1f",
+                      (unsigned long)mc, (unsigned long)lc, fg.bounds.size.width,
+                      sbs_currentRenderScale(), sbs_statusBarScale(),
+                      sbs_statusBarLeadScale(), sbs_statusBarThreshold());
+            }
+        }
+    }
 }
 
 // ===========================================================================
@@ -901,7 +1391,7 @@ static void sbs_applyLead(UIView *fg) {
     //   ② 无时间基准（timeMaxX=0，日志实测出现）时不缩：否则区间退化成 (0, leadLimit)，
     //      整条左半屏的 item 全部命中。
     //   ③ 灵动岛左缘必须落在合理区间（真岛实测 152）。
-    CGFloat scrW = UIScreen.mainScreen.bounds.size.width;
+    CGFloat scrW = sbs_screenSafe().bounds.size.width;
     if (scrW > 0 && fabs(fg.bounds.size.width - scrW) > 1.0) {
         if (gRuntimeDiagnostics)
             sbs_leadNote(@"skipFg", [NSString stringWithFormat:
@@ -1131,12 +1621,13 @@ static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
     if (!target) return NO;
     Method mo = class_getInstanceMethod(target, origSel);
     Method mi = class_getInstanceMethod(src, implSel);
-    if (!mo) { sbs_log(@"[hook] SKIP %@ (目标类无此方法)", NSStringFromSelector(origSel)); return NO; }
-    if (!mi) { sbs_log(@"[hook] SKIP %@ (实现缺失)",     NSStringFromSelector(origSel)); return NO; }
+    if (!mo) { NSLog(@"[StatusBarScale] [hook] FAIL class=%@ selector=%@ reason=target-method-missing", NSStringFromClass(target), NSStringFromSelector(origSel)); return NO; }
+    if (!mi) { NSLog(@"[StatusBarScale] [hook] FAIL class=%@ selector=%@ reason=replacement-method-missing", NSStringFromClass(target), NSStringFromSelector(origSel)); return NO; }
     const char *eo = method_getTypeEncoding(mo);
     const char *ei = method_getTypeEncoding(mi);
     if (!eo || !ei || strcmp(eo, ei) != 0) {
-        sbs_log(@"[hook] SKIP %@ (%s != %s)", NSStringFromSelector(origSel), eo ?: "?", ei ?: "?");
+        NSLog(@"[StatusBarScale] [hook] FAIL class=%@ selector=%@ reason=encoding-mismatch target=%s replacement=%s",
+              NSStringFromClass(target), NSStringFromSelector(origSel), eo ?: "?", ei ?: "?");
         return NO;
     }
     IMP origIMP = method_getImplementation(mo);
@@ -1148,8 +1639,14 @@ static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
     if (!class_addMethod(target, origSel, origIMP, eo)) { /* 已在本类 */ }
     Method m1 = class_getInstanceMethod(target, origSel);
     Method m2 = class_getInstanceMethod(target, implSel);
-    if (!m1 || !m2) return NO;
+    if (!m1 || !m2) {
+        NSLog(@"[StatusBarScale] [hook] FAIL class=%@ selector=%@ reason=method-install",
+              NSStringFromClass(target), NSStringFromSelector(origSel));
+        return NO;
+    }
     method_exchangeImplementations(m1, m2);
+    NSLog(@"[StatusBarScale] [hook] OK class=%@ selector=%@ encoding=%s",
+          NSStringFromClass(target), NSStringFromSelector(origSel), eo);
     sbs_log(@"[hook] OK    %@  %s", NSStringFromSelector(origSel), eo);
     return YES;
 }
@@ -1209,6 +1706,43 @@ static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
     [self sbs_apertureLayoutSubviews];
     @try { sbs_suppressApertureKeylines(v); }
     @catch (NSException *e) { sbs_logNow(@"[exc-apertureKeyline] %@", e); }
+
+    // v2.6.9: 现有 _UIStatusBarForegroundView 在 tweak 注入后未必再次触发
+    // layoutSubviews/didMoveToWindow。System Aperture 容器在控制中心/灵动岛转场
+    // 中有已验证的布局回调，因此在这里做一次安全的内部窗口取证与主动补施。
+    // 不在 constructor 中访问 mainScreen（v2.6.7 曾因此触发 UIKit 初始化异常）。
+    static BOOL statusBarScanTriggered = NO;
+    if (!statusBarScanTriggered && NSThread.isMainThread && UIScreen.screens.count > 0) {
+        statusBarScanTriggered = YES;
+        @try {
+            NSLog(@"[StatusBarScale] [aperture-trigger] class=%@ frame=%@ screens=%lu",
+                  NSStringFromClass(v.class), NSStringFromCGRect(v.frame),
+                  (unsigned long)UIScreen.screens.count);
+            sbs_logAllStatusBarWindowsOnce();
+            sbs_applyExistingStatusBars(@"aperture-layout");
+        } @catch (NSException *exception) {
+            NSLog(@"[StatusBarScale] [aperture-trigger] exception=%@", exception);
+        }
+    }
+}
+
+// v2.6.10: SpringBoard 已存在的状态栏/灵动岛容器可能在 hook 安装后完全不再布局。
+// 第一次真实输入事件是可复现且不依赖具体视图类的主线程入口；只取证并补施一次，
+// 不参与后续事件热路径。先调用原实现，避免改变事件分发时序。
+- (void)sbs_applicationSendEvent:(UIEvent *)event {
+    [self sbs_applicationSendEvent:event];
+    static BOOL statusBarEventScanTriggered = NO;
+    if (statusBarEventScanTriggered || !NSThread.isMainThread || UIScreen.screens.count == 0)
+        return;
+    statusBarEventScanTriggered = YES;
+    @try {
+        NSLog(@"[StatusBarScale] [event-trigger] type=%ld screens=%lu",
+              (long)event.type, (unsigned long)UIScreen.screens.count);
+        sbs_logAllStatusBarWindowsOnce();
+        sbs_applyExistingStatusBars(@"application-sendEvent");
+    } @catch (NSException *exception) {
+        NSLog(@"[StatusBarScale] [event-trigger] exception=%@", exception);
+    }
 }
 
 // 交换后：此选择子挂在目标类上指向【原实现】；先调原布局，再做缩放
@@ -1260,8 +1794,26 @@ static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
 // 搜索框及其材质子视图在资源库滑动转场中会动态挂窗；即时清理，不依赖 windows 扫描。
 - (void)sbs_viewDidMoveToWindow {
     [self sbs_viewDidMoveToWindow];
+    sbs_triggerExistingStatusBarScanIfReady(@"UIView-didMoveToWindow");
     UIView *v = (UIView *)self;
     NSString *cn = NSStringFromClass(v.class);
+    if ([cn containsString:@"StatusBar"] || [cn containsString:@"Battery"] ||
+        [cn containsString:@"Foreground"]) {
+        static NSMutableSet<NSString *> *seenStatusViews = nil;
+        static dispatch_once_t seenStatusViewsOnce;
+        dispatch_once(&seenStatusViewsOnce, ^{ seenStatusViews = [NSMutableSet set]; });
+        NSString *key = [NSString stringWithFormat:@"%@/%@/%@",
+                         cn, NSStringFromClass(v.superview.class), NSStringFromCGRect(v.frame)];
+        if (![seenStatusViews containsObject:key] && seenStatusViews.count < 100) {
+            [seenStatusViews addObject:key];
+            CGRect windowRect = v.window ? [v convertRect:v.bounds toView:v.window] : CGRectZero;
+            NSLog(@"[StatusBarScale] [mount] class=%@ super=%@ frame=%@ bounds=%@ windowRect=%@ window=%@ transform=(%.4f,%.4f) hidden=%d alpha=%.2f",
+                  cn, NSStringFromClass(v.superview.class), NSStringFromCGRect(v.frame),
+                  NSStringFromCGRect(v.bounds), NSStringFromCGRect(windowRect),
+                  v.window ? NSStringFromClass(v.window.class) : @"nil",
+                  v.transform.a, v.transform.d, v.hidden, v.alpha);
+        }
+    }
     // 全局 didMoveToWindow 也属于控制中心转场热路径：只检查搜索类本身或材质候选，
     // 避免每个新挂窗视图都遍历祖先链。
     if ([cn containsString:@"Search"])
@@ -1280,6 +1832,7 @@ static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
     if (keyline && !h) h = YES;
     [self sbs_viewSetHidden:h];
     if (keyline && !v.layer.hidden) v.layer.hidden = YES;
+    sbs_triggerExistingStatusBarScanIfReady(@"UIView-setHidden");
 }
 
 // 系统重设材质背景色时立即清透明；不影响搜索框内的图标和文字。
@@ -1287,6 +1840,7 @@ static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
     UIView *v = (UIView *)self;
     if (sbs_isSearchBackgroundView(v)) c = [UIColor clearColor];
     [self sbs_viewSetBackgroundColor:c];
+    sbs_triggerExistingStatusBarScanIfReady(@"UIView-setBackgroundColor");
 }
 
 // 系统可能用 alpha 而不是 hidden 切换 key-line，两个入口都要拦截。
@@ -1296,6 +1850,7 @@ static BOOL SBSHook(Class target, SEL origSel, Class src, SEL implSel) {
     if (keyline && a > 0.0) a = 0.0;
     [self sbs_viewSetAlpha:a];
     if (keyline && v.layer.opacity > 0.0f) v.layer.opacity = 0.0f;
+    sbs_triggerExistingStatusBarScanIfReady(@"UIView-setAlpha");
 }
 
 // 实时活动外框实际会在 CALayer 写入口被系统恢复；拦截写入而不是只做一次清理。
@@ -1638,9 +2193,12 @@ static void sbs_clearSearchFieldBg(UIView *tf) {
 //   （实测打点 (38,250) 处只有窗口层、扫到的 8 个 backgroundView 全是离屏副本）
 //   ⇒ 统一用 connectedScenes 收集【所有场景】的窗口。
 static NSArray<UIWindow *> *sbs_allWindows(void) {
-    // ⚠️ 实测：connectedScenes 收不到资源库所在的 SBHomeScreenWindow（返回 0 个 Pod），
-    //    却会混入控制中心等后台场景 ⇒ 以 [UIApplication windows] 为准。
-    return [UIApplication sharedApplication].windows;
+    SEL selector = NSSelectorFromString(@"allWindowsIncludingInternalWindows:onlyVisibleWindows:");
+    if ([UIWindow respondsToSelector:selector]) {
+        id value = ((id (*)(id, SEL, BOOL, BOOL))objc_msgSend)(UIWindow.class, selector, YES, NO);
+        if ([value isKindOfClass:[NSArray class]]) return value;
+    }
+    return UIApplication.sharedApplication.windows ?: @[];
 }
 
 // ⚠️ 实测（11:52）：hook `SBHLibraryCategoryPodBackgroundView -layoutSubviews` **不可靠** ——
@@ -1885,6 +2443,22 @@ static void sbs_install(void) {
     }
     installed = YES;
     NSLog(@"[StatusBarScale] status bar class ready; installing core hooks");
+    {
+        Class springBoardClass = objc_getClass("SpringBoard");
+        unsigned int methodCount = 0;
+        Method *methods = class_copyMethodList(springBoardClass, &methodCount);
+        NSMutableArray<NSString *> *launchMethods = [NSMutableArray array];
+        for (unsigned int i = 0; i < methodCount; i++) {
+            NSString *name = NSStringFromSelector(method_getName(methods[i]));
+            NSString *lower = name.lowercaseString;
+            if ([lower containsString:@"launch"] || [lower containsString:@"finish"] ||
+                [lower containsString:@"active"] || [lower containsString:@"scene"])
+                [launchMethods addObject:name];
+        }
+        free(methods);
+        NSLog(@"[StatusBarScale] [SpringBoard-methods] count=%u lifecycle=%@",
+              methodCount, launchMethods);
+    }
     if (gApertureProbeEnabled) {
         sbs_installApertureRenderProbes();
         BOOL caDisplayOK = SBSHook([CALayer class], @selector(display),
@@ -1899,14 +2473,129 @@ static void sbs_install(void) {
     }
 
     // ① 布局终点 hook：每帧可重入 → 承载主缩放 + leading 缩放
-    BOOL layoutOK = SBSHook(FG, @selector(layoutSubviews),
-                            SBSHelper.class, @selector(sbs_fgLayoutSubviews));
-    sbs_logNow(@"[hook] layoutSubviews → %@", layoutOK ? @"已安装" : @"失败");
+    Method foregroundLayout = class_getInstanceMethod(FG, @selector(layoutSubviews));
+    SBSMSHookMessageExFn substrateHook =
+        (SBSMSHookMessageExFn)dlsym(RTLD_DEFAULT, "MSHookMessageEx");
+
+    // 状态栏 foreground 往往在本插件安装 hook 前已经完成挂窗和首轮布局。
+    // 使用 SpringBoard 自身的真实启动终点作为已有 internal window 的扫描入口。
+    Class springBoardClass = objc_getClass("SpringBoard");
+    Method finishedLaunchMethod = springBoardClass
+        ? class_getInstanceMethod(springBoardClass,
+                                  NSSelectorFromString(@"setHasFinishedLaunching:"))
+        : NULL;
+    BOOL finishedLaunchOK = finishedLaunchMethod != NULL && substrateHook != NULL;
+    if (finishedLaunchOK) {
+        substrateHook(springBoardClass,
+                      NSSelectorFromString(@"setHasFinishedLaunching:"),
+                      (IMP)sbs_substrateSetHasFinishedLaunching,
+                      (IMP *)&sbs_origSetHasFinishedLaunching);
+        finishedLaunchOK = sbs_origSetHasFinishedLaunching != NULL;
+    }
+    NSLog(@"[StatusBarScale] [hook] launch class=%@ selector=setHasFinishedLaunching: type=%s result=%@ original=%p",
+          NSStringFromClass(springBoardClass),
+          finishedLaunchMethod ? method_getTypeEncoding(finishedLaunchMethod) : "(null)",
+          finishedLaunchOK ? @"OK" : @"FAILED", sbs_origSetHasFinishedLaunching);
+
+    Method deferredLaunchMethod = springBoardClass
+        ? class_getInstanceMethod(springBoardClass,
+                                  NSSelectorFromString(@"_performDeferredLaunchWork"))
+        : NULL;
+    BOOL deferredLaunchOK = deferredLaunchMethod != NULL && substrateHook != NULL;
+    if (deferredLaunchOK) {
+        substrateHook(springBoardClass,
+                      NSSelectorFromString(@"_performDeferredLaunchWork"),
+                      (IMP)sbs_substratePerformDeferredLaunchWork,
+                      (IMP *)&sbs_origPerformDeferredLaunchWork);
+        deferredLaunchOK = sbs_origPerformDeferredLaunchWork != NULL;
+    }
+    NSLog(@"[StatusBarScale] [hook] launch class=%@ selector=_performDeferredLaunchWork type=%s result=%@ original=%p",
+          NSStringFromClass(springBoardClass),
+          deferredLaunchMethod ? method_getTypeEncoding(deferredLaunchMethod) : "(null)",
+          deferredLaunchOK ? @"OK" : @"FAILED", sbs_origPerformDeferredLaunchWork);
+
+    Method orientationMethod = springBoardClass
+        ? class_getInstanceMethod(springBoardClass, @selector(activeInterfaceOrientation))
+        : NULL;
+    BOOL orientationOK = orientationMethod != NULL && substrateHook != NULL;
+    if (orientationOK) {
+        substrateHook(springBoardClass, @selector(activeInterfaceOrientation),
+                      (IMP)sbs_substrateActiveInterfaceOrientation,
+                      (IMP *)&sbs_origActiveInterfaceOrientation);
+        orientationOK = sbs_origActiveInterfaceOrientation != NULL;
+    }
+    NSLog(@"[StatusBarScale] [hook] scene class=%@ selector=activeInterfaceOrientation type=%s result=%@ original=%p",
+          NSStringFromClass(springBoardClass),
+          orientationMethod ? method_getTypeEncoding(orientationMethod) : "(null)",
+          orientationOK ? @"OK" : @"FAILED", sbs_origActiveInterfaceOrientation);
+
+    SEL mainSceneSelector = NSSelectorFromString(@"_mainDisplayWindowScene");
+    Method mainSceneMethod = springBoardClass
+        ? class_getInstanceMethod(springBoardClass, mainSceneSelector) : NULL;
+    BOOL mainSceneOK = mainSceneMethod != NULL && substrateHook != NULL;
+    if (mainSceneOK) {
+        substrateHook(springBoardClass, mainSceneSelector,
+                      (IMP)sbs_substrateMainDisplayWindowScene,
+                      (IMP *)&sbs_origMainDisplayWindowScene);
+        mainSceneOK = sbs_origMainDisplayWindowScene != NULL;
+    }
+    NSLog(@"[StatusBarScale] [hook] scene class=%@ selector=_mainDisplayWindowScene type=%s result=%@ original=%p",
+          NSStringFromClass(springBoardClass),
+          mainSceneMethod ? method_getTypeEncoding(mainSceneMethod) : "(null)",
+          mainSceneOK ? @"OK" : @"FAILED", sbs_origMainDisplayWindowScene);
+
+    BOOL layoutOK = foregroundLayout != NULL && substrateHook != NULL;
+    if (layoutOK) {
+        substrateHook(FG, @selector(layoutSubviews),
+                      (IMP)sbs_substrateForegroundLayoutSubviews,
+                      (IMP *)&sbs_origForegroundLayoutSubviews);
+        layoutOK = sbs_origForegroundLayoutSubviews != NULL;
+    }
+    NSLog(@"[StatusBarScale] [hook] substrate class=%@ selector=layoutSubviews resolver=%p result=%@ original=%p",
+          NSStringFromClass(FG), substrateHook, layoutOK ? @"OK" : @"FAILED",
+          sbs_origForegroundLayoutSubviews);
+    sbs_logNow(@"[hook] substrate layoutSubviews → %@", layoutOK ? @"已安装" : @"失败");
+
+    Method foregroundInit = class_getInstanceMethod(FG, @selector(initWithFrame:));
+    BOOL initOK = foregroundInit != NULL && substrateHook != NULL;
+    if (initOK) {
+        substrateHook(FG, @selector(initWithFrame:),
+                      (IMP)sbs_substrateForegroundInitWithFrame,
+                      (IMP *)&sbs_origForegroundInitWithFrame);
+        initOK = sbs_origForegroundInitWithFrame != NULL;
+    }
+    NSLog(@"[StatusBarScale] [hook] foreground class=%@ selector=initWithFrame: type=%s result=%@ original=%p",
+          NSStringFromClass(FG),
+          foregroundInit ? method_getTypeEncoding(foregroundInit) : "(null)",
+          initOK ? @"OK" : @"FAILED", sbs_origForegroundInitWithFrame);
+
+    Method foregroundDidAdd = class_getInstanceMethod(FG, @selector(didAddSubview:));
+    BOOL didAddOK = foregroundDidAdd != NULL && substrateHook != NULL;
+    if (didAddOK) {
+        substrateHook(FG, @selector(didAddSubview:),
+                      (IMP)sbs_substrateForegroundDidAddSubview,
+                      (IMP *)&sbs_origForegroundDidAddSubview);
+        didAddOK = sbs_origForegroundDidAddSubview != NULL;
+    }
+    NSLog(@"[StatusBarScale] [hook] foreground class=%@ selector=didAddSubview: type=%s result=%@ original=%p",
+          NSStringFromClass(FG),
+          foregroundDidAdd ? method_getTypeEncoding(foregroundDidAdd) : "(null)",
+          didAddOK ? @"OK" : @"FAILED", sbs_origForegroundDidAddSubview);
 
     // ② 全局 hook UIView.setTransform: 拦截受管图标被系统重置（关键修复）
     BOOL transformOK = SBSHook([UIView class], @selector(setTransform:),
                                SBSHelper.class, @selector(sbs_viewSetTransform:));
     sbs_logNow(@"[hook] UIView.setTransform: → %@", transformOK ? @"已安装" : @"失败");
+
+    // 已有状态栏实例不会必然再走 layout/didMove；第一次真实触摸事件主动扫描。
+    // SpringBoard 自身覆写 sendEvent:；hook UIApplication 基类不会命中。
+    // 使用运行时已注册的实际应用类，安装日志会明确打印目标类与结果。
+    Class eventClass = objc_getClass("SpringBoard");
+    if (!eventClass) eventClass = [UIApplication class];
+    BOOL eventOK = SBSHook(eventClass, @selector(sendEvent:),
+                           SBSHelper.class, @selector(sbs_applicationSendEvent:));
+    NSLog(@"[StatusBarScale] [hook] event target=%@ sendEvent: %@",
+          NSStringFromClass(eventClass), eventOK ? @"OK" : @"FAILED");
 
     BOOL moveOK = SBSHook([UIView class], @selector(didMoveToWindow),
                           SBSHelper.class, @selector(sbs_viewDidMoveToWindow));
@@ -1939,9 +2628,18 @@ static void sbs_install(void) {
     sbs_installVCCModuleHook();
 
     // ③ fg 重新挂窗（App↔主屏切换/解锁）时补施
-    BOOL windowOK = SBSHook(FG, @selector(didMoveToWindow),
-                            SBSHelper.class, @selector(sbs_fgDidMoveToWindow));
-    sbs_logNow(@"[hook] didMoveToWindow → %@", windowOK ? @"已安装" : @"失败");
+    Method foregroundDidMove = class_getInstanceMethod(FG, @selector(didMoveToWindow));
+    BOOL windowOK = foregroundDidMove != NULL && substrateHook != NULL;
+    if (windowOK) {
+        substrateHook(FG, @selector(didMoveToWindow),
+                      (IMP)sbs_substrateForegroundDidMoveToWindow,
+                      (IMP *)&sbs_origForegroundDidMoveToWindow);
+        windowOK = sbs_origForegroundDidMoveToWindow != NULL;
+    }
+    NSLog(@"[StatusBarScale] [hook] substrate class=%@ selector=didMoveToWindow result=%@ original=%p",
+          NSStringFromClass(FG), windowOK ? @"OK" : @"FAILED",
+          sbs_origForegroundDidMoveToWindow);
+    sbs_logNow(@"[hook] substrate didMoveToWindow → %@", windowOK ? @"已安装" : @"失败");
 
     // ④ 状态栏的实际实例类可能是 FG 的子类（覆写布局方法）→ 逐个定义类补 hook
     NSUInteger layoutSubs = sbs_hookDefiningClasses(FG, @selector(layoutSubviews),
@@ -1956,6 +2654,38 @@ static void sbs_install(void) {
           (unsigned long)layoutSubs, (unsigned long)windowSubs);
     sbs_logNow(@"[hook] 子类补 hook layout=%lu window=%lu",
                (unsigned long)layoutSubs, (unsigned long)windowSubs);
+
+    // v2.6.24：旧通知/runloop/worker/Darwin/signal 入口均已由实机日志证实不命中，
+    // 不再安装；已有状态栏实例改由上面的 SpringBoard 启动终点 hook 扫描。
+
+    // v2.6.12: 所有屏幕读取均已改为可空 screens.firstObject，因此这里可以
+    // 安全扫描 hook 安装前就存在的内部状态栏窗口。无 screen 时只跳过并留证据。
+    @try {
+        if (sbs_screenSafe()) {
+            NSLog(@"[StatusBarScale] [install-scan] begin screen=%@",
+                  NSStringFromCGRect(sbs_screenSafe().bounds));
+            sbs_logAllStatusBarWindowsOnce();
+            sbs_applyExistingStatusBars(@"core-hooks-installed");
+        } else {
+            NSLog(@"[StatusBarScale] [install-scan] skipped: no UIScreen");
+        }
+    } @catch (NSException *exception) {
+        NSLog(@"[StatusBarScale] [install-scan] exception=%@", exception);
+    }
+
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 8 * NSEC_PER_SEC),
+                   dispatch_get_main_queue(), ^{
+        @try {
+            if (UIScreen.screens.count == 0) {
+                NSLog(@"[StatusBarScale] [existing] delayed scan skipped: no UIScreen");
+                return;
+            }
+            sbs_logAllStatusBarWindowsOnce();
+            sbs_applyExistingStatusBars(@"delayed-install");
+        } @catch (NSException *exception) {
+            NSLog(@"[StatusBarScale] [existing] delayed scan exception=%@", exception);
+        }
+    });
 
     // ⚠️ 资源库背景类可能晚于 ctor 加载。立即切到主线程尝试安装，
     //    类未就绪时由 sbs_installLibBgHook 以 0.5s 间隔重试，避免转场时出现背景闪现。
@@ -1981,8 +2711,9 @@ static void sbs_ctor(void) {
     // ① 状态栏缩放 / 资源库背景：防御性白名单 —— 绝不在非 SpringBoard 进程安装全局 swizzle。
     if (![proc isEqualToString:@"SpringBoard"])
         return;
-    NSLog(@"[StatusBarScale] v%@ loaded in SpringBoard (scale=%.4f thr=%.0f lead=%.4f)",
-          SBS_VERSION, gScale, gThr, gLeadScale);
+    // 构造阶段不触碰 UIKit 屏幕对象；SpringBoard 尚未完成窗口/屏幕初始化。
+    // 动态比例只在状态栏 hook 的布局回调中读取。
+    NSLog(@"[StatusBarScale] v%@ loaded in SpringBoard (dynamic scale enabled)", SBS_VERSION);
     sbs_log(@"[载入] v%@ proc=%@ pid=%d enabled=%d scale=%.4f dy=%.4f thr=%.0f lead=%d/%.4f",
             SBS_VERSION, proc, getpid(),
             gEnabled, gScale, gDy, gThr, gLeadEnabled, gLeadScale);

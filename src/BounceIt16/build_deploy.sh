@@ -4,6 +4,15 @@
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"; cd "$HERE"
 NAME=BounceIt16; PKG=com.xu.bounceit16; ARCH=iphoneos-arm64e
+DEVICE_HOST="${DEVICE_HOST:-iphone-root}"
+DEVICE_SCP_HOST="${DEVICE_SCP_HOST:-iphone}"
+DEVICE_PORT="${DEVICE_PORT:-}"
+DEVICE_KEY="${DEVICE_KEY:-}"
+SSH_ARGS=()
+SCP_ARGS=()
+[ -n "$DEVICE_PORT" ] && SSH_ARGS+=(-p "$DEVICE_PORT") && SCP_ARGS+=(-P "$DEVICE_PORT")
+[ -n "$DEVICE_KEY" ] && SSH_ARGS+=(-i "$DEVICE_KEY") && SCP_ARGS+=(-i "$DEVICE_KEY")
+remote() { ssh "${SSH_ARGS[@]}" "$DEVICE_HOST" "$@"; }
 # 版本号唯一来源：源码里的 #define BIT16_VERSION（不手填）
 VER=$(grep -o '#define BIT16_VERSION @"[^"]*"' "$NAME.m" | sed 's/.*"\([^"]*\)".*/\1/')
 [ -n "$VER" ] || { echo "!! 读不到 BIT16_VERSION"; exit 1; }
@@ -24,10 +33,10 @@ if strings "$NAME.dylib" | grep -E '/System/Library|TweakInject'; then echo "!! 
 echo "   clean"
 
 echo "== 3) 设备签名 =="
-ssh iphone-root "rm -f /var/tmp/$NAME.dylib"
-scp -q "$NAME.dylib" iphone:/var/tmp/$NAME.dylib
-ssh iphone-root "ldid -S /var/tmp/$NAME.dylib && stat -c %s /var/tmp/$NAME.dylib"
-scp -q iphone:/var/tmp/$NAME.dylib "$NAME.signed.dylib"
+remote "rm -f /var/tmp/$NAME.dylib"
+scp -q "${SCP_ARGS[@]}" "$NAME.dylib" "$DEVICE_SCP_HOST:/var/tmp/$NAME.dylib"
+remote "ldid -S /var/tmp/$NAME.dylib && stat -c %s /var/tmp/$NAME.dylib"
+scp -q "${SCP_ARGS[@]}" "$DEVICE_SCP_HOST:/var/tmp/$NAME.dylib" "$NAME.signed.dylib"
 codesign -dvvv "$NAME.signed.dylib" 2>&1 | grep CodeDirectory || true
 
 echo "== 4) 打包 deb =="
@@ -67,15 +76,20 @@ arw(OUT,[("debian-binary",b"2.0\n"),
 print("   deb: %s (%d bytes)"%(OUT,os.path.getsize(OUT)))
 PY
 
+if [ "${BUILD_ONLY:-0}" = "1" ]; then
+    echo "BUILD_ONLY=1: 已完成构建与签名，跳过安装和 respring"
+    exit 0
+fi
+
 echo "== 5) 部署 =="
-ssh iphone-root "rm -f /rootfs/private/var/mobile/Documents/bounce16.log /var/tmp/${NAME}_${VER}_${ARCH}.deb"
-scp -q "${NAME}_${VER}_${ARCH}.deb" iphone:/var/tmp/
-ssh iphone-root "dpkg -i /var/tmp/${NAME}_${VER}_${ARCH}.deb 2>&1 | tail -3"
+remote "rm -f /rootfs/private/var/mobile/Documents/bounce16.log /var/tmp/${NAME}_${VER}_${ARCH}.deb"
+scp -q "${SCP_ARGS[@]}" "${NAME}_${VER}_${ARCH}.deb" "$DEVICE_SCP_HOST:/var/tmp/"
+remote "dpkg -i /var/tmp/${NAME}_${VER}_${ARCH}.deb 2>&1 | tail -3"
 
 echo "== 6) respring =="
-ssh iphone-root 'sbreload'
+remote 'sbreload'
 sleep 32
 
 echo "== 7) 插件日志 =="
-ssh iphone-root 'cat /rootfs/private/var/mobile/Documents/bounce16.log 2>&1'
+remote 'cat /rootfs/private/var/mobile/Documents/bounce16.log 2>&1'
 echo "DONE"
