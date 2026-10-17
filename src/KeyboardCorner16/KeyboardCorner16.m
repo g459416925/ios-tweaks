@@ -7,7 +7,7 @@
 #import <stdlib.h>
 #import <string.h>
 
-#define KBC_VERSION "1.0.86"
+#define KBC_VERSION "1.0.88"
 #define TARGET_RADIUS 10.0
 
 extern void MSHookMessageEx(Class cls, SEL sel, IMP newImp, IMP *oldImp);
@@ -1622,19 +1622,25 @@ static void kbc_updateKayokoPage(UIView *page, NSString *reason) {
     BOOL composing = kbc_inputHasMarkedText();
     BOOL listCandidates = sKayokoHasSystemCandidates;
     BOOL hasCandidates = visibleCandidateText || listCandidates;
-    BOOL shouldHide = composing || hasCandidates;
-    // 统一挂到键盘窗口：挂在 page 上时系统预测栏会把按钮文案当成自己的
-    // 候选再渲染一遍（同一个「历史」被画两次 → 视觉重影），且隐藏必须
-    // 彻底摘除而不是只设 hidden。
-    UIView *host = page.window ?: page;
+    // 英文键盘在部分界面（如 App 资源库搜索）没有预测栏，page 会被系统移到
+    // 屏幕外（高度 0 或 y 在屏幕下方），此时 bar 即使 hidden=NO 也不该存在，
+    // 否则会以错误坐标留在键盘按键行上。这里按 page 的实际可见性裁决。
+    CGRect pageInWindow = page.window
+        ? [page convertRect:page.bounds toView:page.window] : CGRectZero;
+    BOOL pageVisible = page.window &&
+        pageInWindow.size.height >= 20.0 && pageInWindow.size.width >= 20.0 &&
+        CGRectIntersectsRect(page.window.bounds, pageInWindow);
+    BOOL shouldHide = composing || hasCandidates || !pageVisible;
+    // 挂回 page：bar.frame 恒等于 page.bounds，键盘移动/高度动画都由
+    // page 的布局带动，不会再出现"栏留在键盘按键行"的错位。
     if (shouldHide) {
         if (bar.superview) [bar removeFromSuperview];
         bar.hidden = YES;
     } else {
         bar.hidden = NO;
-        if (bar.superview != host) [host addSubview:bar];
-        bar.frame = [page convertRect:page.bounds toView:host];
-        [host bringSubviewToFront:bar];
+        if (bar.superview != page) [page addSubview:bar];
+        bar.frame = page.bounds;
+        [page bringSubviewToFront:bar];
     }
     UIGestureRecognizer *tap = objc_getAssociatedObject(page, &sKayokoPredictionTapKey);
     tap.enabled = !shouldHide;
@@ -1720,19 +1726,28 @@ static void kbc_kayokoPageLayout(id self, SEL command) {
         bar = sSharedKayokoBar;
         objc_setAssociatedObject(page, &sKayokoPredictionBarKey, bar,
             OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        UIView *host = page.window ?: page;
+        // 直接挂在 page 上：bar.frame 恒等于 page.bounds，键盘移动/高度变化
+        // 时天然跟随，不需要手动 convertRect（挂键盘窗口时靠 convertRect
+        // 定位，窗口位移而 page 未 layout 就会把栏留在键盘按键行上）。
+        // KayokoHelper 的预测栏注入已在 ctor 关闭，page 上不会再有第二份文案。
         NSUInteger purged = 0;
-        for (UIView *subview in [host.subviews copy]) {
+        for (UIView *subview in [page.window.subviews copy]) {
             if ([subview isKindOfClass:[KBCKayokoPredictionBar class]] && subview != bar) {
                 [subview removeFromSuperview];
                 purged++;
             }
         }
-        [host addSubview:bar];
-        bar.frame = [page convertRect:page.bounds toView:host];
+        for (UIView *subview in [page.subviews copy]) {
+            if ([subview isKindOfClass:[KBCKayokoPredictionBar class]] && subview != bar) {
+                [subview removeFromSuperview];
+                purged++;
+            }
+        }
+        [page addSubview:bar];
+        bar.frame = page.bounds;
         kbc_log([NSString stringWithFormat:
             @"kayoko bar attach page=%p bar=%p host=%@ purged=%lu",
-            page, bar, NSStringFromClass([host class]), (unsigned long)purged]);
+            page, bar, NSStringFromClass([page class]), (unsigned long)purged]);
         UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc]
             initWithTarget:bar action:@selector(kbc_pageTap:)];
         tap.cancelsTouchesInView = YES;

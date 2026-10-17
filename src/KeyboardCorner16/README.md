@@ -90,6 +90,13 @@ iOS 16 系统键盘全按键圆角增强修复版，并整合 OLED 深色键盘�
 3. 立即安装与延迟安装现在统一经过 `kbc_installKayokoPageHooksIfAvailable`，只有成功安装 `layoutSubviews` 和 `hitTest:` 后才设置全局安装状态，每个进程最多安装一次。
 4. 修复后全新 Spotlight 进程 PID `15139` 持续稳定，日志中 `kayoko-pagebar-once source=constructor` 恰好一次，旧的重复安装路径为零；英文预测和简体拼音候选回归也均保持 `visibleText=1 hidden=1 gesture=0`。
 
+### v1.0.88 栏定位回归 page + 无预测栏时彻底隐藏
+
+1. v1.0.86 把栏挂到 `UIRemoteKeyboardWindow` 并用 `convertRect` 定位：键盘窗口位移而 page 未重新 layout 时，栏会停在键盘按键行上，与 `q/w/e` 行文字重叠 —— 观感就是「出现了两个栏」。
+2. v1.0.87 改回挂 `TUISystemInputAssistantPageView`：`bar.frame = page.bounds` 随键盘布局自动跟随，不再依赖坐标换算；单例与窗口层清理逻辑保留。
+3. v1.0.88 增加 page 可见性裁决：英文键盘在 App 资源库搜索等界面没有预测栏，`TUISystemInputAssistantPageView` 会被系统移到屏幕外（高度 0 或 y 在屏下）。此时显式隐藏栏，避免它以错误坐标残留在按键区。
+4. 真机回归（App 资源库搜索框）：英文 → 无栏、不压按键；中文 → 栏位于预测栏位置；123 → 栏位置正确；再切回英文 → 栏消失。`bar alloc singleton` 每进程一次，`pageBars=1 / windowBars=0`。
+
 ### v1.0.86 窗口层单例化（资源库搜索框切输入法出现两个栏）
 
 1. v1.0.85 把 bar 改挂 `UIRemoteKeyboardWindow` 后，创建时机仍绑在 `TUISystemInputAssistantPageView`：系统在切换中英文/字母数字时会重建 page，每个新 page 各 new 一个 bar 挂到窗口，旧实例留在窗口层 → 屏幕上叠出两个栏。
