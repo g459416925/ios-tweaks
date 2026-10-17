@@ -90,6 +90,14 @@ iOS 16 系统键盘全按键圆角增强修复版，并整合 OLED 深色键盘�
 3. 立即安装与延迟安装现在统一经过 `kbc_installKayokoPageHooksIfAvailable`，只有成功安装 `layoutSubviews` 和 `hitTest:` 后才设置全局安装状态，每个进程最多安装一次。
 4. 修复后全新 Spotlight 进程 PID `15139` 持续稳定，日志中 `kayoko-pagebar-once source=constructor` 恰好一次，旧的重复安装路径为零；英文预测和简体拼音候选回归也均保持 `visibleText=1 hidden=1 gesture=0`。
 
+### v1.0.90 强制预测栏常显（英文输入法下栏消失根治）
+
+1. 现象：App 资源库搜索等界面切英文输入法后 Kayoko 栏消失。实测该界面**根本不创建预测栏**（`TUISystemInputAssistantPageView` 被移到屏幕外，打开系统"预测"开关 `KeyboardPrediction=1` 也无效），栏没有可用的 45pt 落点。
+2. 修复：hook `UIPredictionViewController -isVisibleForInputDelegate:inputViews:` 恒返回 `YES`，强制任意界面键盘上方都存在预测栏内容页（键盘整体上移 45pt），栏从此有固定位置。
+3. 显示规则回归单一分支：**`composing || 有候选` 才隐藏，其余一律显示** —— 不再按界面/输入法做任何特判（v1.0.88 的 `pageVisible` 分支已删除）。
+4. 实例仍为进程内单例，隐藏/显示都走同一个 `bar` 对象；`pageframe` 日志记录 page 的实际落点便于排查。
+5. 真机回归（App 资源库搜索）：英文 → 栏正常显示在预测栏位；切中文输入 `ni` → 候选「你/理/离/尼…」出现、栏隐藏；切回英文 → 栏恢复。Spotlight、抖音评论框行为一致。
+
 ### v1.0.88 栏定位回归 page + 无预测栏时彻底隐藏
 
 1. v1.0.86 把栏挂到 `UIRemoteKeyboardWindow` 并用 `convertRect` 定位：键盘窗口位移而 page 未重新 layout 时，栏会停在键盘按键行上，与 `q/w/e` 行文字重叠 —— 观感就是「出现了两个栏」。

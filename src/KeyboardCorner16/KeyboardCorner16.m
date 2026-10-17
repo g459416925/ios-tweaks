@@ -7,7 +7,7 @@
 #import <stdlib.h>
 #import <string.h>
 
-#define KBC_VERSION "1.0.88"
+#define KBC_VERSION "1.0.90"
 #define TARGET_RADIUS 10.0
 
 extern void MSHookMessageEx(Class cls, SEL sel, IMP newImp, IMP *oldImp);
@@ -1622,15 +1622,22 @@ static void kbc_updateKayokoPage(UIView *page, NSString *reason) {
     BOOL composing = kbc_inputHasMarkedText();
     BOOL listCandidates = sKayokoHasSystemCandidates;
     BOOL hasCandidates = visibleCandidateText || listCandidates;
-    // 英文键盘在部分界面（如 App 资源库搜索）没有预测栏，page 会被系统移到
-    // 屏幕外（高度 0 或 y 在屏幕下方），此时 bar 即使 hidden=NO 也不该存在，
-    // 否则会以错误坐标留在键盘按键行上。这里按 page 的实际可见性裁决。
+    // 单一规则：正在拼音组合或有系统候选 → 隐藏；其余情况一律显示。
+    // 不按界面/输入法区分（预测栏已由 force-prediction-visible 保证常显）。
+    BOOL shouldHide = composing || hasCandidates;
+
+    // 诊断：记录 page 在屏幕上的落点，便于确认栏有可见宿主。
     CGRect pageInWindow = page.window
         ? [page convertRect:page.bounds toView:page.window] : CGRectZero;
-    BOOL pageVisible = page.window &&
-        pageInWindow.size.height >= 20.0 && pageInWindow.size.width >= 20.0 &&
-        CGRectIntersectsRect(page.window.bounds, pageInWindow);
-    BOOL shouldHide = composing || hasCandidates || !pageVisible;
+    unsigned int frameSeq = __sync_fetch_and_add(&sKayokoMigrateLogCount, 1);
+    if (frameSeq < 30) {
+        kbc_log([NSString stringWithFormat:
+            @"kayoko pageframe page=%p inWindow=(%.1f,%.1f,%.1f,%.1f) windowBounds=(%.0f,%.0f) pageHidden=%d alpha=%.2f",
+            page, pageInWindow.origin.x, pageInWindow.origin.y,
+            pageInWindow.size.width, pageInWindow.size.height,
+            page.window.bounds.size.width, page.window.bounds.size.height,
+            page.hidden, page.alpha]);
+    }
     // 挂回 page：bar.frame 恒等于 page.bounds，键盘移动/高度动画都由
     // page 的布局带动，不会再出现"栏留在键盘按键行"的错位。
     if (shouldHide) {
@@ -1765,11 +1772,17 @@ static void kbc_kayokoPageLayout(id self, SEL command) {
         if ([subview isKindOfClass:[KBCKayokoPredictionBar class]]) windowBars++;
     unsigned int countSeq = __sync_fetch_and_add(&sKayokoMigrateLogCount, 1);
     if (countSeq < 80) {
+        CGRect pageRect = page.window
+            ? [page convertRect:page.bounds toView:page.window] : CGRectZero;
         kbc_log([NSString stringWithFormat:
-            @"kayoko pagebars page=%p pageBars=%lu windowBars=%lu subviews=%lu window=%@",
+            @"kayoko pagebars page=%p pageBars=%lu windowBars=%lu subviews=%lu window=%@ inWindow=(%.1f,%.1f,%.1f,%.1f) windowBounds=(%.0f,%.0f) pageHidden=%d alpha=%.2f",
             page, (unsigned long)pageBars, (unsigned long)windowBars,
             (unsigned long)page.subviews.count,
-            NSStringFromClass([page.window class])]);
+            NSStringFromClass([page.window class]),
+            pageRect.origin.x, pageRect.origin.y,
+            pageRect.size.width, pageRect.size.height,
+            page.window.bounds.size.width, page.window.bounds.size.height,
+            page.hidden, page.alpha]);
     }
 }
 
@@ -2148,6 +2161,13 @@ static void kbc_kayokoProbeSetKeyplaneName(id self, SEL command, NSString *name)
 }
 
 
+// 强制系统预测栏常显。部分界面（App 资源库搜索等）默认不创建预测栏，
+// Kayoko 栏没有固定落点，只能隐藏 —— 表现为"英文输入法下栏消失"。
+// 强制可见后键盘上方恒有 45pt 内容页，栏的显隐只由候选词决定，与界面无关。
+static BOOL kbc_forcePredictionVisible(id self, SEL command, id inputDelegate, id inputViews) {
+    return YES;
+}
+
 static void kbc_kayokoProbeSetAutocorrectionList(id self, SEL command, id list) {
     sKayokoHasSystemCandidates = kbc_kayokoListHasCandidates(list);
     unsigned int sequence = __sync_fetch_and_add(&sKayokoListProbeLogCount, 1);
@@ -2205,6 +2225,18 @@ static void installIntegratedHooks(void) {
         (IMP)kbc_selectionGestureShouldBegin, &sOrigSelectionGestureShouldBegin, @"underdock");
     kbc_hookAndLog("UIKeyboardLayoutStar", "setKeyplaneName:",
         (IMP)kbc_kayokoProbeSetKeyplaneName, &sOrigKayokoProbeSetKeyplaneName, @"kayoko-probe");
+
+    // 强制预测栏常显：保证任意界面（含 App 资源库搜索）键盘上方都有
+    // TUISystemInputAssistantPageView，Kayoko 栏恒有落点。
+    Class predictionClass = objc_getClass("UIPredictionViewController");
+    SEL visibleSelector = @selector(isVisibleForInputDelegate:inputViews:);
+    if (predictionClass && [predictionClass instancesRespondToSelector:visibleSelector]) {
+        MSHookMessageEx(predictionClass, visibleSelector,
+                        (IMP)kbc_forcePredictionVisible, NULL);
+        kbc_log(@"hook feature=kayoko force-prediction-visible always=YES");
+    } else {
+        kbc_log(@"hook feature=kayoko force-prediction-visible skipped=missing");
+    }
     kbc_hookAndLog("UIKeyboardAutocorrectionController", "setAutocorrectionList:",
         (IMP)kbc_kayokoProbeSetAutocorrectionList, &sOrigKayokoProbeSetAutocorrectionList,
         @"kayoko-list-probe");
