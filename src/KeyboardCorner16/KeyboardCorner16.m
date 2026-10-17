@@ -7,19 +7,24 @@
 #import <stdlib.h>
 #import <string.h>
 
-#define KBC_VERSION "1.0.82"
+#define KBC_VERSION "1.0.85"
 #define TARGET_RADIUS 10.0
 
 extern void MSHookMessageEx(Class cls, SEL sel, IMP newImp, IMP *oldImp);
 
 static void kbc_log(NSString *line) {
     NSString *full = [NSString stringWithFormat:@"[kbc:%s:%d] %@", KBC_VERSION, getpid(), line];
-    // App sandboxes can reject both file destinations. Unified logging keeps
-    // the same already-bounded diagnostics observable during live capture.
     NSLog(@"%@", full);
     os_log_error(OS_LOG_DEFAULT, "%{public}s", full.UTF8String);
     FILE *fp = fopen("/var/mobile/Documents/kbc_round.log", "a");
     if (!fp) fp = fopen("/var/tmp/kbc_round.log", "a");
+    if (!fp) {
+        // App 进程两个绝对路径都会被沙箱拒绝，回落到自己的 tmp 才能取证
+        // （抖音等 App 内的问题只能靠这条路径拿到日志）。
+        NSString *sandboxPath = [NSTemporaryDirectory()
+            stringByAppendingPathComponent:@"kbc_round.log"];
+        if (sandboxPath.length) fp = fopen(sandboxPath.fileSystemRepresentation, "a");
+    }
     if (fp) { fprintf(fp, "%s\n", full.UTF8String); fclose(fp); }
 }
 
@@ -1515,12 +1520,32 @@ static BOOL kbc_viewIsVisibleInPage(UIView *view, UIView *page, CGRect frame) {
     return NO;
 }
 
+static BOOL kbc_viewShowsImage(UIView *view, NSUInteger depth) {
+    if (!view || depth > 4) return NO;
+    if ([view isKindOfClass:[UIImageView class]]) {
+        UIImageView *imageView = (UIImageView *)view;
+        if (!imageView.hidden && imageView.alpha > 0.01 && imageView.image) return YES;
+    }
+    for (UIView *subview in view.subviews)
+        if (kbc_viewShowsImage(subview, depth + 1)) return YES;
+    return NO;
+}
+
 static void kbc_collectCandidateNodes(UIView *view, UIView *page,
                                       NSMutableArray<NSString *> *parts,
                                       BOOL *hasVisibleCandidateText,
                                       NSUInteger depth) {
     if (!view || depth > 12) return;
     NSString *className = NSStringFromClass([view class]);
+    // emoji 候选整行只有图标、没有文本，且所在容器类名不一定含
+    // Candidate/Prediction。page 子树里除系统内容就只有自绘栏（无图标），
+    // 因此这里对任何可见的 emoji 缩略图直接判为"系统内容"。
+    if ([view isKindOfClass:[UIImageView class]]) {
+        CGRect imageFrame = [view convertRect:view.bounds toView:page];
+        if (imageFrame.size.height > 18.0 && imageFrame.size.width > 10.0 &&
+            kbc_viewIsVisibleInPage(view, page, imageFrame))
+            *hasVisibleCandidateText = YES;
+    }
     BOOL candidateNode = [className containsString:@"Candidate"] ||
                          [className containsString:@"Prediction"];
     if (candidateNode && ![view isKindOfClass:[KBCKayokoPredictionBar class]]) {
@@ -1535,18 +1560,18 @@ static void kbc_collectCandidateNodes(UIView *view, UIView *page,
         @catch (__unused NSException *exception) {}
         NSString *text = label.length ? label : value;
         BOOL visible = kbc_viewIsVisibleInPage(view, page, frame);
-        // iOS 16.5 的 TUICandidateCell 不带 accessibilityLabel/Value，
-        // 真实候选文字挂在其子视图 TUICandidateLabel 上（真机日志：
-        // TUICandidateCell text=- / TUICandidateLabel text=我）。只认
-        // CandidateCell/PredictionViewCell 会让中文候选恒判为无候选，
-        // 导致 Kayoko 覆盖栏与候选同屏。这里把候选标签本身也计入，
-        // 并对 Candidate/Prediction 子树内的 UILabel 做兜底。
-        BOOL candidateCell = [className containsString:@"CandidateCell"] ||
-                             [className containsString:@"PredictionViewCell"] ||
-                             [className containsString:@"CandidateLabel"] ||
-                             ([view isKindOfClass:[UILabel class]] && text.length > 0);
-        if (candidateCell && visible && text.length &&
-            !kbc_textIsKayokoBarTitle(text))
+        // 判据覆盖三类系统内容：
+        // 1) 文字候选（TUICandidateLabel / PredictionViewCell 的 label）
+        // 2) 任意 Cell 类节点自带的文本（排除自绘按钮文案）
+        // 3) emoji 候选 —— 没有文本，只有 UIImageView，必须按图标判定，
+        //    否则整行表情建议会被当成"无候选"，Kayoko 栏压上去导致重叠。
+        BOOL cellNode = candidateNode && [className containsString:@"Cell"];
+        BOOL labelNode = [className containsString:@"CandidateLabel"] ||
+                         ([view isKindOfClass:[UILabel class]] && candidateNode);
+        BOOL ownText = text.length && !kbc_textIsKayokoBarTitle(text);
+        if (visible && ownText && (cellNode || labelNode))
+            *hasVisibleCandidateText = YES;
+        if (visible && cellNode && kbc_viewShowsImage(view, 0))
             *hasVisibleCandidateText = YES;
         [parts addObject:[NSString stringWithFormat:
             @"%@<%p> visible=%d hidden=%d alpha=%.2f frame=(%.0f,%.0f,%.0f,%.0f) text=%@",
@@ -1596,20 +1621,18 @@ static void kbc_updateKayokoPage(UIView *page, NSString *reason) {
     BOOL listCandidates = sKayokoHasSystemCandidates;
     BOOL hasCandidates = visibleCandidateText || listCandidates;
     BOOL shouldHide = composing || hasCandidates;
-    // 只设 hidden 不够：本页的预测栏会把子视图的文字"投影"成 TUIPredictionViewCell
-    // 继续渲染（真机实测 hidden=1 时屏幕上仍有 历史/拷贝/粘贴，且那三个词
-    // 由系统 cell 排版，字号/基线与我们的按钮不同）。隐藏时必须从视图树
-    // 彻底摘掉，显示时再挂回，才能保证数字页/字母页只有一套渲染来源。
+    // 统一挂到键盘窗口：挂在 page 上时系统预测栏会把按钮文案当成自己的
+    // 候选再渲染一遍（同一个「历史」被画两次 → 视觉重影），且隐藏必须
+    // 彻底摘除而不是只设 hidden。
+    UIView *host = page.window ?: page;
     if (shouldHide) {
         if (bar.superview) [bar removeFromSuperview];
         bar.hidden = YES;
     } else {
         bar.hidden = NO;
-        if (bar.superview != page) {
-            [page addSubview:bar];
-            bar.frame = page.bounds;
-        }
-        [page bringSubviewToFront:bar];
+        if (bar.superview != host) [host addSubview:bar];
+        bar.frame = [page convertRect:page.bounds toView:host];
+        [host bringSubviewToFront:bar];
     }
     UIGestureRecognizer *tap = objc_getAssociatedObject(page, &sKayokoPredictionTapKey);
     tap.enabled = !shouldHide;
@@ -1684,7 +1707,12 @@ static void kbc_kayokoPageLayout(id self, SEL command) {
         bar.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         objc_setAssociatedObject(page, &sKayokoPredictionBarKey, bar,
             OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        [page addSubview:bar];
+        // 挂到键盘窗口而不是 page：挂 page 时系统预测栏会把按钮文案当成
+        // 自己的候选再渲染一遍（真机放大截图：同一个「历史」被画两次，
+        // 相差数像素，看起来像「厝臾」）。移到窗口层后预测栏完全看不到它。
+        UIView *host = page.window ?: page;
+        [host addSubview:bar];
+        bar.frame = [page convertRect:page.bounds toView:host];
         UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc]
             initWithTarget:bar action:@selector(kbc_pageTap:)];
         tap.cancelsTouchesInView = YES;
@@ -1693,7 +1721,6 @@ static void kbc_kayokoPageLayout(id self, SEL command) {
         objc_setAssociatedObject(page, &sKayokoPredictionTapKey, tap,
             OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
-    bar.frame = page.bounds;
     kbc_updateKayokoPage(page, @"page-layout");
     // 直接回答「是否存在多个 Kayoko 栏」：统计该 page 下所有 bar 实例。
     NSUInteger barCount = 0;
@@ -2181,8 +2208,28 @@ static void installHooks(void) {
     kbc_log(@"install mode=background+shadow-removal-classifier");
 }
 
+// Kayoko 原版（KayokoHelper）在激活方式为「预测栏」时，会把 历史/拷贝/粘贴
+// 作为候选塞进系统预测栏（其 Root.plist 原话：displays custom suggestions on
+// the "More Keyboard Keyplane" (123)）。这与本插件自绘的同名三按钮落在同一
+// 位置，差几像素叠成「厝臾」式重影，且只在 123 页出现。这里把 ActivationMethod
+// 的预测栏位清零（9 -> 8，仅保留编辑菜单），面板入口与自动粘贴均不受影响。
+static void kbc_neutralizeKayokoPredictionBar(void) {
+    NSString *suite = @"/var/mobile/Library/Preferences/codes.aurora.kayoko.preferences.plist";
+    NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:suite];
+    if (!defaults) return;
+    NSInteger method = [defaults integerForKey:@"ActivationMethod"];
+    if ((method & 1) == 0) return;
+    NSInteger updated = method & ~1;
+    [defaults setInteger:updated forKey:@"ActivationMethod"];
+    [defaults synchronize];
+    kbc_log([NSString stringWithFormat:
+        @"kayoko activation-method neutralize %ld -> %ld (prediction-bar injection off)",
+        (long)method, (long)updated]);
+}
+
 __attribute__((constructor)) static void kbc_ctor(void) {
     kbc_log([NSString stringWithFormat:@"ctor version=%s", KBC_VERSION]);
+    kbc_neutralizeKayokoPredictionBar();
     kbc_installKayokoCoreOrientationDiagnostics();
     installHooks();
     installIntegratedHooks();

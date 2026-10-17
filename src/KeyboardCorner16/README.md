@@ -90,6 +90,15 @@ iOS 16 系统键盘全按键圆角增强修复版，并整合 OLED 深色键盘�
 3. 立即安装与延迟安装现在统一经过 `kbc_installKayokoPageHooksIfAvailable`，只有成功安装 `layoutSubviews` 和 `hitTest:` 后才设置全局安装状态，每个进程最多安装一次。
 4. 修复后全新 Spotlight 进程 PID `15139` 持续稳定，日志中 `kayoko-pagebar-once source=constructor` 恰好一次，旧的重复安装路径为零；英文预测和简体拼音候选回归也均保持 `visibleText=1 hidden=1 gesture=0`。
 
+### v1.0.85 双击文案重影根治（Kayoko 原版预测栏注入）
+
+1. 现象：123 数字页上「历史」显示成「厝臾」状的错位字形，字母页正常。放大 3 倍后确认不是两种文字，而是**同一个「历史」被渲染两遍、相差数像素**。
+2. 探针证据（1.0.84，bar 已挂到键盘窗口、page 内已无自绘视图）：`TUIPredictionViewCell text=历史 / 拷贝 / 粘贴` 只在 `numbers-and-punctuation` 出现，字母页为空 → 这三个词来自**系统预测栏的数据源**，不是 accessibility 借用。
+3. 根因：Kayoko 原版 `KayokoHelper` 的「预测栏」激活方式（其 Root.plist 原话：`displays custom suggestions on the "More Keyboard Keyplane" (123)`）会把 历史/拷贝/粘贴 作为候选注入系统预测栏。它与本插件自绘的同名三按钮重叠渲染，形成双影。
+4. 对照实验：把 `KayokoHelper.plist` 临时改名后，数字页立即变清晰；恢复后复现 → 锁定该注入源。
+5. 修复：插件构造时把 `ActivationMethod` 的预测栏位清零（`9 -> 8`，`method & ~1`），面板入口（编辑菜单）与自动粘贴不受影响；bar 同时改为挂在 `UIRemoteKeyboardWindow`，彻底脱离预测栏层级，按 `[page convertRect:...]` 同步位置。
+6. 真机回归：抖音评论框字母页/数字页「历史/拷贝/粘贴」均无重影；点击「历史」正常拉起 Kayoko 面板；`kayoko pagebars count=0`（page 内零自绘视图）、`super=UIRemoteKeyboardWindow`。
+
 ### v1.0.82 Kayoko 栏跨键盘布局字体/位置统一（自指误判根治）
 
 1. 现象：切换数字页与字母页，上方 Kayoko 三按钮字号和位置跳动。像素测量：数字页「历史」46px@3x（15.3pt）、字母页 40px（13.3pt）。
