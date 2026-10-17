@@ -90,6 +90,14 @@ iOS 16 系统键盘全按键圆角增强修复版，并整合 OLED 深色键盘�
 3. 立即安装与延迟安装现在统一经过 `kbc_installKayokoPageHooksIfAvailable`，只有成功安装 `layoutSubviews` 和 `hitTest:` 后才设置全局安装状态，每个进程最多安装一次。
 4. 修复后全新 Spotlight 进程 PID `15139` 持续稳定，日志中 `kayoko-pagebar-once source=constructor` 恰好一次，旧的重复安装路径为零；英文预测和简体拼音候选回归也均保持 `visibleText=1 hidden=1 gesture=0`。
 
+### v1.0.86 窗口层单例化（资源库搜索框切输入法出现两个栏）
+
+1. v1.0.85 把 bar 改挂 `UIRemoteKeyboardWindow` 后，创建时机仍绑在 `TUISystemInputAssistantPageView`：系统在切换中英文/字母数字时会重建 page，每个新 page 各 new 一个 bar 挂到窗口，旧实例留在窗口层 → 屏幕上叠出两个栏。
+2. 旧日志口径 `pagebars` 只统计 `page.subviews`，而 bar 已在窗口层，因此查不到重复 —— 现在同时输出 `pageBars` 与 `windowBars`。
+3. 改为进程内单例 `sSharedKayokoBar`：首次 alloc，后续 page 复用同一实例并重新关联；attach 时遍历窗口清理其它同类视图（日志 `purged=N`）。
+4. 隐藏/离屏 page（`hidden`、`alpha<0.01`、高度<1）不再参与布局，避免旧页面抢走共享 bar 的位置。
+5. 真机回归（App 资源库搜索框，中英文与字母数字连续切换 8 次）：`bar alloc singleton` 仅 1 次、`bar attach` 仅 1 次、`windowBars` 恒为 1（从未出现 2），屏幕始终只有一个栏，点击「历史」正常。
+
 ### v1.0.85 双击文案重影根治（Kayoko 原版预测栏注入）
 
 1. 现象：123 数字页上「历史」显示成「厝臾」状的错位字形，字母页正常。放大 3 倍后确认不是两种文字，而是**同一个「历史」被渲染两遍、相差数像素**。

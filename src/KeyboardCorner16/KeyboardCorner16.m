@@ -7,7 +7,7 @@
 #import <stdlib.h>
 #import <string.h>
 
-#define KBC_VERSION "1.0.85"
+#define KBC_VERSION "1.0.86"
 #define TARGET_RADIUS 10.0
 
 extern void MSHookMessageEx(Class cls, SEL sel, IMP newImp, IMP *oldImp);
@@ -97,7 +97,9 @@ static BOOL sKayokoCandidateCollectionHookInstalled = NO;
 static BOOL sKayokoPredictionContentHookInstalled = NO;
 static BOOL sKayokoCoreViewHooksInstalled = NO;
 static char sUnderDockViewKey;
+@class KBCKayokoPredictionBar;
 static char sKayokoPredictionBarKey;
+static KBCKayokoPredictionBar *sSharedKayokoBar = nil;
 static char sKayokoPredictionTapKey;
 static char sKayokoUpdateScheduledKey;
 static char sKayokoOriginalBoundsKey;
@@ -1700,19 +1702,37 @@ static void kbc_kayokoPageLayout(id self, SEL command) {
         ((void(*)(id, SEL))sOrigKayokoPageLayout)(self, command);
     if (![self isKindOfClass:[UIView class]]) return;
     UIView *page = self;
+    // 隐藏/离屏的 page 不做处理，避免旧页面抢走共享 bar 的位置。
+    if (page.hidden || page.alpha < 0.01 || page.bounds.size.height < 1.0) return;
     sKayokoHostView = page;
     KBCKayokoPredictionBar *bar = objc_getAssociatedObject(page, &sKayokoPredictionBarKey);
     if (!bar) {
-        bar = [[KBCKayokoPredictionBar alloc] initWithFrame:page.bounds];
-        bar.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        // 全进程只允许存在一个 bar：切换中英文/字母数字时系统会重建
+        // TUISystemInputAssistantPageView，旧实现每个新 page 都 new 一个
+        // 并挂到键盘窗口，窗口上就留下多个叠在一起的 bar（资源库搜索框
+        // 下切输入法即可复现"两个 bar"）。
+        if (!sSharedKayokoBar) {
+            sSharedKayokoBar = [[KBCKayokoPredictionBar alloc] initWithFrame:page.bounds];
+            sSharedKayokoBar.autoresizingMask =
+                UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+            kbc_log(@"kayoko bar alloc singleton");
+        }
+        bar = sSharedKayokoBar;
         objc_setAssociatedObject(page, &sKayokoPredictionBarKey, bar,
             OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        // 挂到键盘窗口而不是 page：挂 page 时系统预测栏会把按钮文案当成
-        // 自己的候选再渲染一遍（真机放大截图：同一个「历史」被画两次，
-        // 相差数像素，看起来像「厝臾」）。移到窗口层后预测栏完全看不到它。
         UIView *host = page.window ?: page;
+        NSUInteger purged = 0;
+        for (UIView *subview in [host.subviews copy]) {
+            if ([subview isKindOfClass:[KBCKayokoPredictionBar class]] && subview != bar) {
+                [subview removeFromSuperview];
+                purged++;
+            }
+        }
         [host addSubview:bar];
         bar.frame = [page convertRect:page.bounds toView:host];
+        kbc_log([NSString stringWithFormat:
+            @"kayoko bar attach page=%p bar=%p host=%@ purged=%lu",
+            page, bar, NSStringFromClass([host class]), (unsigned long)purged]);
         UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc]
             initWithTarget:bar action:@selector(kbc_pageTap:)];
         tap.cancelsTouchesInView = YES;
@@ -1722,15 +1742,18 @@ static void kbc_kayokoPageLayout(id self, SEL command) {
             OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     kbc_updateKayokoPage(page, @"page-layout");
-    // 直接回答「是否存在多个 Kayoko 栏」：统计该 page 下所有 bar 实例。
-    NSUInteger barCount = 0;
+    // 统计 page 内与键盘窗口上的 bar 实例数（窗口层才是权威口径）。
+    NSUInteger pageBars = 0, windowBars = 0;
     for (UIView *subview in page.subviews)
-        if ([subview isKindOfClass:[KBCKayokoPredictionBar class]]) barCount++;
+        if ([subview isKindOfClass:[KBCKayokoPredictionBar class]]) pageBars++;
+    for (UIView *subview in page.window.subviews)
+        if ([subview isKindOfClass:[KBCKayokoPredictionBar class]]) windowBars++;
     unsigned int countSeq = __sync_fetch_and_add(&sKayokoMigrateLogCount, 1);
-    if (countSeq < 60) {
+    if (countSeq < 80) {
         kbc_log([NSString stringWithFormat:
-            @"kayoko pagebars page=%p count=%lu subviews=%lu window=%@",
-            page, (unsigned long)barCount, (unsigned long)page.subviews.count,
+            @"kayoko pagebars page=%p pageBars=%lu windowBars=%lu subviews=%lu window=%@",
+            page, (unsigned long)pageBars, (unsigned long)windowBars,
+            (unsigned long)page.subviews.count,
             NSStringFromClass([page.window class])]);
     }
 }

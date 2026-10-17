@@ -650,6 +650,27 @@ Size: 376560
 MD5sum: fa60dc76a54e883a35df8daf31248612
 SHA256: f35eee21f75014e9dce68a4ea648f98e2162393c3fcffba2306392c85b6cf192
 
+Package: com.xu.keyboardcorner16
+Name: KeyboardCorner16
+Version: 1.0.86
+Architecture: iphoneos-arm64e
+Description: iOS 16 系统键盘圆角、OLED、UnderDock 与 Kayoko 剪贴板整合。
+ 直接修正最终键背景合成蒙版，覆盖字母、数字和特殊符号布局；
+ 同时集成 byg.iosios.net.oledkeyboard、com.p2kdev.underdock 与 codes.aurora.kayoko 的已验证功能。
+Conflicts: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko, com.restiveconch.actionbar, com.udevs.dockx
+Replaces: com.liuf.jpyj, com.xu.kbprobe, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
+Provides: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
+Maintainer: g459416925
+Author: xu
+Section: Tweaks
+Depends: mobilesubstrate, preferenceloader, com.opa334.libsandy
+Installed-Size: 1331
+Tag: purpose::extension
+Filename: ./debs/KeyboardCorner16_1.0.86_iphoneos-arm64e.deb
+Size: 376958
+MD5sum: 1043677a72fe3b2463b99c5289f0a905
+SHA256: 3df4282370331f2f280b17f802a7764866301e3a62faa268010010222b8a5316
+
 Package: com.xu.screentimelocker16
 Name: ScreenTimeLocker16
 Version: 5.2.0
