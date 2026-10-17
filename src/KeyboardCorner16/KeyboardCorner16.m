@@ -7,7 +7,14 @@
 #import <stdlib.h>
 #import <string.h>
 
-#define KBC_VERSION "1.0.90"
+#define KBC_VERSION "1.0.91"
+
+// 1 = 输出候选视图树 / 文本输入 / keyplane 等探针日志（排查用，默认关闭）。
+// 关闭时只保留状态行（ctor、hook、bar attach/migrate、pagebar），
+// 避免每次键盘布局都拼接大字符串。
+#ifndef KBC_PROBE_LOG
+#define KBC_PROBE_LOG 0
+#endif
 #define TARGET_RADIUS 10.0
 
 extern void MSHookMessageEx(Class cls, SEL sel, IMP newImp, IMP *oldImp);
@@ -61,7 +68,9 @@ static BOOL kbc_textIsKayokoBarTitle(NSString *text) {
     if (!text.length) return NO;
     return [kbc_kayokoBarTitles() containsObject:text];
 }
+#if KBC_PROBE_LOG
 static unsigned int sKayokoCandidateTreeLogCount = 0;
+#endif
 static unsigned int sKayokoTextChangeLogCount = 0;
 
 // OledKeyboard 0.0.3 arm64e was recovered from its five MSHookMessageEx
@@ -1006,6 +1015,7 @@ static id kbc_inputDelegate(void) {
         ? ((id(*)(id, SEL))objc_msgSend)(keyboard, inputDelegateSelector) : nil;
 }
 
+#if KBC_PROBE_LOG
 static id kbc_objectForSelector(id object, NSString *name) {
     SEL selector = NSSelectorFromString(name);
     if (!object || ![object respondsToSelector:selector]) return nil;
@@ -1015,6 +1025,7 @@ static id kbc_objectForSelector(id object, NSString *name) {
         return nil;
     }
 }
+#endif
 
 static NSInteger kbc_integerForSelector(id object, NSString *name,
                                         NSInteger missing) {
@@ -1367,6 +1378,7 @@ static void kbc_installKayokoCoreOrientationDiagnostics(void) {
     kbc_log(@"hook feature=kayoko-core-orientation notification=core.show delays=0/150/600ms");
 }
 
+#if KBC_PROBE_LOG
 static NSString *kbc_boundedDescription(id value) {
     if (!value) return @"nil";
     NSString *description = nil;
@@ -1380,7 +1392,9 @@ static NSString *kbc_boundedDescription(id value) {
         : [NSString stringWithFormat:@"%@<%p> count=%lu %@", NSStringFromClass([value class]),
             value, (unsigned long)count, description];
 }
+#endif
 
+#if KBC_PROBE_LOG
 static NSString *kbc_textInputTraitsSummary(id input) {
     if (!input) return @"nil";
     NSString *text = kbc_objectForSelector(input, @"text");
@@ -1421,14 +1435,17 @@ static NSString *kbc_predictionControllerSummary(void) {
     }
     return [parts componentsJoinedByString:@" "];
 }
+#endif
 
 static void kbc_logTextInputState(id input, NSString *phase,
                                   unsigned int sequence) {
+#if KBC_PROBE_LOG
     id delegate = kbc_inputDelegate();
     kbc_log([NSString stringWithFormat:
         @"kayoko-text seq=%u phase=%@ input={%@} delegate={%@} controller={%@}",
         sequence, phase, kbc_textInputTraitsSummary(input),
         kbc_textInputTraitsSummary(delegate), kbc_predictionControllerSummary()]);
+#endif
     if (sKayokoHostView) kbc_updateKayokoPage(sKayokoHostView,
         [NSString stringWithFormat:@"text-change-%@", phase]);
 }
@@ -1575,17 +1592,28 @@ static void kbc_collectCandidateNodes(UIView *view, UIView *page,
             *hasVisibleCandidateText = YES;
         if (visible && cellNode && kbc_viewShowsImage(view, 0))
             *hasVisibleCandidateText = YES;
-        [parts addObject:[NSString stringWithFormat:
-            @"%@<%p> visible=%d hidden=%d alpha=%.2f frame=(%.0f,%.0f,%.0f,%.0f) text=%@",
-            className, view, visible, view.hidden, view.alpha,
-            frame.origin.x, frame.origin.y, frame.size.width, frame.size.height,
-            text.length ? text : @"-"]];
+        if (parts) {
+            [parts addObject:[NSString stringWithFormat:
+                @"%@<%p> visible=%d hidden=%d alpha=%.2f frame=(%.0f,%.0f,%.0f,%.0f) text=%@",
+                className, view, visible, view.hidden, view.alpha,
+                frame.origin.x, frame.origin.y, frame.size.width, frame.size.height,
+                text.length ? text : @"-"]];
+        }
     }
     for (UIView *subview in view.subviews)
         kbc_collectCandidateNodes(subview, page, parts,
                                   hasVisibleCandidateText, depth + 1);
 }
 
+// 只判存在性：不拼字符串，避免每次键盘布局都构造完整视图树摘要。
+static BOOL kbc_pageHasVisibleCandidate(UIView *page) {
+    BOOL has = NO;
+    for (UIView *subview in page.subviews)
+        kbc_collectCandidateNodes(subview, page, nil, &has, 0);
+    return has;
+}
+
+#if KBC_PROBE_LOG
 static NSString *kbc_candidateTreeSummary(UIView *page,
                                           BOOL *hasVisibleCandidateText) {
     NSMutableArray<NSString *> *parts = [NSMutableArray array];
@@ -1595,6 +1623,7 @@ static NSString *kbc_candidateTreeSummary(UIView *page,
                                   hasVisibleCandidateText, 0);
     return parts.count ? [parts componentsJoinedByString:@" | "] : @"none";
 }
+#endif
 
 static void kbc_updateKayokoPage(UIView *page, NSString *reason) {
     if (!page) return;
@@ -1617,8 +1646,12 @@ static void kbc_updateKayokoPage(UIView *page, NSString *reason) {
         [page addSubview:bar];
         bar.frame = page.bounds;
     }
+#if KBC_PROBE_LOG
     BOOL visibleCandidateText = NO;
     NSString *tree = kbc_candidateTreeSummary(page, &visibleCandidateText);
+#else
+    BOOL visibleCandidateText = kbc_pageHasVisibleCandidate(page);
+#endif
     BOOL composing = kbc_inputHasMarkedText();
     BOOL listCandidates = sKayokoHasSystemCandidates;
     BOOL hasCandidates = visibleCandidateText || listCandidates;
@@ -1626,7 +1659,7 @@ static void kbc_updateKayokoPage(UIView *page, NSString *reason) {
     // 不按界面/输入法区分（预测栏已由 force-prediction-visible 保证常显）。
     BOOL shouldHide = composing || hasCandidates;
 
-    // 诊断：记录 page 在屏幕上的落点，便于确认栏有可见宿主。
+#if KBC_PROBE_LOG
     CGRect pageInWindow = page.window
         ? [page convertRect:page.bounds toView:page.window] : CGRectZero;
     unsigned int frameSeq = __sync_fetch_and_add(&sKayokoMigrateLogCount, 1);
@@ -1638,6 +1671,7 @@ static void kbc_updateKayokoPage(UIView *page, NSString *reason) {
             page.window.bounds.size.width, page.window.bounds.size.height,
             page.hidden, page.alpha]);
     }
+#endif
     // 挂回 page：bar.frame 恒等于 page.bounds，键盘移动/高度动画都由
     // page 的布局带动，不会再出现"栏留在键盘按键行"的错位。
     if (shouldHide) {
@@ -1665,11 +1699,13 @@ static void kbc_updateKayokoPage(UIView *page, NSString *reason) {
             bar.frame.origin.x, bar.frame.origin.y,
             firstButton.bounds.size.height]);
     }
+#if KBC_PROBE_LOG
     unsigned int treeSequence = __sync_fetch_and_add(&sKayokoCandidateTreeLogCount, 1);
     if (treeSequence < 160) {
         kbc_log([NSString stringWithFormat:@"kayoko-tree seq=%u reason=%@ page=%p %@",
             treeSequence, reason, page, tree]);
     }
+#endif
 }
 
 static UIView *kbc_candidatePageForView(UIView *view) {

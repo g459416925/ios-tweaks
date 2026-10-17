@@ -90,6 +90,15 @@ iOS 16 系统键盘全按键圆角增强修复版，并整合 OLED 深色键盘�
 3. 立即安装与延迟安装现在统一经过 `kbc_installKayokoPageHooksIfAvailable`，只有成功安装 `layoutSubviews` 和 `hitTest:` 后才设置全局安装状态，每个进程最多安装一次。
 4. 修复后全新 Spotlight 进程 PID `15139` 持续稳定，日志中 `kayoko-pagebar-once source=constructor` 恰好一次，旧的重复安装路径为零；英文预测和简体拼音候选回归也均保持 `visibleText=1 hidden=1 gesture=0`。
 
+### v1.0.91 代码精简与性能优化
+
+1. 候选检测拆成两层：`kbc_pageHasVisibleCandidate()` 只算布尔（正式路径），`kbc_candidateTreeSummary()` 只在探针模式构建字符串。键盘每次布局不再拼接整棵候选视图树。
+2. 探针日志统一由 `KBC_PROBE_LOG` 宏门控（默认 0）：候选树、文本输入状态、候选列表摘要、page 落点只在排查时编进包；正式包保留状态行（ctor / hook / bar attach·migrate / pagebar）。
+3. 仅探针使用的辅助函数与计数器（`kbc_objectForSelector`、`kbc_boundedDescription`、`sKayokoCandidateTreeLogCount`）在正式包中不参与编译。
+4. 编译零警告（仅剩 ld 的 `-undefined dynamic_lookup` 提示），dylib 178368 字节（1.0.90 为 178832）。
+5. 仓库清理：删除源码目录内 106 个历史 deb 与中间 dylib，目录 15MB → 1.4MB；历史版本完整保留在 `debs/`（40 个包）。
+6. 真机回归：App 资源库英文态栏正常显示、点「历史」拉起面板、中文候选时栏隐藏 —— 行为与 1.0.90 完全一致。
+
 ### v1.0.90 强制预测栏常显（英文输入法下栏消失根治）
 
 1. 现象：App 资源库搜索等界面切英文输入法后 Kayoko 栏消失。实测该界面**根本不创建预测栏**（`TUISystemInputAssistantPageView` 被移到屏幕外，打开系统"预测"开关 `KeyboardPrediction=1` 也无效），栏没有可用的 45pt 落点。
