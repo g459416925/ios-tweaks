@@ -90,6 +90,12 @@ iOS 16 系统键盘全按键圆角增强修复版，并整合 OLED 深色键盘�
 3. 立即安装与延迟安装现在统一经过 `kbc_installKayokoPageHooksIfAvailable`，只有成功安装 `layoutSubviews` 和 `hitTest:` 后才设置全局安装状态，每个进程最多安装一次。
 4. 修复后全新 Spotlight 进程 PID `15139` 持续稳定，日志中 `kayoko-pagebar-once source=constructor` 恰好一次，旧的重复安装路径为零；英文预测和简体拼音候选回归也均保持 `visibleText=1 hidden=1 gesture=0`。
 
+### v1.0.92 状态日志去重
+
+1. `kayoko pagebar` 只在**状态真正变化**（显隐翻转 / keyplane 切换）时落一行，并去掉恒定字段（`barOrigin`、`pageBounds`、`delegate`）；原来每次键盘布局都写一条。
+2. 同场景实测（App 资源库搜索 + 中英文切换）：日志从 861 条 / 168KB 降到 173 条 / 22KB（约 −80%），剩余主体是各 hook 的一次性安装记录。
+3. dylib 178512 字节；功能回归：英文态栏显示、中文无候选时栏显示、有候选时隐藏，与 1.0.91 一致。
+
 ### v1.0.91 代码精简与性能优化
 
 1. 候选检测拆成两层：`kbc_pageHasVisibleCandidate()` 只算布尔（正式路径），`kbc_candidateTreeSummary()` 只在探针模式构建字符串。键盘每次布局不再拼接整棵候选视图树。

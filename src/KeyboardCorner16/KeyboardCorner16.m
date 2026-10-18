@@ -7,7 +7,7 @@
 #import <stdlib.h>
 #import <string.h>
 
-#define KBC_VERSION "1.0.91"
+#define KBC_VERSION "1.0.92"
 
 // 1 = 输出候选视图树 / 文本输入 / keyplane 等探针日志（排查用，默认关闭）。
 // 关闭时只保留状态行（ctor、hook、bar attach/migrate、pagebar），
@@ -1685,19 +1685,23 @@ static void kbc_updateKayokoPage(UIView *page, NSString *reason) {
     }
     UIGestureRecognizer *tap = objc_getAssociatedObject(page, &sKayokoPredictionTapKey);
     tap.enabled = !shouldHide;
+    // 只在状态真正变化（显隐翻转 / keyplane 切换）时落日志，避免每次键盘
+    // 布局都写一行（实测一次会话 314 行里九成是重复状态）。
+    static BOOL sLastHiddenState = NO;
+    static NSString *sLastLoggedKeyplane = nil;
+    NSString *keyplaneName = sKayokoProbeKeyplane ?: @"unknown";
+    BOOL stateChanged = (bar.hidden != sLastHiddenState) ||
+                        ![keyplaneName isEqualToString:sLastLoggedKeyplane ?: @""];
     unsigned int sequence = __sync_fetch_and_add(&sKayokoBarLogCount, 1);
-    if (sequence < 240) {
+    if (sequence < 80 && (stateChanged || sequence < 6)) {
+        sLastHiddenState = bar.hidden;
+        sLastLoggedKeyplane = keyplaneName;
         UIView *firstButton = bar.arrangedSubviews.firstObject;
         kbc_log([NSString stringWithFormat:
-            @"kayoko pagebar seq=%u reason=%@ page=%p bar=%p super=%@ keyplane=%@ delegate=%@ composing=%d list=%d visibleText=%d hidden=%d gesture=%d frame=(%.0f,%.0f) pageBounds=(%.0f,%.0f) barOrigin=(%.1f,%.1f) btnH=%.1f",
+            @"kayoko pagebar seq=%u reason=%@ page=%p bar=%p super=%@ keyplane=%@ composing=%d list=%d visibleText=%d hidden=%d gesture=%d btnH=%.1f",
             sequence, reason, page, bar, NSStringFromClass([bar.superview class]),
-            sKayokoProbeKeyplane ?: @"unknown",
-            NSStringFromClass([kbc_inputDelegate() class]), composing,
-            listCandidates, visibleCandidateText, bar.hidden, tap.enabled,
-            bar.bounds.size.width, bar.bounds.size.height,
-            page.bounds.size.width, page.bounds.size.height,
-            bar.frame.origin.x, bar.frame.origin.y,
-            firstButton.bounds.size.height]);
+            keyplaneName, composing, listCandidates, visibleCandidateText,
+            bar.hidden, tap.enabled, firstButton.bounds.size.height]);
     }
 #if KBC_PROBE_LOG
     unsigned int treeSequence = __sync_fetch_and_add(&sKayokoCandidateTreeLogCount, 1);
