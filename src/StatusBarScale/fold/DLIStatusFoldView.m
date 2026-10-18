@@ -122,7 +122,8 @@ static CAShapeLayer *DLIFoldArcLayer(NSString *name) {
     // 取证：条目构成只在变化时记录一次（滚动/电量变化不刷屏）。
     NSMutableString *signature = [NSMutableString string];
     for (DLIStatusItem *item in items.items)
-        [signature appendFormat:@"%@:%ld ", item.identifier, (long)item.role];
+        [signature appendFormat:@"%@:%ld(%@) ", item.identifier, (long)item.role,
+         NSStringFromClass(item.view.class)];
     [signature appendFormat:@"| bar%ld", (long)(items.signal ? 1 : 0)];
     if (![_itemsSignature isEqualToString:signature]) {
         _itemsSignature = [signature copy];
