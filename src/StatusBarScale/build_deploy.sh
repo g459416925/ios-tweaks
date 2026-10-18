@@ -14,11 +14,12 @@ SDK=$(xcrun --sdk iphoneos --show-sdk-path)
 REMOTE_TMP=/var/tmp          # ⚠️ 设备上 /tmp 不可靠，统一用 /var/tmp
 
 echo "==> 1/6 编译 (arm64e, iOS SDK $(basename "$SDK"))"
+# v2.7.0：折叠模块在 fold/（DuoStatusRing 移植），一次编译链接成单个 dylib。
 clang -arch arm64e -miphoneos-version-min=14.0 -isysroot "$SDK" \
   -dynamiclib -fobjc-arc -O2 -Wall -Wno-unused-variable \
   -framework Foundation -framework UIKit -framework CoreGraphics -framework QuartzCore \
   -install_name "/Library/MobileSubstrate/DynamicLibraries/$PKG.dylib" \
-  -o "$PKG.dylib" "$PKG.m"
+  -o "$PKG.dylib" "$PKG.m" fold/*.m
 
 UNSIGNED=$(stat -f%z "$PKG.dylib")
 echo "    未签名体积: $UNSIGNED"

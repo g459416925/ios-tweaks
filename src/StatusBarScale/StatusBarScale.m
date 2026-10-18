@@ -1,4 +1,12 @@
-// StatusBarScale.m —— 状态栏图标缩放 + 资源库背景透明 + CC 视频会议控件常显（v2.5.0）
+// StatusBarScale.m —— 状态栏图标缩放 + 资源库背景透明 + CC 视频会议控件常显（v2.7.0）
+//
+// v2.7.0（2026-10-18）：新增「灵动岛分裂折叠环」—— 移植 DuoStatusRing 1.0.1
+//   （MIT，OwnGoal Studio）。灵动岛在 mitosis（两个元素并排）时，右侧的信号/Wi-Fi/
+//   电池图标折叠成岛旁的一个圆环（电池弧度=电量、信号变四点、Wi-Fi 进环心），
+//   岛合回一个时展开。源码在 fold/，桥接层 SBDFold.m。
+//   ⚠️ iOS 16 适配：上游主 hook `_postLayoutDidChangeNotificationIfNecessary` 与
+//   ivar `_cachedLayoutDidChangeUserInfo` 在 16.5.1 不存在，改为订阅
+//   SBSystemApertureLayoutDidChangeNotification（键 FramesKey / IdentifiersKey）。
 //
 // v2.6.0（2026-10-13）：状态栏辅助缩放改为运行时读取 nativeBounds/bounds，
 //   在 18 Pro Max 的渲染比例变化后同步补偿右侧、leading 图标与坐标阈值。
@@ -27,6 +35,7 @@
 //      只留内容。见文件末尾「小组件背景移除」模块 —— 实现手法移植自
 //      RemoveWidgetBackground（MIT，OwnGoal Studio / Lessica）的"限制绘制命令尺寸"思路。
 //   （辅助图标条 / 设置面板 / 热重载 / plist 配置读取已于 v2.0.0 全部移除）
+//   ⑤ 灵动岛分裂折叠环（v2.7.0）：见上方 v2.7.0 说明，源码 fold/。
 //
 // 问题背景：iPhone 14 Pro Max (iOS 16.5.1) 灵动岛右侧图标与时间不对齐
 //   实测基线（1x points）：时间 高12 上沿24 下沿35 重心29.38
@@ -64,7 +73,10 @@
 #import <unistd.h>
 #import <dlfcn.h>
 
-#define SBS_VERSION @"2.6.27"
+// v2.7.0：折叠模块（移植自 DuoStatusRing，MIT）。见 fold/ 目录与 SBDFold.h。
+#import "fold/SBDFold.h"
+
+#define SBS_VERSION @"2.7.0"
 
 // RootHide/ElleKit 运行时提供。状态栏核心入口必须进入 substrate 链，避免启动早期
 // method_exchangeImplementations 后被 UIKit 或其他 tweak 的后续 hook 覆盖。
@@ -295,6 +307,16 @@ static void sbs_logNow(NSString *fmt, ...) {
     [fh seekToEndOfFile];
     [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
     [fh closeFile];
+}
+
+// 折叠模块（fold/*）的统一日志出口：并入 sbs_log.txt，前缀 [fold]。
+// 只在相位变化、hook 安装、条目变更时写，不做每帧日志。
+void SBDFoldLog(NSString *format, ...) {
+    va_list ap;
+    va_start(ap, format);
+    NSString *body = [[NSString alloc] initWithFormat:format arguments:ap];
+    va_end(ap);
+    sbs_logNow(@"[fold] %@", body);
 }
 
 // ─────────────── 身份去重（探针日志用）───────────────
@@ -2657,6 +2679,10 @@ static void sbs_install(void) {
 
     // v2.6.24：旧通知/runloop/worker/Darwin/signal 入口均已由实机日志证实不命中，
     // 不再安装；已有状态栏实例改由上面的 SpringBoard 启动终点 hook 扫描。
+
+    // v2.7.0：折叠模块（灵动岛分裂成两个元素时，把状态栏信号/Wi-Fi/电池折成环）。
+    // 全部 hook 带类型编码校验；iOS 16.5.1 上走 SBSystemApertureLayoutDidChangeNotification。
+    SBDFoldInstall();
 
     // v2.6.12: 所有屏幕读取均已改为可空 screens.firstObject，因此这里可以
     // 安全扫描 hook 安装前就存在的内部状态栏窗口。无 screen 时只跳过并留证据。

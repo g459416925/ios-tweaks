@@ -1,6 +1,10 @@
 # StatusBarScale — 状态栏图标缩放
 
-**包名** `com.xu.statusbarscale` · **版本** 2.6.8 · **宿主** 仅 SpringBoard
+**包名** `com.xu.statusbarscale` · **版本** 2.7.0 · **宿主** 仅 SpringBoard
+
+> v2.7.0（2026-10-18）：新增**灵动岛分裂折叠环**（移植 DuoStatusRing，MIT）。
+> 灵动岛分裂成两个元素时，右侧信号/Wi-Fi/电池折成岛旁圆环；合回时展开。
+> 源码 `fold/`，iOS 16 适配细节见下文 ⑤。
 
 > v2.1.23：实时活动边框改为精确 hook `SBSystemApertureContainerView` 的 key-line，
 > 移除状态栏布局中的全窗口/全图层遍历及高频 CALayer 边框、描边、阴影 hook；
@@ -115,6 +119,31 @@ SBHSearchBar {430×147}
   不重新布局** ⇒ 仅靠 `-layoutSubviews` 不够。启动阶段执行两次定向兜底扫描，后续由
   `didMoveToWindow` / `setHidden:` / `setBackgroundColor:` hook 持续维持，避免永久轮询。
 - 门禁：类名含 `Search` **且** 祖先链含 `Library` ⇒ 不误伤其它搜索框
+
+### ⑤ 灵动岛分裂折叠环（v2.7.0，移植 DuoStatusRing）
+
+灵动岛进入 native mitosis（主岛 + 右侧小气泡，两个可见元素）时，把状态栏右侧的
+信号 / Wi-Fi / 电池折叠成岛旁一个圆环：电池压成点再长成 240° 电量弧（充电绿、低电量黄、
+低电量模式黄），信号变四点落在环底开口，Wi-Fi 进环心；岛合回一个时反向展开。
+
+- 源码：`fold/`，移植自 **DuoStatusRing 1.0.1**（MIT，OwnGoal Studio），保持 DLI 前缀。
+- 桥接层 `fold/SBDFold.m`：hook `_UIStatusBar`（真身）的 `layoutSubviews` /
+  `_updateWithAggregatedData:` / `_updateStyleAttributes` / 两个 `setAvoidanceFrame:`，
+  外加 `_UIStatusBarForegroundView -layoutSubviews` 兜底注册；全部带类型编码校验。
+- ⚠️ **iOS 16 适配（与上游的三处硬差异，勿照抄上游）**
+  1. 上游主 hook `SBSystemApertureViewController -_postLayoutDidChangeNotificationIfNecessary`
+     与 ivar `_cachedLayoutDidChangeUserInfo` 在 16.5.1 **不存在**（dyld 缓存实证），
+     改为订阅 `SBSystemApertureLayoutDidChangeNotification`，读
+     `SBSystemApertureFramesKey` / `SBSystemApertureVisibleElementIdentifiersKey`。
+  2. `STUIStatusBar` 在 16.5.1 是 0 方法的空壳，真身是 `_UIStatusBar`（243 方法）；
+     hook 挂在 `_UIStatusBar` 上，缺失时才退回。
+  3. `_UIStatusBarDisplayItem.enabled` 恒为 0（电池/信号也是），上游的 enabled 过滤会
+     把图标全丢空 ⇒ 改为物理可见性（在树上 / 未隐藏 / 有尺寸）。
+- ⚠️ **ReScale2 坐标**：状态栏 foreground 带 1.0232 缩放（逻辑 440pt），岛坐标必须
+  `[foreground convertRect:fromView:nil]` 换算进 fg 坐标空间，否则环位置与半径都偏。
+- 关闭开关：`/var/mobile/Library/com.xu.statusbarscale/fold_disabled`（存在即不安装折叠环，
+  状态栏缩放不受影响）；编译期总开关 `SBD_FOLD_ENABLED`。
+- 日志：`[fold] hook …` / `[fold] phase=…` / `[fold] items=…` / `[fold] attach …`（低频）。
 
 ## 参数（硬编码，v2.0.0）
 
