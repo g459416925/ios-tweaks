@@ -28,7 +28,7 @@
 #import <objc/message.h>
 #import <dlfcn.h>
 
-#define NHI_VERSION @"0.7.1"
+#define NHI_VERSION @"0.7.2"
 #define NHI_LOG     @"/var/mobile/Documents/NoHomeIcons.log"
 #define NHI_DISABLE @"/var/mobile/Library/com.xu.nohomeicons/disabled"
 
@@ -204,10 +204,18 @@ static void NHIInstallPrefLock(void) {
 static NSUInteger gLayoutCalls = 0, gLayoutLast = 0, gHiddenViews = 0;
 static NSUInteger gLayoutLogged = (NSUInteger)-1;
 
-// SBIconListView -icons 返回的是 iconView 数组（视图），不是 model 里的 icon 数据
-static BOOL NHIIsDockListView(id listView) {
+// 只处理「主屏」那一类列表。
+// 实测类名分布（iOS 16.5.1）：
+//   主屏          SBIconListView
+//   资源库        _SBHLibraryPodIconListView / SBHLibraryCategoryPodIconListView  ← 0.7.1 曾误伤
+//   Dock 与建议    SBDockIconListView / SBDockSuggestionsIconListView / SBFloatingDockIconListView
+// 白名单精确匹配，比「排除 Dock」安全：新出现的库/文件夹列表默认不会被误伤。
+static BOOL NHIShouldHideListView(id listView) {
     NSString *cn = NSStringFromClass([listView class]);
-    return [cn rangeOfString:@"Dock"].location != NSNotFound;
+    if ([cn isEqualToString:@"SBIconListView"]) return YES;
+    if ([cn rangeOfString:@"Library"].location != NSNotFound) return NO;
+    if ([cn rangeOfString:@"Dock"].location != NSNotFound) return NO;
+    return NO;
 }
 
 static UIView *NHIIconViewForIcon(id listView, id icon) {
@@ -219,7 +227,7 @@ static UIView *NHIIconViewForIcon(id listView, id icon) {
 
 static void NHIHideIconViews(id listView) {
     if (!NHIEnabled()) return;
-    if (NHIIsDockListView(listView)) return;          // Dock / Dock 建议区保留
+    if (!NHIShouldHideListView(listView)) return;     // 资源库 / Dock / 文件夹 一律不动
 
     // ⚠️ -icons 返回的是 SBIcon 模型对象（v0.7.0 踩过：当成视图用，alpha 全设到数据对象上，界面没变化）
     // 必须经 -iconViewForIcon: 拿真正的 SBIconView。
