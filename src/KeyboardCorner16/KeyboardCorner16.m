@@ -7,7 +7,7 @@
 #import <stdlib.h>
 #import <string.h>
 
-#define KBC_VERSION "1.0.92"
+#define KBC_VERSION "1.0.93"
 
 // 1 = 输出候选视图树 / 文本输入 / keyplane 等探针日志（排查用，默认关闭）。
 // 关闭时只保留状态行（ctor、hook、bar attach/migrate、pagebar），
@@ -2337,10 +2337,69 @@ static void kbc_neutralizeKayokoPredictionBar(void) {
         (long)method, (long)updated]);
 }
 
+// ============================================================
+// 电话拨号键盘：数字键圆点直径对齐（原 PhoneKeypadScale，2026-10-20 合并）
+//
+// 440×956 逻辑分辨率（ReScale 上采样后的 14 Pro Max）下，电话 App 的数字键
+// 圆点比周围控件小一圈：PHHandsetDialerNumberPadButton +outerCircleDiameter
+// 实测返回 75pt，而 102×91 的 hit cell 应配 80pt。
+// 只改「屏幕正好 440×956 且原值正好 75」这一种组合，其他机型/尺寸/版本一律透传。
+// ============================================================
+
+static CGFloat (*kbc_origDialerCircleDiameter)(id, SEL) = NULL;
+static BOOL kbc_dialerScaleLogged = NO;
+static BOOL kbc_dialerScaleInstalled = NO;
+
+static BOOL kbc_is440x956Screen(void) {
+    CGSize s = UIScreen.mainScreen.bounds.size;
+    CGFloat w = MIN(s.width, s.height);
+    CGFloat h = MAX(s.width, s.height);
+    return fabs((double)w - 440.0) < 0.01 && fabs((double)h - 956.0) < 0.01;
+}
+
+static CGFloat kbc_dialerCircleDiameter(id self, SEL _cmd) {
+    CGFloat orig = kbc_origDialerCircleDiameter
+        ? kbc_origDialerCircleDiameter(self, _cmd) : 0.0;
+    CGFloat adjusted = orig;
+    if (kbc_is440x956Screen() && fabs((double)orig - 75.0) < 0.01) {
+        adjusted = 80.0;
+    }
+    if (!kbc_dialerScaleLogged) {
+        kbc_dialerScaleLogged = YES;
+        kbc_log([NSString stringWithFormat:
+                 @"dialer-circle class=%@ orig=%.2f adjusted=%.2f screen=%@",
+                 NSStringFromClass(self), orig, adjusted,
+                 NSStringFromCGRect(UIScreen.mainScreen.bounds)]);
+    }
+    return adjusted;
+}
+
+static void kbc_installDialerKeypadScale(NSUInteger retry) {
+    if (kbc_dialerScaleInstalled) return;
+
+    Class cls = NSClassFromString(@"PHHandsetDialerNumberPadButton");
+    SEL sel = NSSelectorFromString(@"outerCircleDiameter");
+    Method m = cls ? class_getClassMethod(cls, sel) : NULL;
+    if (m) {
+        kbc_origDialerCircleDiameter = (CGFloat (*)(id, SEL))method_getImplementation(m);
+        method_setImplementation(m, (IMP)kbc_dialerCircleDiameter);
+        kbc_dialerScaleInstalled = YES;
+        kbc_log(@"dialer-circle: installed (target 75 -> 80 on 440x956)");
+        return;
+    }
+    if (retry < 20) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 250 * NSEC_PER_MSEC),
+                       dispatch_get_main_queue(), ^{ kbc_installDialerKeypadScale(retry + 1); });
+    } else {
+        kbc_log(@"dialer-circle: PHHandsetDialerNumberPadButton unavailable, skipped");
+    }
+}
+
 __attribute__((constructor)) static void kbc_ctor(void) {
     kbc_log([NSString stringWithFormat:@"ctor version=%s", KBC_VERSION]);
     kbc_neutralizeKayokoPredictionBar();
     kbc_installKayokoCoreOrientationDiagnostics();
     installHooks();
     installIntegratedHooks();
+    kbc_installDialerKeypadScale(0);   // 原 PhoneKeypadScale：电话拨号盘圆点 75 -> 80
 }
