@@ -28,7 +28,7 @@
 #import <objc/message.h>
 #import <dlfcn.h>
 
-#define NHI_VERSION @"0.7.3"
+#define NHI_VERSION @"0.7.4"
 #define NHI_LOG     @"/var/mobile/Documents/NoHomeIcons.log"
 #define NHI_DISABLE @"/var/mobile/Library/com.xu.nohomeicons/disabled"
 
@@ -293,6 +293,31 @@ static void NHILayoutSubviews(id self, SEL _cmd) {
 // v0.7.3：图标视图一上屏就压住。
 // 前面两条都依赖「列表布局时能拿到视图」，实测布局重建后 -icons 可能为空、
 // layoutSubviews 也不一定跟着来 → 图标就这么晾在桌面上。这条从视图自身触发，最可靠。
+// v0.7.4：从「视图被加入列表」这一刻就压住。
+// 前述三条都依赖列表自身的布局回调，实测「从资源库添加到主屏幕」时
+// layoutIconsNow 里的 -icons 仍然是 0，图标就这么晾着。
+// -didAddIconView: 的参数就是刚建好的图标视图，时机最准。
+static void (*gOrigDidAddIconView)(id, SEL, id) = NULL;
+
+static void NHIDidAddIconView(id self, SEL _cmd, id iconView) {
+    if (gOrigDidAddIconView) gOrigDidAddIconView(self, _cmd, iconView);
+    if (!NHIEnabled()) return;
+    if (!NHIShouldHideListView(self)) return;
+    if (![iconView isKindOfClass:[UIView class]]) return;
+    UIView *v = (UIView *)iconView;
+    if (v.alpha > 0.001) gHiddenViews++;
+    v.alpha = 0;
+    v.userInteractionEnabled = NO;
+    v.accessibilityElementsHidden = YES;
+}
+
+static void (*gOrigAddIconViews)(id, SEL, id, id) = NULL;
+
+static void NHIAddIconViews(id self, SEL _cmd, id icons, id metrics) {
+    if (gOrigAddIconViews) gOrigAddIconViews(self, _cmd, icons, metrics);
+    NHIHideIconViews(self);
+}
+
 static void (*gOrigIconViewDidMoveToWindow)(id, SEL) = NULL;
 static NSUInteger gDiagCount = 0;
 
@@ -356,6 +381,9 @@ static void NHIInstallSpringBoard(void) {
     }
     NHIInstallHook(listViewCls, @"layoutIconsNow", (IMP)NHILayoutIconsNow, (IMP *)&gOrigLayoutIconsNow);
     NHIInstallHook(listViewCls, @"layoutSubviews", (IMP)NHILayoutSubviews, (IMP *)&gOrigLayoutSubviews);
+    NHIInstallHook(listViewCls, @"didAddIconView:", (IMP)NHIDidAddIconView, (IMP *)&gOrigDidAddIconView);
+    NHIInstallHook(listViewCls, @"_addIconViewsForIcons:metrics:",
+                   (IMP)NHIAddIconViews, (IMP *)&gOrigAddIconViews);
     Class iconViewCls = objc_getClass("SBIconView");
     if (iconViewCls) {
         NHIInstallHook(iconViewCls, @"didMoveToWindow",

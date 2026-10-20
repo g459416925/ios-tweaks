@@ -3,13 +3,13 @@ Label: g459416925's iOS Tweaks
 Suite: stable
 Version: 1.0
 Codename: ios
-Date: Tue, 20 Oct 2026 04:54:00 GMT
+Date: Tue, 20 Oct 2026 05:01:05 GMT
 Architectures: iphoneos-arm64e iphoneos-arm64 iphoneos-arm
 Components: main
 Description: Personal iOS tweak repository (RootHide / arm64e)
 MD5Sum:
- a9500c62521379e919cd64c04e6a4046 47122 Packages
- 9e3467fcfe14c3f041652b306b16c8b3 8123 Packages.bz2
+ 38f5eacae73d2909e898f7656c08b32b 47122 Packages
+ 3764274e13e9256b5bb03c366461112e 8125 Packages.bz2
 SHA256:
- b88d1be7a0a1c97bb519b8cc81dbd9ebf51c7a4b8dbb669f4a88f29b5b5b7644 47122 Packages
- f17bdc3d0e7975433080b8785f803793d327c626a538b903358d1aa1a2871a85 8123 Packages.bz2
+ 19f747b98d1fe1476ebef5892b43ef0129b8a257d5acf298544f1a62bbf62803 47122 Packages
+ abb0cd33776cc247b3885519c9396820e6399590af52a4260cb392f7a2139a4b 8125 Packages.bz2
