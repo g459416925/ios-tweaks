@@ -16,6 +16,24 @@ Size: 4400
 MD5sum: b6cfd63e768beadae7d49cc884e2b574
 SHA256: c48289305ab22127d2a00087908dad4299b8fbe06f6de4b4328a0cefe5ea47de
 
+Package: com.xu.bounceit16
+Name: BounceIt16
+Version: 1.1.10
+Architecture: iphoneos-arm64e
+Description: SpringBoard 果冻弹性动画（BounceIt 自研替代版）。
+ 劫持 SBFFluidBehaviorSettings.setDampingRatio: 与 SBFAnimationSettings 的
+ damping/stiffness/mass/epsilon，让系统动画带弹簧回弹（阻尼比约 0.23）。
+Maintainer: g459416925
+Author: g459416925
+Section: Tweaks
+Depends: mobilesubstrate
+Installed-Size: 69
+Tag: purpose::extension
+Filename: ./debs/BounceIt16_1.1.10_iphoneos-arm64e.deb
+Size: 7110
+MD5sum: c107eda7bb72f4f41d9c8ede82f17cd7
+SHA256: fdedb7e406a5cf89cc02b19114fe21a63300b466c5440b799770e3e0049b31ac
+
 Package: com.xu.compactorfix
 Name: CompactorFix
 Version: 1.0.0
@@ -914,6 +932,30 @@ Size: 26302
 MD5sum: 32f51a0b11d13f01d97a9fc06dc26766
 SHA256: d628dd2c2f77faebdc6ce995f768061f122fadf2ca1ceb09a26380fa87805136
 
+Package: com.xu.statusbarscale
+Name: StatusBarScale
+Version: 2.7.0
+Architecture: iphoneos-arm64e
+Description: 状态栏图标缩放 + 资源库背景透明。
+ · 状态栏缩放：hook _UIStatusBarForegroundView -layoutSubviews，每次布局后
+   对灵动岛右侧（minX >= 阈值）的图标施加 绕中心缩放 + 垂直微调，与时间对齐；
+   时间右侧、灵动岛左侧的图标（闹钟/定位/录屏等，无法按标识枚举）按 fg 坐标系
+   frame 区间运行时发现，单独缩放。
+ · 资源库背景透明：App 资源库分类卡片的背景板 + 顶部搜索框背景清成透明，只留图标与文字。
+ 参数已硬编码进源码，不含设置面板/配置文件读取。
+ 仅注入 SpringBoard（Filter.Bundles = com.apple.springboard）。
+ 适用 iOS 16.x / RootHide (arm64e)。
+Maintainer: g459416925
+Author: g459416925 (iOS 16.5.1 / RootHide)
+Section: Tweaks
+Depends: mobilesubstrate
+Installed-Size: 235
+Tag: purpose::extension
+Filename: ./debs/StatusBarScale_2.7.0_iphoneos-arm64e.deb
+Size: 81034
+MD5sum: 3133ed335fcd124e5b47ff17ceb182af
+SHA256: 84a99f5d11f14f40ec236327caf18d2b8eb13d2e34c2451805cf2bca10dcd40d
+
 Package: com.xu.adskip
 Name: 广告跳过 AdSkip
 Version: 1.0.0
@@ -994,3 +1036,22 @@ Filename: ./debs/com.xu.rescale2plus_1.0.5-2_iphoneos-arm64e.deb
 Size: 146708
 MD5sum: 7832fb781c7ccdc9a57e6d483c144351
 SHA256: 3754438d2b8e140b1bc8d08db4614ceaeefec94ab052f2adc8d9e7484f539889
+
+Package: com.xu.shotsuite
+Name: 截图套件 ShotSuite
+Version: 1.0.5
+Architecture: iphoneos-arm64e
+Section: Tweaks
+Priority: optional
+Depends: mobilesubstrate, preferenceloader, firmware (>= 15.0), com.opa334.ccsupport, com.opa334.altlist, com.opa334.libsandy
+Conflicts: com.daodao.snapper3, com.dao.bigshotsnapper3plugin, cn.llld.biaoji, com.lclrc.hammerit
+Replaces: com.daodao.snapper3, com.dao.bigshotsnapper3plugin, cn.llld.biaoji, com.lclrc.hammerit
+Maintainer: g459416925
+Author: g459416925
+Description: Snapper 3 + BigShot 长截图 + 截图标记 + Hammer It 四合一。
+ 一个安装包、一个设置入口，四个模块默认全部启用。
+ 模块本体原样保留（闭源二进制），面板提供各模块的设置入口。
+Filename: ./debs/com.xu.shotsuite_1.0.5_iphoneos-arm64e.deb
+Size: 1891596
+MD5sum: d720ddedb448d6189cdac34a8d11f542
+SHA256: 610e35c02bf222584e6a87dbe7dc59f879e337123a81dfba41c35e78fc2f9371

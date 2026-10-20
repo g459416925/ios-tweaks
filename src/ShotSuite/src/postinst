@@ -1,0 +1,37 @@
+#!/bin/sh
+# ShotSuite postinst —— 1.0.1 起不再有模块开关，四个模块恒启用。
+#
+# ellekit 的过滤 plist 直接由 deb 解包为实体文件（Filter.Bundles 为原始值）。
+# 这里只清理 1.0.0 遗留的「托管目录 + 符号链接」，避免残留。
+DIR=/var/mobile/Documents/.shotsuite
+if [ -d /rootfs/private/var/mobile ]; then
+    DIR=/rootfs/private/var/mobile/Documents/.shotsuite
+fi
+TW=/usr/lib/TweakInject
+PLISTS="Snapper3.plist 1Snapper3.plist BigShotSnapper3Plugin.plist BigShotJbSnapper3Plugin.plist biaoji.plist HammerIt.plist"
+
+# 旧版遗留符号链接：dpkg 已用包内实体覆盖，这里再兜一层
+for f in $PLISTS; do
+    if [ -L "$TW/$f" ]; then
+        rm -f "$TW/$f"
+        if [ -f "$DIR/$f" ]; then cp -f "$DIR/$f" "$TW/$f"; chmod 0644 "$TW/$f"; fi
+    fi
+done
+
+rm -rf "$DIR"
+
+
+# --- Snapper3 的 OCR 守护进程 ---
+# 不启动它时，Snapper3 会把 OCR 降级到 SpringBoard 进程内执行，
+# iOS 16 上会撞 AppleNeuralEngine/Espresso 析构断言（EXC_BREAKPOINT）→ 安全模式。
+# 同时在 Snapper3 设置里保持 ocrDopamineCompatibility=YES 才会走独立进程。
+OCRPLIST=/Library/LaunchDaemons/com.jontelang.snapper3ocrd.plist
+if [ -f "$OCRPLIST" ]; then
+    if ! launchctl list 2>/dev/null | grep -q com.jontelang.snapper3ocrd; then
+        launchctl bootstrap system "$OCRPLIST" >/dev/null 2>&1 \
+        || launchctl load -w "$OCRPLIST" >/dev/null 2>&1 || true
+    fi
+fi
+
+echo "[ShotSuite] 安装完成（模块全启用，OCR 走独立进程）"
+exit 0

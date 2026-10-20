@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>title</key>
+	<string>截图套件</string>
+	<key>items</key>
+	<array>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>label</key>
+			<string>Snapper 3</string>
+			<key>footerText</key>
+			<string>截屏 · OCR · 长截图 · 截图标记</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>label</key>
+			<string>Hammer It</string>
+			<key>footerText</key>
+			<string>长按文本取词 / 翻译</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>footerText</key>
+			<string>截图套件 1.0.3 — Snapper 3 (1.0k) / BigShot (1.1) / 截图标记 (1.3) / Hammer It (1.7.1)</string>
+		</dict>
+	</array>
+</dict>
+</plist>
