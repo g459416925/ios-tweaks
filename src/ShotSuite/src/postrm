@@ -1,0 +1,16 @@
+#!/bin/sh
+# ShotSuite postrm —— 卸载清理（升级时不清理，避免动到正在使用的配置）
+DIR=/var/mobile/Documents/.shotsuite
+if [ -d /rootfs/private/var/mobile ]; then
+    DIR=/rootfs/private/var/mobile/Documents/.shotsuite
+fi
+
+case "$1" in
+    upgrade|disappear|failed-upgrade)
+        exit 0
+        ;;
+esac
+
+rm -rf "$DIR"
+echo "[ShotSuite] 已清理"
+exit 0

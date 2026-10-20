@@ -23,3 +23,6 @@ src/StatusBarScalePrefs/StatusBarScalePrefs.unsigned
 
 # 日志
 *.log
+
+# ShotSuite 的第三方 payload（7.4MB 解包二进制，不入库）
+src/**/payload/
