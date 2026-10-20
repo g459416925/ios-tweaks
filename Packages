@@ -973,3 +973,24 @@ Filename: ./debs/com.xu.adskip_1.3.0_iphoneos-arm64e.deb
 Size: 58934
 MD5sum: 41e888590e7ebe921af63f6961ddd7e3
 SHA256: 012c7d1f0d5e1ad8492c6b61d30951335a742aeef3be17ad623200b9aed38668
+
+Package: com.xu.rescale2plus
+Name: Re:Scale 2 Plus
+Version: 1.0.5-2
+Architecture: iphoneos-arm64e
+Section: Tweaks
+Priority: optional
+Maintainer: g459416925
+Author: Sniper_GER (original) / g459416925 (repack)
+Depends: mobilesubstrate, preferenceloader, firmware (>= 9.0)
+Conflicts: tf.festival.rescale2, com.xu.rescalekb440fix
+Replaces: tf.festival.rescale2, com.xu.rescalekb440fix
+Description: Re:Scale 2 + 440 键盘宽度修正（自用整合包）
+ 基于 Re:Scale 2 1.0.5-1（by Sniper_GER）重新打包：原版四个 dylib 与
+ 设置面板完整保留，额外并入 440x956 逻辑分辨率下的竖屏键盘宽度修正
+ （414 -> 440，原 com.xu.rescalekb440fix）。
+ 与原版 tf.festival.rescale2 互斥：装本包即可，无需再装原版或小修复包。
+Filename: ./debs/com.xu.rescale2plus_1.0.5-2_iphoneos-arm64e.deb
+Size: 146708
+MD5sum: 7832fb781c7ccdc9a57e6d483c144351
+SHA256: 3754438d2b8e140b1bc8d08db4614ceaeefec94ab052f2adc8d9e7484f539889
