@@ -28,7 +28,7 @@
 #import <objc/message.h>
 #import <dlfcn.h>
 
-#define NHI_VERSION @"0.7.2"
+#define NHI_VERSION @"0.7.3"
 #define NHI_LOG     @"/var/mobile/Documents/NoHomeIcons.log"
 #define NHI_DISABLE @"/var/mobile/Library/com.xu.nohomeicons/disabled"
 
@@ -225,6 +225,26 @@ static UIView *NHIIconViewForIcon(id listView, id icon) {
     @catch (__unused NSException *e) { return nil; }
 }
 
+// 递归兜底：不依赖 -icons / -iconViewForIcon:。
+// v0.7.2 实测失效场景：IconState 被写坏（多页 + 字典形态）后，layoutIconsNow 时
+// -icons 返回空数组，隐藏逻辑一条都没命中，桌面图标照常显示。
+static NSUInteger NHIHideInViewTree(UIView *root, NSUInteger depth) {
+    if (depth > 4) return 0;
+    NSUInteger n = 0;
+    for (UIView *sub in root.subviews) {
+        NSString *cn = NSStringFromClass([sub class]);
+        if ([cn hasSuffix:@"IconView"]) {          // SBIconView / SBFolderIconView
+            if (sub.alpha > 0.001) { gHiddenViews++; n++; }
+            sub.alpha = 0;
+            sub.userInteractionEnabled = NO;
+            sub.accessibilityElementsHidden = YES;
+            continue;                               // 命中的图标视图不再往里钻
+        }
+        n += NHIHideInViewTree(sub, depth + 1);
+    }
+    return n;
+}
+
 static void NHIHideIconViews(id listView) {
     if (!NHIEnabled()) return;
     if (!NHIShouldHideListView(listView)) return;     // 资源库 / Dock / 文件夹 一律不动
@@ -232,15 +252,18 @@ static void NHIHideIconViews(id listView) {
     // ⚠️ -icons 返回的是 SBIcon 模型对象（v0.7.0 踩过：当成视图用，alpha 全设到数据对象上，界面没变化）
     // 必须经 -iconViewForIcon: 拿真正的 SBIconView。
     id icons = NHICallObj(listView, @"icons");
-    if (![icons isKindOfClass:[NSArray class]]) return;
-    for (id icon in (NSArray *)icons) {
-        UIView *view = NHIIconViewForIcon(listView, icon);
-        if (!view || ![view isKindOfClass:[UIView class]]) continue;
-        if (view.alpha > 0.001) gHiddenViews++;
-        view.alpha = 0;
-        view.userInteractionEnabled = NO;
-        view.accessibilityElementsHidden = YES;
+    if ([icons isKindOfClass:[NSArray class]]) {
+        for (id icon in (NSArray *)icons) {
+            UIView *view = NHIIconViewForIcon(listView, icon);
+            if (!view || ![view isKindOfClass:[UIView class]]) continue;
+            if (view.alpha > 0.001) gHiddenViews++;
+            view.alpha = 0;
+            view.userInteractionEnabled = NO;
+            view.accessibilityElementsHidden = YES;
+        }
     }
+    // 兜底：直接扫视图树（-icons 返回空时也能命中）
+    NHIHideInViewTree((UIView *)listView, 0);
 }
 
 static void (*gOrigLayoutIconsNow)(id, SEL) = NULL;
@@ -265,6 +288,47 @@ static void (*gOrigLayoutSubviews)(id, SEL) = NULL;
 static void NHILayoutSubviews(id self, SEL _cmd) {
     if (gOrigLayoutSubviews) gOrigLayoutSubviews(self, _cmd);
     NHIHideIconViews(self);
+}
+
+// v0.7.3：图标视图一上屏就压住。
+// 前面两条都依赖「列表布局时能拿到视图」，实测布局重建后 -icons 可能为空、
+// layoutSubviews 也不一定跟着来 → 图标就这么晾在桌面上。这条从视图自身触发，最可靠。
+static void (*gOrigIconViewDidMoveToWindow)(id, SEL) = NULL;
+static NSUInteger gDiagCount = 0;
+
+static void NHIDiagChain(UIView *v) {
+    if (gDiagCount++ > 6) return;
+    NSMutableString *s = [NSMutableString string];
+    UIView *p = v;
+    for (int i = 0; i < 10 && p; i++) {
+        [s appendFormat:@"%@ < ", NSStringFromClass([p class])];
+        p = p.superview;
+    }
+    L(@"[diag] iconView 上屏窗口链: %@", s);
+    NHIFlush();
+}
+
+static void NHIIconViewDidMoveToWindow(id self, SEL _cmd) {
+    if (gOrigIconViewDidMoveToWindow) gOrigIconViewDidMoveToWindow(self, _cmd);
+    if (!NHIEnabled()) return;
+    UIView *view = (UIView *)self;
+    if (!view.window) return;
+    NHIDiagChain(view);
+
+    UIView *p = view.superview;
+    int depth = 0;
+    while (p && depth++ < 10) {
+        NSString *cn = NSStringFromClass([p class]);
+        if ([cn rangeOfString:@"Dock"].location != NSNotFound) return;   // Dock 保留
+        if ([cn isEqualToString:@"SBIconListView"]) {
+            if (view.alpha > 0.001) gHiddenViews++;
+            view.alpha = 0;
+            view.userInteractionEnabled = NO;
+            view.accessibilityElementsHidden = YES;
+            return;
+        }
+        p = p.superview;
+    }
 }
 
 static void NHIBackupIconStateOnce(void) {
@@ -292,6 +356,13 @@ static void NHIInstallSpringBoard(void) {
     }
     NHIInstallHook(listViewCls, @"layoutIconsNow", (IMP)NHILayoutIconsNow, (IMP *)&gOrigLayoutIconsNow);
     NHIInstallHook(listViewCls, @"layoutSubviews", (IMP)NHILayoutSubviews, (IMP *)&gOrigLayoutSubviews);
+    Class iconViewCls = objc_getClass("SBIconView");
+    if (iconViewCls) {
+        NHIInstallHook(iconViewCls, @"didMoveToWindow",
+                       (IMP)NHIIconViewDidMoveToWindow, (IMP *)&gOrigIconViewDidMoveToWindow);
+    } else {
+        L(@"[boot] SBIconView 不存在，跳过 didMoveToWindow 兜底");
+    }
     NHIInstallPrefLock();
     gSBInstalled = YES;
     L(@"[boot] SpringBoard hooks installed, enabled=%d", (int)NHIEnabled());

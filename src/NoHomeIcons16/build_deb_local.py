@@ -22,7 +22,7 @@ DYN = "Library/MobileSubstrate/DynamicLibraries"
 
 def version():
     src = open(os.path.join(HERE, PKG + ".m"), encoding="utf-8").read()
-    m = re.search(r'#define\s+NHI_VERSION\s+@"([^"]+)"', src)
+    m = re.search(r'#define\s+NHI_VERSION\s+@?"([^"]+)"', src)
     if not m:
         sys.exit("读不到 NHI_VERSION")
     return m.group(1)
