@@ -1,0 +1,15 @@
+Package: com.xu.nohomeicons
+Name: 桌面净空 NoHomeIcons
+Version: __VERSION__
+Architecture: iphoneos-arm64e
+Description: 桌面净空：主屏不显示任何 App 图标，App 只出现在 App 资源库，Dock 保留。
+ · 新下载的 App 强制「仅 App 资源库」（锁定 SBHomeAutomaticallyAddsNewApplications，
+   改 plist 或第三方工具无效）
+ · 移除「设置 -> 主屏幕」入口，从根上断掉改设置的可能
+ · 桌面布局会在首次运行时自动备份到 /var/mobile/Documents/NoHomeIcons_IconState.backup.plist
+ 注入 SpringBoard + 设置。适用 iOS 16.x / RootHide (arm64e)。
+Maintainer: g459416925
+Author: g459416925
+Section: Tweaks
+Depends: mobilesubstrate
+Tag: purpose::extension

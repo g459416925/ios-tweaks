@@ -755,6 +755,26 @@ Size: 375526
 MD5sum: f6b631f06084e6a584019716b389fc3f
 SHA256: a2a4b6ac161dca7bf4791f445ef023ea04ce863556f03d4f3cebb4dfda5fed58
 
+Package: com.xu.nohomeicons
+Name: 桌面净空 NoHomeIcons
+Version: 0.6.0
+Architecture: iphoneos-arm64e
+Description: 桌面净空：主屏不显示任何 App 图标，App 只出现在 App 资源库，Dock 保留。
+ · 新下载的 App 强制「仅 App 资源库」（锁定 SBHomeAutomaticallyAddsNewApplications，
+   改 plist 或第三方工具无效）
+ · 移除「设置 -> 主屏幕」入口，从根上断掉改设置的可能
+ · 桌面布局会在首次运行时自动备份到 /var/mobile/Documents/NoHomeIcons_IconState.backup.plist
+ 注入 SpringBoard + 设置。适用 iOS 16.x / RootHide (arm64e)。
+Maintainer: g459416925
+Author: g459416925
+Section: Tweaks
+Depends: mobilesubstrate
+Tag: purpose::extension
+Filename: ./debs/NoHomeIcons16_0.6.0_iphoneos-arm64e.deb
+Size: 14924
+MD5sum: c7804550e31bbbe09b9d4792dc82f45e
+SHA256: 0fc7438c0323633b5cb8de18fbe389ece32eccf3ec0e753b2d4ad81e44a290b9
+
 Package: com.xu.screentimelocker16
 Name: ScreenTimeLocker16
 Version: 5.2.0
@@ -872,3 +892,63 @@ Filename: ./debs/StatusBarScale_2.5.0_iphoneos-arm64e.deb
 Size: 26302
 MD5sum: 32f51a0b11d13f01d97a9fc06dc26766
 SHA256: d628dd2c2f77faebdc6ce995f768061f122fadf2ca1ceb09a26380fa87805136
+
+Package: com.xu.adskip
+Name: 广告跳过 AdSkip
+Version: 1.0.0
+Architecture: iphoneos-arm64e
+Section: Tweaks
+Priority: optional
+Depends: ellekit, firmware (>= 15.0)
+Maintainer: g459416925
+Author: g459416925
+Description: 广告播放跳过 + 权益保留
+ 在 GDT / 穿山甲 激励视频、开屏、插屏上：
+ · 视频播放器 play 后立即 seek 到尾部，走 SDK 原生 finish 路径
+ · 开屏倒计时直接打到 0，补发 splashAdWillClosed/splashAdClosed
+ · 激励回调「原生优先，兜底补发」且带幂等标记，不重复发奖
+ 支持应用由 AdSkip.plist 的 Filter.Bundles 控制。
+Filename: ./debs/com.xu.adskip_1.0.0_iphoneos-arm64e.deb
+Size: 24978
+MD5sum: 1f226b8466bd9740f7856a0f70aed395
+SHA256: 7e647390766851102349ac3ea59925f4a5213fd2145f79f2d7b7fc208091d269
+
+Package: com.xu.adskip
+Name: 广告跳过 AdSkip
+Version: 1.1.0
+Architecture: iphoneos-arm64e
+Section: Tweaks
+Priority: optional
+Depends: ellekit, firmware (>= 15.0)
+Maintainer: g459416925
+Author: g459416925
+Description: 广告播放跳过 + 权益保留
+ 在 GDT / 穿山甲 激励视频、开屏、插屏上：
+ · 视频播放器 play 后立即 seek 到尾部，走 SDK 原生 finish 路径
+ · 开屏倒计时直接打到 0，补发 splashAdWillClosed/splashAdClosed
+ · 激励回调「原生优先，兜底补发」且带幂等标记，不重复发奖
+ 支持应用由 AdSkip.plist 的 Filter.Bundles 控制。
+Filename: ./debs/com.xu.adskip_1.1.0_iphoneos-arm64e.deb
+Size: 45986
+MD5sum: a0b9dd30104bde13a25b618683b592e9
+SHA256: a9dd1c1cbbf7a489c4426a4a445ac9ea0640d8a52a7f26a24b61346244d5b271
+
+Package: com.xu.adskip
+Name: 广告跳过 AdSkip
+Version: 1.3.0
+Architecture: iphoneos-arm64e
+Section: Tweaks
+Priority: optional
+Depends: ellekit, firmware (>= 15.0)
+Maintainer: g459416925
+Author: g459416925
+Description: 广告播放跳过 + 权益保留
+ 在 GDT / 穿山甲 激励视频、开屏、插屏上：
+ · 视频播放器 play 后立即 seek 到尾部，走 SDK 原生 finish 路径
+ · 开屏倒计时直接打到 0，补发 splashAdWillClosed/splashAdClosed
+ · 激励回调「原生优先，兜底补发」且带幂等标记，不重复发奖
+ 支持应用由 AdSkip.plist 的 Filter.Bundles 控制。
+Filename: ./debs/com.xu.adskip_1.3.0_iphoneos-arm64e.deb
+Size: 58934
+MD5sum: 41e888590e7ebe921af63f6961ddd7e3
+SHA256: 012c7d1f0d5e1ad8492c6b61d30951335a742aeef3be17ad623200b9aed38668
