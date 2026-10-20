@@ -28,7 +28,7 @@
 #import <objc/message.h>
 #import <dlfcn.h>
 
-#define NHI_VERSION @"0.6.0"
+#define NHI_VERSION @"0.7.1"
 #define NHI_LOG     @"/var/mobile/Documents/NoHomeIcons.log"
 #define NHI_DISABLE @"/var/mobile/Library/com.xu.nohomeicons/disabled"
 
@@ -193,24 +193,46 @@ static void NHIInstallPrefLock(void) {
     }
 }
 
-#pragma mark - SpringBoard 模块
+#pragma mark - SpringBoard 模块（纯视图层隐藏，绝不碰 model）
 
-static NSUInteger gVisibleCalls = 0, gVisibleOrigYes = 0;
-static NSUInteger gLayoutCalls = 0, gLayoutLast = 0, gLayoutMax = 0;
+// ⚠️ v0.7.0 关键变更：不再 hook SBIconModel -isIconVisible:
+// 2026-10-20 实证：把 isIconVisible 全返回 NO 会让 SBRecentAppLayouts 也认为
+// 这些 App「不该出现在界面」→ 上滑多任务只剩 1 个卡片，
+// RecentAppLayouts.pb.lzfse 停在 12 字节不再累积（开 2 个 App 也不涨）。
+// 改为纯视图层：model / IconState 原样保留，卸载插件立刻恢复。
+
+static NSUInteger gLayoutCalls = 0, gLayoutLast = 0, gHiddenViews = 0;
 static NSUInteger gLayoutLogged = (NSUInteger)-1;
 
-static BOOL (*gOrigIsIconVisible)(id, SEL, id) = NULL;
+// SBIconListView -icons 返回的是 iconView 数组（视图），不是 model 里的 icon 数据
+static BOOL NHIIsDockListView(id listView) {
+    NSString *cn = NSStringFromClass([listView class]);
+    return [cn rangeOfString:@"Dock"].location != NSNotFound;
+}
 
-static BOOL NHIIsIconVisible(id self, SEL _cmd, id icon) {
-    BOOL orig = gOrigIsIconVisible ? gOrigIsIconVisible(self, _cmd, icon) : YES;
-    gVisibleCalls++;
-    if (orig) gVisibleOrigYes++;
-    BOOL on = NHIEnabled();
-    if (gVisibleCalls <= 6) {
-        L(@"[isIconVisible] #%lu %@ 原值=%d → %@", (unsigned long)gVisibleCalls,
-          NHIIconName(icon), (int)orig, on ? @"强制 NO" : @"放行(停用)");
+static UIView *NHIIconViewForIcon(id listView, id icon) {
+    SEL sel = NSSelectorFromString(@"iconViewForIcon:");
+    if (![listView respondsToSelector:sel]) return nil;
+    @try { return ((id (*)(id, SEL, id))objc_msgSend)(listView, sel, icon); }
+    @catch (__unused NSException *e) { return nil; }
+}
+
+static void NHIHideIconViews(id listView) {
+    if (!NHIEnabled()) return;
+    if (NHIIsDockListView(listView)) return;          // Dock / Dock 建议区保留
+
+    // ⚠️ -icons 返回的是 SBIcon 模型对象（v0.7.0 踩过：当成视图用，alpha 全设到数据对象上，界面没变化）
+    // 必须经 -iconViewForIcon: 拿真正的 SBIconView。
+    id icons = NHICallObj(listView, @"icons");
+    if (![icons isKindOfClass:[NSArray class]]) return;
+    for (id icon in (NSArray *)icons) {
+        UIView *view = NHIIconViewForIcon(listView, icon);
+        if (!view || ![view isKindOfClass:[UIView class]]) continue;
+        if (view.alpha > 0.001) gHiddenViews++;
+        view.alpha = 0;
+        view.userInteractionEnabled = NO;
+        view.accessibilityElementsHidden = YES;
     }
-    return on ? NO : orig;
 }
 
 static void (*gOrigLayoutIconsNow)(id, SEL) = NULL;
@@ -221,19 +243,20 @@ static void NHILayoutIconsNow(id self, SEL _cmd) {
     id icons = NHICallObj(self, @"icons");
     NSUInteger n = [icons isKindOfClass:[NSArray class]] ? [(NSArray *)icons count] : 0;
     gLayoutLast = n;
-    if (n > gLayoutMax) gLayoutMax = n;
     if (gLayoutCalls <= 6 || n != gLayoutLogged) {
-        L(@"[layout] #%lu %@ icons=%lu", (unsigned long)gLayoutCalls,
+        L(@"[layout] #%lu %@ iconViews=%lu", (unsigned long)gLayoutCalls,
           NSStringFromClass([self class]), (unsigned long)n);
         gLayoutLogged = n;
     }
+    NHIHideIconViews(self);
 }
 
-static BOOL (*gOrigAvoidFirstPage)(id, SEL, id) = NULL;
+// 兜底：翻页 / 拖动 / 复用时 iconView 可能被重新显示，layoutSubviews 后再压一次
+static void (*gOrigLayoutSubviews)(id, SEL) = NULL;
 
-static BOOL NHIAvoidFirstPage(id self, SEL _cmd, id icon) {
-    BOOL orig = gOrigAvoidFirstPage ? gOrigAvoidFirstPage(self, _cmd, icon) : NO;
-    return NHIEnabled() ? YES : orig;
+static void NHILayoutSubviews(id self, SEL _cmd) {
+    if (gOrigLayoutSubviews) gOrigLayoutSubviews(self, _cmd);
+    NHIHideIconViews(self);
 }
 
 static void NHIBackupIconStateOnce(void) {
@@ -259,10 +282,8 @@ static void NHIInstallSpringBoard(void) {
                        dispatch_get_main_queue(), ^{ @autoreleasepool { NHIInstallSpringBoard(); } });
         return;
     }
-    NHIInstallHook(modelCls, @"isIconVisible:", (IMP)NHIIsIconVisible, (IMP *)&gOrigIsIconVisible);
     NHIInstallHook(listViewCls, @"layoutIconsNow", (IMP)NHILayoutIconsNow, (IMP *)&gOrigLayoutIconsNow);
-    NHIInstallHook(modelCls, @"shouldAvoidPlacingIconOnFirstPage:",
-                   (IMP)NHIAvoidFirstPage, (IMP *)&gOrigAvoidFirstPage);
+    NHIInstallHook(listViewCls, @"layoutSubviews", (IMP)NHILayoutSubviews, (IMP *)&gOrigLayoutSubviews);
     NHIInstallPrefLock();
     gSBInstalled = YES;
     L(@"[boot] SpringBoard hooks installed, enabled=%d", (int)NHIEnabled());
@@ -270,10 +291,9 @@ static void NHIInstallSpringBoard(void) {
 }
 
 static void NHIReportSpringBoard(void) {
-    L(@"[stats] isIconVisible calls=%lu (origVisible=%lu) | layout calls=%lu last=%lu max=%lu | prefHits=%lu",
-      (unsigned long)gVisibleCalls, (unsigned long)gVisibleOrigYes,
-      (unsigned long)gLayoutCalls, (unsigned long)gLayoutLast, (unsigned long)gLayoutMax,
-      (unsigned long)gPrefHits);
+    L(@"[stats] layout calls=%lu last=%lu hiddenViews=%lu | prefHits=%lu",
+      (unsigned long)gLayoutCalls, (unsigned long)gLayoutLast,
+      (unsigned long)gHiddenViews, (unsigned long)gPrefHits);
     Class ctrlCls = objc_getClass("SBIconController");
     SEL shared = NSSelectorFromString(@"sharedInstance");
     id ctrl = (ctrlCls && [ctrlCls respondsToSelector:shared])
