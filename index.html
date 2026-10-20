@@ -86,6 +86,11 @@
       <td>0.7.2</td>
       <td>桌面净空 NoHomeIcons — 主屏不放任何 App 图标，App 只进资源库，Dock 保留</td>
     </tr>
+    <tr>
+      <td><code>com.xu.rescale2plus</code></td>
+      <td>1.0.5-2</td>
+      <td>Re:Scale 2 Plus — Re:Scale 2 整合包（原版四组件 + 440×956 键盘宽度修正）</td>
+    </tr>
   </table>
 
   <h2>BounceIt16</h2>
@@ -173,6 +178,22 @@
     （上滑只剩 1 个卡片）—— 该判断被 <code>SBRecentAppLayouts</code> 共用，已弃用。
     停用开关：<code>/var/mobile/Library/com.xu.nohomeicons/disabled</code>。
     注入 SpringBoard + 设置两个进程。
+  </p>
+
+  <h2>Re:Scale 2 Plus</h2>
+  <ol>
+    <li>原版 <b>Re:Scale 2</b>（<code>tf.festival.rescale2</code> 1.0.5-1 by Sniper_GER）的完整重打包：
+        四个 dylib + 设置面板原样保留，仅新增一个组件</li>
+    <li>新增 <code>ZZReScaleKB440Fix</code>：440×956 逻辑分辨率下竖屏键盘宽度
+        <b>414 → 440</b>（原独立包 <code>com.xu.rescalekb440fix</code> 的功能）</li>
+    <li><code>ZZ</code> 前缀是为了让它在 <code>ReScaleKB.dylib</code> <b>之后</b>注入 —— ellekit
+        按文件名排序加载，否则 440 修正会被原始值覆盖</li>
+    <li>与原版互斥：<code>Conflicts / Replaces: tf.festival.rescale2, com.xu.rescalekb440fix</code>，
+        装本包即可，不用再装原版或任何小修复包</li>
+  </ol>
+  <p class="sub" style="margin-top:14px">
+    ⚠️ 原版是闭源二进制、没有源码，所以只能做「同包分发」而不是代码级合并。
+    包名改成 <code>com.xu.rescale2plus</code> 就是为了和原版区分，避免覆盖冲突。
   </p>
 
   <h2>索引文件</h2>
