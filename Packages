@@ -796,7 +796,7 @@ SHA256: c6687f0adabbbf92aabc613ae489763f0609a884d7fe1873a8184e650cf2bed9
 
 Package: com.xu.nohomeicons
 Name: 桌面净空 NoHomeIcons
-Version: 0.7.3
+Version: 0.7.4
 Architecture: iphoneos-arm64e
 Description: 桌面净空：主屏不显示任何 App 图标，App 只出现在 App 资源库，Dock 保留。
  · 纯视图层隐藏（alpha=0 + 禁交互），不写 IconState → 卸载插件立刻恢复原布局
@@ -809,10 +809,10 @@ Author: g459416925
 Section: Tweaks
 Depends: mobilesubstrate
 Tag: purpose::extension
-Filename: ./debs/NoHomeIcons16_0.7.3_iphoneos-arm64e.deb
-Size: 15896
-MD5sum: da95c757b95acdfe93f4573222e95b41
-SHA256: 03053ec86918b6b6ff4f9844d1973aa42f8c9775077cc01bdb3d6ddea6702ed7
+Filename: ./debs/NoHomeIcons16_0.7.4_iphoneos-arm64e.deb
+Size: 16164
+MD5sum: b15bc2a1b04dc5d10b63bf787c1c63de
+SHA256: 2586bd1f3e5f1222db930e10309ebb5133f3a98fd1311ed4e844ecbcc04ec91d
 
 Package: com.xu.screentimelocker16
 Name: ScreenTimeLocker16
