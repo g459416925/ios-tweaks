@@ -28,7 +28,7 @@
 #import <objc/message.h>
 #import <dlfcn.h>
 
-#define NHI_VERSION @"0.7.4"
+#define NHI_VERSION @"0.7.5"
 #define NHI_LOG     @"/var/mobile/Documents/NoHomeIcons.log"
 #define NHI_DISABLE @"/var/mobile/Library/com.xu.nohomeicons/disabled"
 
@@ -210,12 +210,51 @@ static NSUInteger gLayoutLogged = (NSUInteger)-1;
 //   资源库        _SBHLibraryPodIconListView / SBHLibraryCategoryPodIconListView  ← 0.7.1 曾误伤
 //   Dock 与建议    SBDockIconListView / SBDockSuggestionsIconListView / SBFloatingDockIconListView
 // 白名单精确匹配，比「排除 Dock」安全：新出现的库/文件夹列表默认不会被误伤。
+//
+// ⚠️ v0.7.5 关键修正（2026-10-20 事故）：
+//   小组件中心（Today View）里那 7 个 widget 也在一个 **SBIconListView** 里，
+//   类名和主屏完全一样。0.7.4 把它们的 iconView alpha 全压成 0 →
+//   左滑进小组件中心只剩一层毛玻璃背景板，日历/天气/地图/电池全空框，
+//   看起来就像「桌面不能滑出小组件中心」。
+//   真机日志证据：进入 Today View 后紧跟一条
+//     [layout] #2 SBIconListView iconViews=7
+//   再加 7 条 SBIconView 链条（SBIconView < SBIconListView < UIStackView < UIScrollView ...）。
+//   判据改成看 -iconLocation：只有 SBIconLocationRoot（主屏页）才动手。
+static NSString *NHIIconLocation(id listView) {
+    id v = NHICallObj(listView, @"iconLocation");
+    return [v isKindOfClass:[NSString class]] ? v : nil;
+}
+
+// 兜底：拿不到 iconLocation 时看视图链。
+//   主屏页   SBIconView < SBIconListView < SBIconScrollView < UIView < SBRootFolderView
+//   Today    SBIconView < SBIconListView < UIStackView < UIScrollView < ... < SBFFocusIsolationView
+static BOOL NHIIsTodayViewList(id listView) {
+    for (UIView *p = (UIView *)listView; p; p = p.superview) {
+        NSString *pc = NSStringFromClass([p class]);
+        if ([pc rangeOfString:@"Today"].location != NSNotFound) return YES;
+        if ([pc isEqualToString:@"UIStackView"]) return YES;
+    }
+    return NO;
+}
+
 static BOOL NHIShouldHideListView(id listView) {
     NSString *cn = NSStringFromClass([listView class]);
-    if ([cn isEqualToString:@"SBIconListView"]) return YES;
+    if (![cn isEqualToString:@"SBIconListView"]) return NO;
     if ([cn rangeOfString:@"Library"].location != NSNotFound) return NO;
     if ([cn rangeOfString:@"Dock"].location != NSNotFound) return NO;
-    return NO;
+
+    NSString *loc = NHIIconLocation(listView);
+    if ([loc length]) {
+        BOOL isRoot = [loc isEqualToString:@"SBIconLocationRoot"];
+        if (!isRoot && gLayoutCalls <= 14)
+            L(@"[scope] SKIP %@ loc=%@", cn, loc);
+        return isRoot;
+    }
+    if (NHIIsTodayViewList(listView)) {
+        if (gLayoutCalls <= 14) L(@"[scope] SKIP %@ (Today 视图链)", cn);
+        return NO;
+    }
+    return YES;
 }
 
 static UIView *NHIIconViewForIcon(id listView, id icon) {
@@ -346,6 +385,9 @@ static void NHIIconViewDidMoveToWindow(id self, SEL _cmd) {
         NSString *cn = NSStringFromClass([p class]);
         if ([cn rangeOfString:@"Dock"].location != NSNotFound) return;   // Dock 保留
         if ([cn isEqualToString:@"SBIconListView"]) {
+            // v0.7.5：这条兜底同样会命中 Today View 的 widget 图标视图 ——
+            // 必须复用同一套作用域判定，否则小组件中心又被压成空框。
+            if (!NHIShouldHideListView(p)) return;
             if (view.alpha > 0.001) gHiddenViews++;
             view.alpha = 0;
             view.userInteractionEnabled = NO;
