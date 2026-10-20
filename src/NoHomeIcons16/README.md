@@ -1,7 +1,7 @@
 # 桌面净空 NoHomeIcons（com.xu.nohomeicons）
 
 > iPhone 14 Pro Max · iOS 16.5.1 · RootHide + ellekit · arm64e
-> 当前版本 **0.7.1**
+> 当前版本 **0.7.2**
 
 ## 功能
 
@@ -47,7 +47,16 @@ view.userInteractionEnabled = NO;  // 不可点击
 view.accessibilityElementsHidden = YES;
 ```
 
-Dock 判定：类名含 `Dock`（`SBDockIconListView` / `SBDockSuggestionsIconListView` / `SBFloatingDockIconListView`）直接跳过 → Dock 完整保留。
+**只处理主屏那一个类**（0.7.2）：类名分布实测——
+
+| 区域 | 类名 |
+|---|---|
+| 主屏 | `SBIconListView` |
+| App 资源库 | `_SBHLibraryPodIconListView` / `SBHLibraryCategoryPodIconListView` |
+| Dock / 建议 | `SBDockIconListView` / `SBDockSuggestionsIconListView` / `SBFloatingDockIconListView` |
+
+0.7.1 用的是「排除类名含 Dock」的黑名单，结果资源库的两个 Library 列表被一起隐藏 → **资源库全空**。
+0.7.2 改为白名单：`class 精确等于 SBIconListView` 才处理，其余一律放过。
 
 **关键 API 差异（v0.7.0 踩过）**：`SBIconListView -icons` 返回的是 **`SBIcon` 模型对象**，不是视图。要对视图操作必须走 `-iconViewForIcon:` 拿 `SBIconView`。v0.7.0 把 `alpha` 设到了数据对象上，`hiddenViews=0`，界面毫无变化。
 
@@ -76,7 +85,7 @@ Dock 判定：类名含 `Dock`（`SBDockIconListView` / `SBDockSuggestionsIconLi
 SBHomeAutomaticallyAddsNewApplications = 0    # 0 = 仅 App 资源库，1 = 添加到主屏幕
 ```
 
-## 实测证据（v0.7.1）
+## 实测证据（v0.7.2）
 
 ```
 [SB] [hook] OK   SBIconListView -layoutIconsNow  type=v16@0:8
@@ -96,8 +105,8 @@ SBHomeAutomaticallyAddsNewApplications = 0    # 0 = 仅 App 资源库，1 = 添�
 
 - **桌面**：手工把 `com.ss.iphone.ugc.Aweme` 写进 `iconLists[0]` 再 respring → 界面看不到图标，`hiddenViews=1`
 - **Dock**：6 个图标完整，不含被隐藏项
+- **App 资源库**：建议 / 最近添加 / 社交 / 创意 / 工具 / 商业 全部图标正常渲染（0.7.1 曾误伤成全空）
 - **多任务**：`RecentAppLayouts.pb.lzfse` 12 → 291 → 401 字节，正常累积
-- **资源库**：建议 / 最近添加 / 社交 / 创意 / 工具 / 商业 分类完整
 - **设置**：根列表 32 → 31 项，「主屏幕」不再出现；点「显示与亮度」跳转正确
 
 ## 关于布局与备份
@@ -163,7 +172,8 @@ python3 build_deb_local.py  # 设备离线时：Mac 本地 ldid + 手写 ar 打�
 ## 排查备忘（踩过的坑）
 
 1. **`isIconVisible:` 会连坐多任务** —— 它不只是桌面可见性，`SBRecentAppLayouts` 也查它。全返回 NO → App Switcher 只剩 1 个卡片。
-2. **`SBIconListView -icons` 返回模型不是视图** —— 要操作视图必须 `-iconViewForIcon:`。
+2. **隐藏范围必须白名单** —— 只认 `SBIconListView` 这一个类名。用「排除 Dock」的黑名单会把 `_SBHLibraryPodIconListView` / `SBHLibraryCategoryPodIconListView` 一起吞掉 → App 资源库全空。
+3. **`SBIconListView -icons` 返回模型不是视图** —— 要操作视图必须 `-iconViewForIcon:`。
 3. **只 hook 基类 `PSListController` 无效** —— 根列表真实类是 `PSUIPrefsListController` 且 override 了 `-specifiers`。必须先比对 `method_getImplementation` 确认子类真 override，否则两次 hook 同一 Method 会把 original 覆盖成自己的 hook → 递归。
 4. **patch 里不能调 `reloadSpecifiers`** —— 它会重建 `_specifiers`，过滤白做。正确姿势：改 ivar + `[table reloadData]`；同时在 `-reloadSpecifiers` 之后补删一次。
 5. **入口条目没有 `bundle` 属性** —— 靠 `detail=DBSHomeScreenPhoneListController` 识别。
