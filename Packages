@@ -1076,22 +1076,3 @@ Filename: ./debs/com.xu.rescale2plus_1.0.5-3_iphoneos-arm64e.deb
 Size: 144656
 MD5sum: 8f70862c5d41a0c35bfbed281592d6f5
 SHA256: 44f1d36ec5eeabe975925047a5047a7c7de943ff3f35016f2815fa8d0a968e6e
-
-Package: com.xu.shotsuite
-Name: 截图套件 ShotSuite
-Version: 1.0.5
-Architecture: iphoneos-arm64e
-Section: Tweaks
-Priority: optional
-Depends: mobilesubstrate, preferenceloader, firmware (>= 15.0), com.opa334.ccsupport, com.opa334.altlist, com.opa334.libsandy
-Conflicts: com.daodao.snapper3, com.dao.bigshotsnapper3plugin, cn.llld.biaoji, com.lclrc.hammerit
-Replaces: com.daodao.snapper3, com.dao.bigshotsnapper3plugin, cn.llld.biaoji, com.lclrc.hammerit
-Maintainer: g459416925
-Author: g459416925
-Description: Snapper 3 + BigShot 长截图 + 截图标记 + Hammer It 四合一。
- 一个安装包、一个设置入口，四个模块默认全部启用。
- 模块本体原样保留（闭源二进制），面板提供各模块的设置入口。
-Filename: ./debs/com.xu.shotsuite_1.0.5_iphoneos-arm64e.deb
-Size: 1891596
-MD5sum: d720ddedb448d6189cdac34a8d11f542
-SHA256: 610e35c02bf222584e6a87dbe7dc59f879e337123a81dfba41c35e78fc2f9371
