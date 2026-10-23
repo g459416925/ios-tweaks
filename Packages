@@ -794,6 +794,26 @@ Size: 376182
 MD5sum: c2a7dee6fbe900d17a058e36cfa0ec62
 SHA256: c6687f0adabbbf92aabc613ae489763f0609a884d7fe1873a8184e650cf2bed9
 
+Package: com.xu.leafcrack
+Name: Leaf 会员解锁 LeafCrack
+Version: 1.2.1
+Architecture: iphoneos-arm64e
+Description: Leaf VPN 会员解锁：直接写入高级会员状态，隧道可用。
+ · 写入 LEAF_ENC_IS_PREMIUM_ACTIVATED / TOTAL_POINTS / LAST_DEDUCT_TIME
+ · swizzle NSUserDefaults setBool:setInteger:setDouble:forKey:，标记改不回去
+ · RevenueCat RCEntitlementInfo(s) 的 isActive / active 系列恒返回 YES
+ · 后台巡检 10 分钟，被覆盖立刻重写
+ 适用 iOS 16.x / RootHide (arm64e)，注入 com.kitslabs.production.Leaf。
+Maintainer: g459416925
+Author: g459416925
+Section: Tweaks
+Depends: mobilesubstrate
+Tag: purpose::extension
+Filename: ./debs/LeafCrack_1.2.1_iphoneos-arm64e.deb
+Size: 7082
+MD5sum: baeb9b3d36885a047ec73eee1342279e
+SHA256: 1ae6b1eb074eb3bf2a49e406836695525c59754c44d43fb8457e1160e813ec30
+
 Package: com.xu.nohomeicons
 Name: 桌面净空 NoHomeIcons
 Version: 0.7.4
@@ -1015,6 +1035,26 @@ Filename: ./debs/com.xu.adskip_1.3.0_iphoneos-arm64e.deb
 Size: 58934
 MD5sum: 41e888590e7ebe921af63f6961ddd7e3
 SHA256: 012c7d1f0d5e1ad8492c6b61d30951335a742aeef3be17ad623200b9aed38668
+
+Package: com.xu.nohomeicons
+Name: 桌面净空 NoHomeIcons
+Version: 0.7.5
+Architecture: iphoneos-arm64e
+Description: 桌面净空：主屏不显示任何 App 图标，App 只出现在 App 资源库，Dock 保留。
+ · 纯视图层隐藏（alpha=0 + 禁交互），不写 IconState → 卸载插件立刻恢复原布局
+ · 新下载的 App 强制「仅 App 资源库」（锁定 SBHomeAutomaticallyAddsNewApplications，
+   改 plist 或第三方工具无效）
+ · 移除「设置 -> 主屏幕」入口，从根上断掉改设置的可能
+ 注入 SpringBoard + 设置。适用 iOS 16.x / RootHide (arm64e)。
+Maintainer: g459416925
+Author: g459416925
+Section: Tweaks
+Depends: mobilesubstrate
+Tag: purpose::extension
+Filename: ./debs/com.xu.nohomeicons_0.7.5_iphoneos-arm64e.deb
+Size: 12920
+MD5sum: 62bc82bfc037b06b7f960fdd0f52ab81
+SHA256: b28c0447cdb42bddf65eede0f8dfb46d875b0c360317637f5ae7415357b9a218
 
 Package: com.xu.rescale2plus
 Name: Re:Scale 2 Plus

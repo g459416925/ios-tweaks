@@ -57,38 +57,13 @@
   <table>
     <tr><th>包名</th><th>版本</th><th>说明</th></tr>
     <tr>
-      <td><code>com.xu.bounceit16</code></td>
-      <td>1.1.10</td>
-      <td>BounceIt16 — SpringBoard 果冻弹性动画（界面冲过头 → 回弹 → 震荡几下停）</td>
-    </tr>
-    <tr>
-      <td><code>com.xu.compactorfix</code></td>
-      <td>1.0.0</td>
-      <td>CompactorFix — 把系统 UI 字体整体换成 Apple Watch 的 SF Compact</td>
-    </tr>
-    <tr>
-      <td><code>com.xu.screentimelocker16</code></td>
-      <td>5.2.1</td>
-      <td>ScreenTimeLocker16 — 让「屏幕使用时间」的 App 限额真正锁得住</td>
-    </tr>
-    <tr>
-      <td><code>com.xu.keyboardcorner16</code></td>
-      <td>1.0.93</td>
-      <td>KeyboardCorner16 — 系统键盘全按键圆角增强修复版（完美支持字母与数字键盘圆角矩形）</td>
-    </tr>
-    <tr>
-      <td><code>com.xu.statusbarscale</code></td>
-      <td>2.7.0</td>
-      <td>StatusBarScale — 状态栏图标缩放（右侧 0.90× / 时间旁 0.50×）+ 资源库分类卡片与搜索框背景透明</td>
-    </tr>
-    <tr>
-      <td><code>com.xu.shotsuite</code></td>
-      <td>1.0.5</td>
-      <td>截图套件 ShotSuite — Snapper 3 + BigShot 长截图 + 截图标记 + Hammer It 四合一，含 ShotFix 去 UI 补丁</td>
+      <td><code>com.xu.leafcrack</code></td>
+      <td>1.2.1</td>
+      <td>Leaf 会员解锁 LeafCrack — 写入高级会员状态，RevenueCat 权益恒为激活，隧道可用</td>
     </tr>
     <tr>
       <td><code>com.xu.nohomeicons</code></td>
-      <td>0.7.4</td>
+      <td>0.7.5</td>
       <td>桌面净空 NoHomeIcons — 主屏不放任何 App 图标，App 只进资源库，Dock 保留</td>
     </tr>
     <tr>
@@ -97,6 +72,27 @@
       <td>Re:Scale 2 Plus — Re:Scale 2 定制版（440 键盘宽度已 patch 进 ReScaleKB，无附加 dylib）</td>
     </tr>
   </table>
+
+  <h2>LeafCrack（Leaf 会员解锁）</h2>
+  <ol>
+    <li>注入 <code>com.kitslabs.production.Leaf</code>，直接写入高级会员状态：
+        <code>LEAF_ENC_IS_PREMIUM_ACTIVATED</code> /
+        <code>TOTAL_POINTS</code> / <code>LAST_DEDUCT_TIME</code></li>
+    <li>swizzle <code>NSUserDefaults</code> 的
+        <code>setBool:forKey:</code> / <code>setInteger:forKey:</code> /
+        <code>setDouble:forKey:</code>，App 想把标记改回去会被强制覆盖</li>
+    <li>swizzle RevenueCat 的 <code>RCEntitlementInfo</code> /
+        <code>RCEntitlementInfos</code> 的
+        <code>isActive</code> / <code>active</code> 系列 → 恒返回 YES</li>
+    <li>启动后自动确保 <code>LEAF_ENC_DEFAULT_CONFIG_KEY</code> 指向有效配置文件，
+        否则点 GO 会静默失败（界面停在 Ready to Connect，LeafTunnel 不启动）</li>
+    <li>后台巡检 10 分钟，会员标记被覆盖立刻重写</li>
+  </ol>
+  <p class="sub" style="margin-top:14px">
+    RootHide 注入点在 <code>/usr/lib/TweakInject/</code>，
+    并带 <code>.roothidepatch</code> 软链指向 <code>AutoPatches.dylib</code>。
+    装完杀掉 Leaf 重开即生效。
+  </p>
 
   <h2>BounceIt16</h2>
   <ol>
