@@ -1,5 +1,5 @@
 #!/bin/bash
-source "/Users/xu/WorkBuddy/IOS设备处理/device-tools/env.sh"  # 统一设备入口：USB -> LAN -> Tailscale
+DT="/Users/xu/WorkBuddy/IOS设备处理/device-tools"  # 统一设备入口：USB -> LAN -> Tailscale
 # build_deploy.sh —— 编译 + 签名 + 校验 + dpkg 部署 StatusBarScale（精简版：仅状态栏缩放）
 #
 # 关键：**必须校验签名已生效**（体积需增大约 1KB），否则 dyld 会以
@@ -36,16 +36,16 @@ fi
 echo "    ✓ 无私有类符号（_UIStatusBarForegroundView 等全部运行时 objc_getClass）"
 
 echo "==> 3/6 上传并在设备上 ldid -S 签名"
-scp -q "$PKG.dylib" iphone:$REMOTE_TMP/$PKG.dylib
-ssh iphone "ldid -S $REMOTE_TMP/$PKG.dylib; echo -n \"$REMOTE_TMP/$PKG.dylib 签名后体积: \"; stat -c %s $REMOTE_TMP/$PKG.dylib"
-SIGNED=$(ssh iphone "stat -c %s $REMOTE_TMP/$PKG.dylib")
+"$DT/push.sh" "$PKG.dylib" $REMOTE_TMP/$PKG.dylib
+"$DT/iphone.sh" "ldid -S $REMOTE_TMP/$PKG.dylib; echo -n \"$REMOTE_TMP/$PKG.dylib 签名后体积: \"; stat -c %s $REMOTE_TMP/$PKG.dylib"
+SIGNED=$("$DT/iphone.sh" "stat -c %s $REMOTE_TMP/$PKG.dylib")
 if [ "$SIGNED" -le "$UNSIGNED" ]; then
   echo "    ✗ 签名未生效（体积未增长 $UNSIGNED -> $SIGNED）！拒绝部署。"; exit 1
 fi
 echo "    ✓ 签名已生效 ($UNSIGNED -> $SIGNED, +$((SIGNED-UNSIGNED)) B)"
 
 echo "==> 4/6 拉回校验 CodeDirectory"
-scp -q iphone:$REMOTE_TMP/$PKG.dylib ./$PKG.signed.dylib
+"$DT/pull.sh" $REMOTE_TMP/$PKG.dylib ./$PKG.signed.dylib
 codesign -dvvv ./$PKG.signed.dylib 2>&1 | grep -E "CodeDirectory|Hash type|hashes" || true
 
 echo "==> 5/6 打包 RootHide DEB（仅插件本体，无设置面板）"
@@ -54,8 +54,8 @@ DEB=$(ls -t "${PKG}"_*_iphoneos-arm64e.deb | head -1)
 test -n "$DEB"
 
 echo "==> 6/6 通过 dpkg 部署到设备（禁止 root cp 直写 TweakInject）"
-scp -q "$DEB" iphone:$REMOTE_TMP/$PKG.deb
-ssh iphone-root "dpkg -i $REMOTE_TMP/$PKG.deb
+"$DT/push.sh" "$DEB" $REMOTE_TMP/$PKG.deb
+"$DT/iphone.sh" -r "dpkg -i $REMOTE_TMP/$PKG.deb
 echo '    落地:'
 ls -la /Library/MobileSubstrate/DynamicLibraries/$PKG.dylib"
 

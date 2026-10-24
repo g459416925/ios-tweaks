@@ -1,5 +1,5 @@
 #!/bin/bash
-source "/Users/xu/WorkBuddy/IOS设备处理/device-tools/env.sh"  # 统一设备入口：USB -> LAN -> Tailscale
+DT="/Users/xu/WorkBuddy/IOS设备处理/device-tools"  # 统一设备入口：USB -> LAN -> Tailscale
 # build_deploy.sh —— 编译 + 签名 + 校验 + 部署 CompactorFix
 #
 # 关键：**必须校验签名已生效**（体积需增大约 1KB），否则 dyld 会以
@@ -33,26 +33,26 @@ fi
 echo "    ✓ 无私有类符号"
 
 echo "==> 3/5 上传并在设备上 ldid -S 签名"
-scp -q "$PKG.dylib" iphone:$REMOTE_TMP/$PKG.dylib
-ssh iphone "ldid -S $REMOTE_TMP/$PKG.dylib; echo -n \"$REMOTE_TMP/$PKG.dylib 签名后体积: \"; stat -c %s $REMOTE_TMP/$PKG.dylib"
-SIGNED=$(ssh iphone "stat -c %s $REMOTE_TMP/$PKG.dylib")
+"$DT/push.sh" "$PKG.dylib" $REMOTE_TMP/$PKG.dylib
+"$DT/iphone.sh" "ldid -S $REMOTE_TMP/$PKG.dylib; echo -n \"$REMOTE_TMP/$PKG.dylib 签名后体积: \"; stat -c %s $REMOTE_TMP/$PKG.dylib"
+SIGNED=$("$DT/iphone.sh" "stat -c %s $REMOTE_TMP/$PKG.dylib")
 if [ "$SIGNED" -le "$UNSIGNED" ]; then
   echo "    ✗ 签名未生效（体积未增长 $UNSIGNED -> $SIGNED）！拒绝部署。"; exit 1
 fi
 echo "    ✓ 签名已生效 ($UNSIGNED -> $SIGNED, +$((SIGNED-UNSIGNED)) B)"
 
 echo "==> 4/5 拉回校验 CodeDirectory"
-scp -q iphone:$REMOTE_TMP/$PKG.dylib ./$PKG.signed.dylib
+"$DT/pull.sh" $REMOTE_TMP/$PKG.dylib ./$PKG.signed.dylib
 codesign -dvvv ./$PKG.signed.dylib 2>&1 | grep -E "CodeDirectory|Hash type|hashes" || true
 
 echo "==> 5/5 部署到设备"
-scp -q ./$PKG.signed.dylib iphone:$REMOTE_TMP/
-scp -q ./$PKG.plist        iphone:$REMOTE_TMP/
-ssh iphone-root "DL=/Library/MobileSubstrate/DynamicLibraries
+"$DT/push.sh" ./$PKG.signed.dylib $REMOTE_TMP/
+"$DT/push.sh" ./$PKG.plist        $REMOTE_TMP/
+"$DT/iphone.sh" -r "DL=/Library/MobileSubstrate/DynamicLibraries
 cp $REMOTE_TMP/$PKG.signed.dylib \$DL/$PKG.dylib
 cp $REMOTE_TMP/$PKG.plist        \$DL/$PKG.plist
 chmod 755 \$DL/$PKG.dylib; chown root:wheel \$DL/$PKG.dylib
 chmod 644 \$DL/$PKG.plist; chown root:wheel \$DL/$PKG.plist
 echo '    落地:'; ls -la \$DL/$PKG.dylib \$DL/$PKG.plist"
 
-echo "==> 完成。生效需 respring（sbreload）；核实签名：ssh iphone \"stat -c %s /usr/lib/TweakInject/$PKG.dylib\" 应等于 $SIGNED"
+echo "==> 完成。生效需 respring（sbreload）；核实签名：$DT/iphone.sh \"stat -c %s /usr/lib/TweakInject/$PKG.dylib\" 应等于 $SIGNED"

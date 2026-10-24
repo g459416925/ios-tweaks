@@ -1,5 +1,5 @@
 #!/bin/bash
-source "/Users/xu/WorkBuddy/IOS设备处理/device-tools/env.sh"  # 统一设备入口：USB -> LAN -> Tailscale
+DT="/Users/xu/WorkBuddy/IOS设备处理/device-tools"  # 统一设备入口：USB -> LAN -> Tailscale
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -17,10 +17,10 @@ clang -arch arm64e -miphoneos-version-min=14.0 -isysroot "$SDK" \
   -install_name "/Library/MobileSubstrate/DynamicLibraries/$NAME.dylib" \
   -o "$NAME.dylib" "$NAME.m"
 
-ssh iphone-root "rm -f /var/tmp/$NAME.dylib"
-scp -q "$NAME.dylib" iphone:/var/tmp/$NAME.dylib
-ssh iphone-root "ldid -S /var/tmp/$NAME.dylib"
-scp -q iphone:/var/tmp/$NAME.dylib "$NAME.signed.dylib"
+"$DT/iphone.sh" -r "rm -f /var/tmp/$NAME.dylib"
+"$DT/push.sh" "$NAME.dylib" /var/tmp/$NAME.dylib
+"$DT/iphone.sh" -r "ldid -S /var/tmp/$NAME.dylib"
+"$DT/pull.sh" /var/tmp/$NAME.dylib "$NAME.signed.dylib"
 
 VER="$VER" NAME="$NAME" PKG="$PKG" ARCH="$ARCH" python3 - <<'PY'
 import gzip, io, os, tarfile, time

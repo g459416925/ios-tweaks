@@ -1,5 +1,5 @@
 #!/bin/bash
-source "/Users/xu/WorkBuddy/IOS设备处理/device-tools/env.sh"  # 统一设备入口：USB -> LAN -> Tailscale
+DT="/Users/xu/WorkBuddy/IOS设备处理/device-tools"  # 统一设备入口：USB -> LAN -> Tailscale
 # KBKeyProbe3 构建部署：编译 → 设备签名 → 打包 deb → 部署
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"; cd "$HERE"
@@ -15,10 +15,10 @@ clang -arch arm64e -miphoneos-version-min=14.0 -isysroot "$SDK" \
 echo "   ok $(stat -f%z "$NAME.dylib") bytes"
 
 echo "== 2) 设备签名 =="
-ssh iphone-root "rm -f /var/tmp/$NAME.dylib"
-scp -q "$NAME.dylib" iphone:/var/tmp/$NAME.dylib
-ssh iphone-root "ldid -S /var/tmp/$NAME.dylib && stat -c %s /var/tmp/$NAME.dylib"
-scp -q iphone:/var/tmp/$NAME.dylib "$NAME.signed.dylib"
+"$DT/iphone.sh" -r "rm -f /var/tmp/$NAME.dylib"
+"$DT/push.sh" "$NAME.dylib" /var/tmp/$NAME.dylib
+"$DT/iphone.sh" -r "ldid -S /var/tmp/$NAME.dylib && stat -c %s /var/tmp/$NAME.dylib"
+"$DT/pull.sh" /var/tmp/$NAME.dylib "$NAME.signed.dylib"
 
 echo "== 3) 打包 deb =="
 VER="$VER" NAME="$NAME" PKG="$PKG" ARCH="$ARCH" python3 - <<'PY'
@@ -56,6 +56,6 @@ print("   deb: %s (%d bytes)"%(OUT,os.path.getsize(OUT)))
 PY
 
 echo "== 4) 部署 =="
-scp -q "${NAME}_${VER}_${ARCH}.deb" iphone:/var/tmp/
-ssh iphone-root "dpkg -i /var/tmp/${NAME}_${VER}_${ARCH}.deb 2>&1 | tail -3"
+"$DT/push.sh" "${NAME}_${VER}_${ARCH}.deb" /var/tmp/
+"$DT/iphone.sh" -r "dpkg -i /var/tmp/${NAME}_${VER}_${ARCH}.deb 2>&1 | tail -3"
 echo DONE
