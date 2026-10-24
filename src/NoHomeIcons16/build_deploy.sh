@@ -1,4 +1,5 @@
 #!/bin/bash
+source "/Users/xu/WorkBuddy/IOS设备处理/device-tools/env.sh"  # 统一设备入口：USB -> LAN -> Tailscale
 # build_deploy.sh —— 桌面净空 NoHomeIcons 构建 / 部署
 #
 #   ./build_deploy.sh build    只编译（本地）

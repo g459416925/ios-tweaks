@@ -1,4 +1,5 @@
 #!/bin/bash
+source "/Users/xu/WorkBuddy/IOS设备处理/device-tools/env.sh"  # 统一设备入口：USB -> LAN -> Tailscale
 # KeyboardCorner16 构建部署：编译 → 安全检查 → 设备签名 → 打包 deb → 部署 → sbreload → 读日志
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"; cd "$HERE"

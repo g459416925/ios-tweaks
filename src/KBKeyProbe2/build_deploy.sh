@@ -1,4 +1,5 @@
 #!/bin/bash
+source "/Users/xu/WorkBuddy/IOS设备处理/device-tools/env.sh"  # 统一设备入口：USB -> LAN -> Tailscale
 # KBKeyProbe2 构建部署：编译 → 设备签名 → 打包 deb → 部署
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"; cd "$HERE"
