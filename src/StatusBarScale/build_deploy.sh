@@ -1,4 +1,5 @@
 #!/bin/bash
+source "/Users/xu/WorkBuddy/IOS设备处理/device-tools/env.sh"  # 统一设备入口：USB -> LAN -> Tailscale
 # build_deploy.sh —— 编译 + 签名 + 校验 + dpkg 部署 StatusBarScale（精简版：仅状态栏缩放）
 #
 # 关键：**必须校验签名已生效**（体积需增大约 1KB），否则 dyld 会以

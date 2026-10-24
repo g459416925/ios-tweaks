@@ -1,4 +1,6 @@
 # ScreenTimeLocker16 —— iOS 16.5.1 / RootHide 重写版
+> ⚠️ 路径说明（2026-10-24）：`tweak_stl/` 已删除，对应源码/构建在 `ios-tweaks/src/ScreenTimeLocker16/`；`插件分析/` 已删除。以下旧路径仅作历史记录。
+
 
 > ⚠️ **2026-10-04 11:47 重大更正（v4.4.0）**：本文早期版本判定「宿主 = ScreenTimeAgent」是**错的**。
 > 实机证明 **App 限额拦截页由 SpringBoard 以远程视图呈现**，v4.3.0 里那条「绝不进 SpringBoard」的

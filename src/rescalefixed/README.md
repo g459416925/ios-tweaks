@@ -6,6 +6,11 @@
 > 完整设计文档、失效矩阵、踩坑记录在私有工作区
 > `rescale2/README-440patch.md`；本目录只放**能公开的构建脚本与源码快照**。
 
+> **2026-10-24 状态**：当前设备与发布包为 `com.xu.rescalefixed 3.1.1`。
+> 本目录是发布源快照；与私有工作区 `rescale2/repo-fixed|merge-kb440` 共享的 6 个文件
+> 用 `rescale2/check-sync.sh` 校验，不要只改一边。
+
+
 ## 文件
 
 | 路径 | 说明 |

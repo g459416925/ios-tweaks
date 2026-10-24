@@ -1,4 +1,6 @@
 # Compactor 功能「hook 复现」验证报告 —— 成功
+> ⚠️ 路径说明（2026-10-24）：`tweak_stl/` 已删除，对应源码/构建在 `ios-tweaks/src/CompactorFix/`。以下旧路径仅作历史记录。
+
 
 > 设备：iPhone 14 Pro Max（iPhone15,3）· iOS 16.5.1（20F75）· RootHide + ellekit 1.2-1
 > 日期：2026-10-04 · 结论时间：14:05–14:18

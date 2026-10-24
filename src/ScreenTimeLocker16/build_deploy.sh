@@ -1,4 +1,5 @@
 #!/bin/bash
+source "/Users/xu/WorkBuddy/IOS设备处理/device-tools/env.sh"  # 统一设备入口：USB -> LAN -> Tailscale
 # build_deploy.sh —— 编译 + 签名 + 校验 + 部署 ScreenTimeLocker16
 # 关键：**必须校验签名已生效**（体积需增大约 1KB），否则 dyld 会以
 #       CODESIGNING / Invalid Page 杀掉宿主进程（曾把 SpringBoard 打挂）。
@@ -53,4 +54,4 @@ DL=/usr/lib/TweakInject
 echo '    落地:'; ls -la \$DL/$PKG.dylib \$DL/$PKG.plist"
 
 echo "==> 完成。生效需 respring（sbreload）。"
-echo "==> 设备侧校验: ssh iphone-root 'wc -c /usr/lib/TweakInject/$PKG.dylib' 应等于 $SIGNED"
+echo "==> 设备侧校验: ./device-tools/iphone.sh -r 'wc -c /usr/lib/TweakInject/$PKG.dylib' 应等于 $SIGNED"

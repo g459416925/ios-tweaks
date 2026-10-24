@@ -1,4 +1,5 @@
 #!/bin/bash
+source "/Users/xu/WorkBuddy/IOS设备处理/device-tools/env.sh"  # 统一设备入口：USB -> LAN -> Tailscale
 # BounceIt16 构建部署：编译 → 安全检查 → 设备签名 → 打包 deb → 安装 → respring → 读日志
 # 用法: ./build_deploy.sh [版本号]     默认 1.0.1
 set -e

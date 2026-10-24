@@ -131,7 +131,7 @@ v0.7.1 起**不再改写 `IconState.plist`**，桌面布局原样保留（图标
 | 卸载 | `dpkg -r com.xu.nohomeicons` + respring（图标立刻回来，布局本就未改） |
 
 > 开关路径的两个视图别搞混：SpringBoard 读真系统路径（`/rootfs/private/var/mobile/...`），
-> 而 `ssh iphone-root` 的 `/var/mobile/...` 属于 jbroot 视图，写那边等于没写。
+> 而 `./device-tools/iphone.sh -r` 的 `/var/mobile/...` 属于 jbroot 视图，写那边等于没写。
 
 ## 日志
 
