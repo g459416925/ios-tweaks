@@ -1,5 +1,5 @@
 #!/bin/bash
-source "/Users/xu/WorkBuddy/IOS设备处理/device-tools/env.sh"  # 统一设备入口：USB -> LAN -> Tailscale
+DT="/Users/xu/WorkBuddy/IOS设备处理/device-tools"  # 统一设备入口：USB -> LAN -> Tailscale
 # build_deploy.sh —— 编译 + 签名 + 校验 + 部署 ScreenTimeLocker16
 # 关键：**必须校验签名已生效**（体积需增大约 1KB），否则 dyld 会以
 #       CODESIGNING / Invalid Page 杀掉宿主进程（曾把 SpringBoard 打挂）。
@@ -28,16 +28,16 @@ echo "    ✓ 无私有类符号"
 
 echo "==> 3/5 上传并在设备上 ldid -S 签名"
 # ⚠️ RootHide 下不要用 /tmp（相对符号链接会解析进 jbroot 影子目录）→ 一律 /var/tmp
-scp -q "$PKG.dylib" iphone:/var/tmp/$PKG.dylib
-ssh iphone "ldid -S /var/tmp/$PKG.dylib; echo -n '/var/tmp/$PKG.dylib 签名后体积: '; stat -c %s /var/tmp/$PKG.dylib"
-SIGNED=$(ssh iphone "stat -c %s /var/tmp/$PKG.dylib")
+"$DT/push.sh" "$PKG.dylib" /var/tmp/$PKG.dylib
+"$DT/iphone.sh" "ldid -S /var/tmp/$PKG.dylib; echo -n '/var/tmp/$PKG.dylib 签名后体积: '; stat -c %s /var/tmp/$PKG.dylib"
+SIGNED=$("$DT/iphone.sh" "stat -c %s /var/tmp/$PKG.dylib")
 if [ "$SIGNED" -le "$UNSIGNED" ]; then
   echo "    ✗ 签名未生效（体积未增长 $UNSIGNED -> $SIGNED）！拒绝部署。"; exit 1
 fi
 echo "    ✓ 签名已生效 ($UNSIGNED -> $SIGNED, +$((SIGNED-UNSIGNED)) B)"
 
 echo "==> 4/5 拉回校验 CodeDirectory"
-scp -q iphone:/var/tmp/$PKG.dylib ./$PKG.signed.dylib
+"$DT/pull.sh" /var/tmp/$PKG.dylib ./$PKG.signed.dylib
 codesign -dvvv ./$PKG.signed.dylib 2>&1 | grep -E "CodeDirectory|Hash type|hashes" || true
 
 echo "==> 5/5 打包 DEB 并用 dpkg 部署"
@@ -48,8 +48,8 @@ echo "==> 5/5 打包 DEB 并用 dpkg 部署"
 /Users/xu/.workbuddy/binaries/python/versions/3.13.12/bin/python3 build_deb.py
 DEB=$(ls -t ${PKG}_*_iphoneos-arm64e.deb | head -1)
 test -n "$DEB"
-scp -q "$DEB" iphone:/var/tmp/$PKG.deb
-ssh iphone-root "dpkg -i /var/tmp/$PKG.deb
+"$DT/push.sh" "$DEB" /var/tmp/$PKG.deb
+"$DT/iphone.sh" -r "dpkg -i /var/tmp/$PKG.deb
 DL=/usr/lib/TweakInject
 echo '    落地:'; ls -la \$DL/$PKG.dylib \$DL/$PKG.plist"
 

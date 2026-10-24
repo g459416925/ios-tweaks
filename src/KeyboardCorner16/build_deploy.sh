@@ -1,5 +1,5 @@
 #!/bin/bash
-source "/Users/xu/WorkBuddy/IOS设备处理/device-tools/env.sh"  # 统一设备入口：USB -> LAN -> Tailscale
+DT="/Users/xu/WorkBuddy/IOS设备处理/device-tools"  # 统一设备入口：USB -> LAN -> Tailscale
 # KeyboardCorner16 构建部署：编译 → 安全检查 → 设备签名 → 打包 deb → 部署 → sbreload → 读日志
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"; cd "$HERE"
@@ -24,10 +24,10 @@ if nm -u "$NAME.dylib" | grep -E '_OBJC_CLASS_\$_(UIKB|UIKeyboard|SB)'; then ech
 echo "   clean"
 
 echo "== 3) 设备签名 =="
-ssh "$SSH_ROOT" "rm -f /var/tmp/$NAME.dylib"
-scp -q "$NAME.dylib" "$SSH_HOST":/var/tmp/$NAME.dylib
-ssh "$SSH_ROOT" "ldid -S /var/tmp/$NAME.dylib && stat -c %s /var/tmp/$NAME.dylib"
-scp -q "$SSH_HOST":/var/tmp/$NAME.dylib "$NAME.signed.dylib"
+"$DT/iphone.sh" -r "rm -f /var/tmp/$NAME.dylib"
+"$DT/push.sh" "$NAME.dylib" /var/tmp/$NAME.dylib
+"$DT/iphone.sh" -r "ldid -S /var/tmp/$NAME.dylib && stat -c %s /var/tmp/$NAME.dylib"
+"$DT/pull.sh" /var/tmp/$NAME.dylib "$NAME.signed.dylib"
 codesign -dvvv "$NAME.signed.dylib" 2>&1 | grep CodeDirectory || true
 
 echo "== 4) 打包 deb =="
@@ -101,18 +101,18 @@ cp -f "${NAME}_${VER}_${ARCH}.deb" "../../debs/"
 python3 ../../tools/gen_repo.py
 
 echo "== 5) 部署 =="
-ssh "$SSH_ROOT" "rm -f /var/mobile/Documents/kbc_round.log /rootfs/private/var/mobile/Documents/kbc_round.log /var/tmp/${NAME}_${VER}_${ARCH}.deb"
+"$DT/iphone.sh" -r "rm -f /var/mobile/Documents/kbc_round.log /rootfs/private/var/mobile/Documents/kbc_round.log /var/tmp/${NAME}_${VER}_${ARCH}.deb"
 # 如果安装了测试探针包或旧包，先清理
-ssh "$SSH_ROOT" "dpkg -r com.xu.kbprobe 2>/dev/null || true"
-ssh "$SSH_ROOT" "dpkg -r com.liuf.jpyj 2>/dev/null || true"
-ssh "$SSH_ROOT" "dpkg -r byg.iosios.net.oledkeyboard com.p2kdev.underdock codes.aurora.kayoko 2>/dev/null || true"
-scp -q "${NAME}_${VER}_${ARCH}.deb" "$SSH_HOST":/var/tmp/
-ssh "$SSH_ROOT" "dpkg -i /var/tmp/${NAME}_${VER}_${ARCH}.deb 2>&1 | tail -5"
+"$DT/iphone.sh" -r "dpkg -r com.xu.kbprobe 2>/dev/null || true"
+"$DT/iphone.sh" -r "dpkg -r com.liuf.jpyj 2>/dev/null || true"
+"$DT/iphone.sh" -r "dpkg -r byg.iosios.net.oledkeyboard com.p2kdev.underdock codes.aurora.kayoko 2>/dev/null || true"
+"$DT/push.sh" "${NAME}_${VER}_${ARCH}.deb" /var/tmp/
+"$DT/iphone.sh" -r "dpkg -i /var/tmp/${NAME}_${VER}_${ARCH}.deb 2>&1 | tail -5"
 
 echo "== 6) sbreload =="
-ssh "$SSH_ROOT" 'sbreload'
+"$DT/iphone.sh" -r 'sbreload'
 sleep 15
 
 echo "== 7) 验证插件生效日志 =="
-ssh "$SSH_ROOT" 'cat /var/mobile/Documents/kbc_round.log 2>/dev/null || cat /rootfs/private/var/mobile/Documents/kbc_round.log 2>/dev/null || true'
+"$DT/iphone.sh" -r 'cat /var/mobile/Documents/kbc_round.log 2>/dev/null || cat /rootfs/private/var/mobile/Documents/kbc_round.log 2>/dev/null || true'
 echo "DONE"

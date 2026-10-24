@@ -1,5 +1,5 @@
 #!/bin/bash
-source "/Users/xu/WorkBuddy/IOS设备处理/device-tools/env.sh"  # 统一设备入口：USB -> LAN -> Tailscale
+DT="/Users/xu/WorkBuddy/IOS设备处理/device-tools"  # 统一设备入口：USB -> LAN -> Tailscale
 # build_deploy.sh —— 桌面净空 NoHomeIcons 构建 / 部署
 #
 #   ./build_deploy.sh build    只编译（本地）
@@ -39,19 +39,20 @@ echo "    ✓ 无私有类符号"
 [ "$1" = "build" ] && { echo "==> 完成（仅编译）"; exit 0; }
 
 echo "==> 3/5 上传并签名"
-ssh iphone "rm -rf $RDEV && mkdir -p $RDEV"
-scp -q "$PKG.dylib" "$PKG.plist" iphone:$RDEV/
-ssh iphone "ldid -S $RDEV/$PKG.dylib; echo -n '    签名后: '; stat -c %s $RDEV/$PKG.dylib"
-SIGNED=$(ssh iphone "stat -c %s $RDEV/$PKG.dylib")
+"$DT/iphone.sh" "rm -rf $RDEV && mkdir -p $RDEV"
+"$DT/push.sh" "$PKG.dylib" "$RDEV/$PKG.dylib"
+"$DT/push.sh" "$PKG.plist" "$RDEV/$PKG.plist"
+"$DT/iphone.sh" "ldid -S $RDEV/$PKG.dylib; echo -n '    签名后: '; stat -c %s $RDEV/$PKG.dylib"
+SIGNED=$("$DT/iphone.sh" "stat -c %s $RDEV/$PKG.dylib")
 [ "$SIGNED" -gt "$UNSIGNED" ] || { echo "    ✗ 签名未生效 $UNSIGNED -> $SIGNED"; exit 1; }
 echo "    ✓ 签名生效 (+$((SIGNED-UNSIGNED)) B)"
 
 # control 单一来源：control 模板（__VERSION__ 占位），本地打包脚本共用同一份
 sed "s/__VERSION__/$VERSION/" control > /tmp/nhi_control
-scp -q /tmp/nhi_control iphone:$RDEV/control
+"$DT/push.sh" /tmp/nhi_control $RDEV/control
 
 echo "==> 4/5 设备上组装 deb"
-ssh iphone-root "set -e
+"$DT/iphone.sh" -r "set -e
 rm -rf $STAGE && mkdir -p $STAGE/Library/MobileSubstrate/DynamicLibraries $STAGE/DEBIAN
 cp $RDEV/$PKG.dylib $RDEV/$PKG.plist $STAGE/Library/MobileSubstrate/DynamicLibraries/
 cp $RDEV/control $STAGE/DEBIAN/control
@@ -64,7 +65,7 @@ echo -n '    deb: '; stat -c %s $RDEV/$PKG.deb; echo -n ' 条目: '; dpkg-deb -c
 [ "$1" = "pkg" ] && { echo "==> 完成（已产出 deb，未安装）"; exit 0; }
 
 echo "==> 5/5 安装 + respring"
-ssh iphone-root "dpkg -i $RDEV/$PKG.deb 2>&1 | grep -viE 'warning|Maintainer' | tail -5
+"$DT/iphone.sh" -r "dpkg -i $RDEV/$PKG.deb 2>&1 | grep -viE 'warning|Maintainer' | tail -5
 echo '--- 落地 ---'
 dpkg -s $PKGID | grep -E '^(Status|Version)'
 ls -l /Library/MobileSubstrate/DynamicLibraries/$PKG.dylib
