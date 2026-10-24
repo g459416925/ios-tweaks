@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  模板：postinst 会把 @JBROOT@ 替换成 RootHide 的真实 jbroot 路径后写到
+  /Library/LaunchDaemons/com.xu.rescalefixed.heal.plist
+
+  为什么要用 jbroot 真实路径 + 显式 sh：
+    RootHide 的 system 域 launchd 运行在真实根命名空间，看不到 /usr/bin；
+    且内核按 shebang 解析 #!/usr/bin/sh 时同样找不到解释器 → launchd 报 EX_CONFIG(78)。
+    所以必须 [<jbroot>/bin/sh, <jbroot>/usr/bin/rf_check, --heal]（与 com.openssh.sshd 同款做法）。
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.xu.rescalefixed.heal</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>@JBROOT@/bin/sh</string>
+        <string>@JBROOT@/usr/bin/rf_check</string>
+        <string>--heal</string>
+    </array>
+    <!-- 开机 / userspace reboot 立刻跑一次 -->
+    <key>RunAtLoad</key>
+    <true/>
+    <!-- respring 不会重启本 daemon，靠轮询兜住（2 分钟一次） -->
+    <key>StartInterval</key>
+    <integer>120</integer>
+    <key>ThrottleInterval</key>
+    <integer>60</integer>
+    <key>ProcessType</key>
+    <string>Background</string>
+    <key>StandardOutPath</key>
+    <string>/var/log/rfheal.log</string>
+    <key>StandardErrorPath</key>
+    <string>/var/log/rfheal.log</string>
+</dict>
+</plist>

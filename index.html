@@ -71,6 +71,11 @@
       <td>1.0.5-3</td>
       <td>Re:Scale 2 Plus — Re:Scale 2 定制版（440 键盘宽度已 patch 进 ReScaleKB，无附加 dylib）</td>
     </tr>
+    <tr>
+      <td><code>com.xu.rescalefixed</code></td>
+      <td>3.1.1</td>
+      <td>Re:Scale Fixed 440 — 固定 440×956（18 Pro Max）分辨率，无面板、装完即生效，自带自检与自愈守护</td>
+    </tr>
   </table>
 
   <h2>LeafCrack（Leaf 会员解锁）</h2>
@@ -181,7 +186,31 @@
     注入 SpringBoard + 设置两个进程。
   </p>
 
-  <h2>Re:Scale 2 Plus</h2>
+  <h2>Re:Scale Fixed 440（当前推荐）</h2>
+  <ol>
+    <li><b>固定 440×956pt（1320×2868 @3x，iPhone 18 Pro Max 6.9"）</b>，装完 respring 一次即全局生效，
+        <b>没有设置界面、不需要点确认</b></li>
+    <li>复用原版 <code>ReScale.dylib</code>（by Sniper_GER）<b>字节完全未改</b>：
+        RootHide trustcache 只认已登记 CDHash，自己编译/重签的 dylib 注入 backboardd 会被 amfid 拒绝
+        → 崩溃循环 → 看门狗。分辨率靠 <code>postinst</code> 写死偏好
+        （<code>canvas_width=1320</code> / <code>canvas_height=2868</code> / <code>confirmedResolution=true</code>）实现</li>
+    <li>键盘 414→440 修正内联在 <code>ReScaleKB</code>（行为级重写，非指令 patch）</li>
+    <li><b>guard 标记 <code>chflags uchg</code> 锁死</b>：原版 dylib 靠
+        <code>/Library/dpkg/info/tf.festival.rescale2.list</code> 决定装不装 hook，
+        缺了会<b>静默失效</b>（分辨率无声回落），故设为不可删</li>
+    <li><b>自带自检</b> <code>/usr/bin/rf_check</code>（15 项）与<b>自愈守护</b>
+        <code>com.xu.rescalefixed.heal</code>：开机 / userspace reboot 自动补文件，
+        respring 后 ≤2 分钟补齐；仅"确实修了东西"时才重启一次 backboardd 让画布重读（10 分钟防抖）</li>
+    <li>与原版及旧重打包版互斥：
+        <code>Conflicts / Replaces: tf.festival.rescale2, com.xu.rescalekb440fix, com.xu.rescale2plus</code></li>
+  </ol>
+  <p class="sub" style="margin-top:14px">
+    ⚠️ <code>postinst</code> <b>绝不重启任何系统进程</b>（dpkg 事务里 kill backboardd 会进 spawn 循环
+    → 看门狗，已踩过两次）。装完由系统触发一次 respring 即生效。
+    自愈守护真的修复文件时会重启一次 backboardd，表现为屏幕闪一下，属预期。
+  </p>
+
+  <h2>Re:Scale 2 Plus（历史版本）</h2>
   <ol>
     <li>原版 <b>Re:Scale 2</b>（<code>tf.festival.rescale2</code> 1.0.5-1 by Sniper_GER）的完整重打包：
         四个 dylib + 设置面板原样保留</li>

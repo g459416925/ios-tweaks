@@ -1076,3 +1076,29 @@ Filename: ./debs/com.xu.rescale2plus_1.0.5-3_iphoneos-arm64e.deb
 Size: 144656
 MD5sum: 8f70862c5d41a0c35bfbed281592d6f5
 SHA256: 44f1d36ec5eeabe975925047a5047a7c7de943ff3f35016f2815fa8d0a968e6e
+
+Package: com.xu.rescalefixed
+Name: Re:Scale Fixed 440
+Version: 3.1.1
+Architecture: iphoneos-arm64e
+Section: Tweaks
+Priority: optional
+Maintainer: g459416925
+Depends: mobilesubstrate, firmware (>= 14.0)
+Conflicts: tf.festival.rescale2, com.xu.rescalekb440fix, com.xu.rescale2plus
+Replaces: tf.festival.rescale2, com.xu.rescalekb440fix, com.xu.rescale2plus
+Description: 固定 440x956 分辨率（iPhone 18 Pro Max 6.9" @3x），装完即生效
+ 安装即在系统里写入固定的画布偏好 1320x2868（= 440x956pt @3x），
+ 并删除设置面板与 PreferenceLoader 条目：没有界面、不需要点确认、
+ 不需要任何设置，装完 respring 一次就全局生效。
+ 分辨率注入复用原版 ReScale.dylib（字节未改，签名受信），
+ 键盘宽度 414 -> 440 的修正内联在 ReScaleKB 里。
+ 自带自检工具：/usr/bin/rf_check（加 --fix 可修复丢失的标记/偏好）。
+ 自带自愈守护 com.xu.rescalefixed.heal：开机/userspace reboot 自动补文件，
+ respring 后 2 分钟内补齐；仅在确实修复时才重启一次 backboardd 让画布重读。
+ 与原版 Re:Scale 2 及带面板的重打包版互斥。
+Tag: purpose::extension
+Filename: ./debs/com.xu.rescalefixed_3.1.1_iphoneos-arm64e.deb
+Size: 17776
+MD5sum: 81d25fd118885204fc04900ed4b53b1b
+SHA256: 6f8dbedc12d042b74a70d6ddce40a14cfdd4b1115366a61ff45b2a718cc8a7eb
