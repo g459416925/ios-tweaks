@@ -1036,6 +1036,41 @@ Size: 58934
 MD5sum: 41e888590e7ebe921af63f6961ddd7e3
 SHA256: 012c7d1f0d5e1ad8492c6b61d30951335a742aeef3be17ad623200b9aed38668
 
+Package: com.xu.adskip
+Name: 广告跳过 AdSkip
+Version: 1.3.3
+Architecture: iphoneos-arm64e
+Section: Tweaks
+Priority: optional
+Depends: ellekit, firmware (>= 15.0)
+Maintainer: g459416925
+Author: g459416925
+Description: 广告播放跳过 + 权益保留
+ 在 GDT / 穿山甲 激励视频、开屏、插屏上：
+ · 视频播放器 play 后立即 seek 到尾部，走 SDK 原生 finish 路径
+ · 开屏倒计时直接打到 0，补发 splashAdWillClosed/splashAdClosed
+ · 激励回调「原生优先，兜底补发」且带幂等标记，不重复发奖
+ 支持应用由 AdSkip.plist 的 Filter.Bundles 控制。
+Filename: ./debs/com.xu.adskip_1.3.3_iphoneos-arm64e.deb
+Size: 169324
+MD5sum: ab99cde76e89d778f44d523f641dec5e
+SHA256: 2016f5923b0e6ca4abe85dd3c992996adae42358697f06908cbdc3c3b6984d56
+
+Package: com.xu.chevronv3
+Name: ChevronV3
+Depends: mobilesubstrate, preferenceloader
+Description: New generation for testing.
+Maintainer: xu
+Author: xu
+Section: Tweaks
+Architecture: iphoneos-arm64e
+Version: 1.0.18-227+env-fast-1+debug
+Installed-Size: 3844
+Filename: ./debs/com.xu.chevronv3_1.0.18-227+env-fast-1+debug_iphoneos-arm64e.deb
+Size: 781034
+MD5sum: 22e8fb859a3afadaac38500d0598466d
+SHA256: 83947b0e1a90b49f9a3ffa41c4111cda56d3d4ed90dddce44ff4abf0fd7f118f
+
 Package: com.xu.nohomeicons
 Name: 桌面净空 NoHomeIcons
 Version: 0.7.5
