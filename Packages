@@ -976,6 +976,21 @@ Size: 81034
 MD5sum: 3133ed335fcd124e5b47ff17ceb182af
 SHA256: 84a99f5d11f14f40ec236327caf18d2b8eb13d2e34c2451805cf2bca10dcd40d
 
+Package: com.xu.chevronv3
+Name: ChevronV3
+Depends: mobilesubstrate, preferenceloader
+Description: New generation for testing.
+Maintainer: xu
+Author: xu
+Section: Tweaks
+Architecture: iphoneos-arm64e
+Version: 1.0.18-227+env-fast-1+debug
+Installed-Size: 3844
+Filename: ./debs/com.xu.chevronv3_1.0.18-227+env-fast-1+debug_iphoneos-arm64e.deb
+Size: 781034
+MD5sum: 22e8fb859a3afadaac38500d0598466d
+SHA256: 83947b0e1a90b49f9a3ffa41c4111cda56d3d4ed90dddce44ff4abf0fd7f118f
+
 Package: com.xu.nohomeicons
 Name: 桌面净空 NoHomeIcons
 Version: 0.7.5
