@@ -67,11 +67,6 @@
       <td>桌面净空 NoHomeIcons — 主屏不放任何 App 图标，App 只进资源库，Dock 保留</td>
     </tr>
     <tr>
-      <td><code>com.xu.rescale2plus</code></td>
-      <td>1.0.5-3</td>
-      <td>Re:Scale 2 Plus — Re:Scale 2 定制版（440 键盘宽度已 patch 进 ReScaleKB，无附加 dylib）</td>
-    </tr>
-    <tr>
       <td><code>com.xu.rescalefixed</code></td>
       <td>3.1.1</td>
       <td>Re:Scale Fixed 440 — 固定 440×956（18 Pro Max）分辨率，无面板、装完即生效，自带自检与自愈守护</td>
@@ -201,30 +196,13 @@
     <li><b>自带自检</b> <code>/usr/bin/rf_check</code>（15 项）与<b>自愈守护</b>
         <code>com.xu.rescalefixed.heal</code>：开机 / userspace reboot 自动补文件，
         respring 后 ≤2 分钟补齐；仅"确实修了东西"时才重启一次 backboardd 让画布重读（10 分钟防抖）</li>
-    <li>与原版及旧重打包版互斥：
+    <li>与原版及旧重打包版互斥（仅为包管理器元数据，旧包本身未安装/不在仓库）：
         <code>Conflicts / Replaces: tf.festival.rescale2, com.xu.rescalekb440fix, com.xu.rescale2plus</code></li>
   </ol>
   <p class="sub" style="margin-top:14px">
     ⚠️ <code>postinst</code> <b>绝不重启任何系统进程</b>（dpkg 事务里 kill backboardd 会进 spawn 循环
     → 看门狗，已踩过两次）。装完由系统触发一次 respring 即生效。
     自愈守护真的修复文件时会重启一次 backboardd，表现为屏幕闪一下，属预期。
-  </p>
-
-  <h2>Re:Scale 2 Plus（历史版本）</h2>
-  <ol>
-    <li>原版 <b>Re:Scale 2</b>（<code>tf.festival.rescale2</code> 1.0.5-1 by Sniper_GER）的完整重打包：
-        四个 dylib + 设置面板原样保留</li>
-    <li><b>1.0.5-3 起把 440 键盘修正直接 patch 进 <code>ReScaleKB.dylib</code></b>：它的三个尺寸
-        hook 里都在做 <code>CGRectInset(bounds, padding, 0)</code>，把 440 宽缩成 414；
-        把那处加载 padding 的 <code>ldur d4, [x29, #-0x90]</code> 改成 <code>movi d4, #0</code>，
-        宽度就等于屏幕宽（三处 patch：<code>0x7540 / 0x7730 / 0x7920</code>，arm64e 切片）</li>
-    <li>包内**不再有** <code>ZZReScaleKB440Fix.dylib</code> —— 少一层 hook、少一次注入</li>
-    <li>与原版互斥：<code>Conflicts / Replaces: tf.festival.rescale2</code></li>
-  </ol>
-  <p class="sub" style="margin-top:14px">
-    ⚠️ ReScale2 是闭源二进制，这是指令级 patch，位置与字节见
-    <code>rescale2/README-440patch.md</code>。改这个文件踩过一次安全模式：
-    dyld 初始化阶段绝不能调 <code>+[UIScreen mainScreen]</code>，尺寸计算必须留到方法调用时。
   </p>
 
   <h2>索引文件</h2>
