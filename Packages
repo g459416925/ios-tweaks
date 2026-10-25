@@ -976,6 +976,21 @@ Size: 81034
 MD5sum: 3133ed335fcd124e5b47ff17ceb182af
 SHA256: 84a99f5d11f14f40ec236327caf18d2b8eb13d2e34c2451805cf2bca10dcd40d
 
+Package: chaoge.chargelimiter
+Name: ChargeLimiter
+Version: 1.7.2
+Description: ChargeLimiter
+Section: Applications
+Depends: firmware (>= 5.0)
+Priority: optional
+Architecture: iphoneos-arm64e
+Author: chaoge
+Maintainer: chaoge
+Filename: ./debs/chaoge.chargelimiter_1.7.2_iphoneos-arm64e.deb
+Size: 2589016
+MD5sum: 39041fc7711964ce227d24f7f8b228a0
+SHA256: 3a61cadca1e8e364acc57b021d2591c501908da74cda636dc74c2cc7e45d7c4a
+
 Package: com.xu.adskip
 Name: 广告跳过 AdSkip
 Version: 1.0.0
@@ -1056,6 +1071,26 @@ Size: 169324
 MD5sum: ab99cde76e89d778f44d523f641dec5e
 SHA256: 2016f5923b0e6ca4abe85dd3c992996adae42358697f06908cbdc3c3b6984d56
 
+Package: com.xu.adskip
+Name: 广告跳过 AdSkip
+Version: 1.4.0
+Architecture: iphoneos-arm64e
+Section: Tweaks
+Priority: optional
+Depends: ellekit, firmware (>= 15.0)
+Maintainer: g459416925
+Author: g459416925
+Description: 广告播放跳过 + 权益保留
+ 在 GDT / 穿山甲 激励视频、开屏、插屏上：
+ · 视频播放器 play 后立即 seek 到尾部，走 SDK 原生 finish 路径
+ · 开屏倒计时直接打到 0，补发 splashAdWillClosed/splashAdClosed
+ · 激励回调「原生优先，兜底补发」且带幂等标记，不重复发奖
+ 支持应用由 AdSkip.plist 的 Filter.Bundles 控制。
+Filename: ./debs/com.xu.adskip_1.4.0_iphoneos-arm64e.deb
+Size: 385986
+MD5sum: 3c0e5805c933ef7f67ebf0b57b5343b7
+SHA256: 2f7722bfc0f6c91113f29851d7996e6356cfdcf25cbc18af1a9e6f8f2366d900
+
 Package: com.xu.chevronv3
 Name: ChevronV3
 Depends: mobilesubstrate, preferenceloader
@@ -1070,6 +1105,42 @@ Filename: ./debs/com.xu.chevronv3_1.0.18-227+env-fast-1+debug_iphoneos-arm64e.de
 Size: 781034
 MD5sum: 22e8fb859a3afadaac38500d0598466d
 SHA256: 83947b0e1a90b49f9a3ffa41c4111cda56d3d4ed90dddce44ff4abf0fd7f118f
+
+Package: com.xu.hgvip
+Name: 黄果短剧会员 HGVip
+Version: 1.0.0
+Architecture: iphoneos-arm64e
+Section: Tweaks
+Priority: optional
+Depends: ellekit, firmware (>= 15.0)
+Maintainer: local
+Author: local
+Description: 黄果短剧 PWA 会员解锁（WKWebView documentStart 注入）
+ 宿主进程 com.apple.webapp。在 WebView 里注入脚本，接管
+ /api/app/ 的 JSON 响应与 localStorage.userInfo：
+ · isVip / vipLevel / vipExpireDate 置为会员态
+ · permission / lockStatus / accessType / canPlay 置为已解锁
+ · unlockCoins / price 归零，freeEpisode 放开
+ 自检：xnotify com.xu.hgvip.selftest
+ 补打：xnotify com.xu.hgvip.repair
+ 日志：宿主 tmp 目录 HGVip.log
+Filename: ./debs/com.xu.hgvip_1.0.0_iphoneos-arm64e.deb
+Size: 25806
+MD5sum: 1c0c7c184fbb44635837f7e4c9bdd89d
+SHA256: b4d176fd682e76fd163fb16bd9da28d42692c936929b8dbb9193003fe052ada8
+
+Package: com.xu.hgweb
+Name: 黄果短剧
+Version: 1.0.0
+Architecture: iphoneos-arm64e
+Description: 黄果短剧独立宿主（内置会员解锁）
+Maintainer: xu
+Section: Applications
+Depends: firmware (>= 15.0)
+Filename: ./debs/com.xu.hgweb_1.0.0_iphoneos-arm64e.deb
+Size: 34388
+MD5sum: 05d13f27da7a5686398e6e1f9ad7574b
+SHA256: 78be43227a39e8ab828ab782ffb7055f557d75fe3ecf92789acb7a42776c264b
 
 Package: com.xu.nohomeicons
 Name: 桌面净空 NoHomeIcons
