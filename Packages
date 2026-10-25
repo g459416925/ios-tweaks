@@ -30,9 +30,9 @@ Depends: mobilesubstrate
 Installed-Size: 69
 Tag: purpose::extension
 Filename: ./debs/BounceIt16_1.1.10_iphoneos-arm64e.deb
-Size: 7110
-MD5sum: c107eda7bb72f4f41d9c8ede82f17cd7
-SHA256: fdedb7e406a5cf89cc02b19114fe21a63300b466c5440b799770e3e0049b31ac
+Size: 7108
+MD5sum: b563af9cd76c25bbad2633a556476711
+SHA256: 627d86dc1fc055cea715665e272b13ce909af58171da29450cc4ae675ed5a534
 
 Package: com.xu.compactorfix
 Name: CompactorFix
@@ -810,9 +810,9 @@ Section: Tweaks
 Depends: mobilesubstrate
 Tag: purpose::extension
 Filename: ./debs/LeafCrack_1.2.1_iphoneos-arm64e.deb
-Size: 7082
-MD5sum: baeb9b3d36885a047ec73eee1342279e
-SHA256: 1ae6b1eb074eb3bf2a49e406836695525c59754c44d43fb8457e1160e813ec30
+Size: 7450
+MD5sum: e8aed0c7895d45501fa66f2911b90db3
+SHA256: e72933a243c34781d19b25c95edeb7e3a2945e6dd86cb304c5b1c31807b384b0
 
 Package: com.xu.nohomeicons
 Name: 桌面净空 NoHomeIcons
@@ -976,6 +976,30 @@ Size: 81034
 MD5sum: 3133ed335fcd124e5b47ff17ceb182af
 SHA256: 84a99f5d11f14f40ec236327caf18d2b8eb13d2e34c2451805cf2bca10dcd40d
 
+Package: com.xu.statusbarscale
+Name: StatusBarScale
+Version: 2.7.12
+Architecture: iphoneos-arm64e
+Description: 状态栏图标缩放 + 资源库背景透明。
+ · 状态栏缩放：hook _UIStatusBarForegroundView -layoutSubviews，每次布局后
+   对灵动岛右侧（minX >= 阈值）的图标施加 绕中心缩放 + 垂直微调，与时间对齐；
+   时间右侧、灵动岛左侧的图标（闹钟/定位/录屏等，无法按标识枚举）按 fg 坐标系
+   frame 区间运行时发现，单独缩放。
+ · 资源库背景透明：App 资源库分类卡片的背景板 + 顶部搜索框背景清成透明，只留图标与文字。
+ 参数已硬编码进源码，不含设置面板/配置文件读取。
+ 仅注入 SpringBoard（Filter.Bundles = com.apple.springboard）。
+ 适用 iOS 16.x / RootHide (arm64e)。
+Maintainer: g459416925
+Author: g459416925 (iOS 16.5.1 / RootHide)
+Section: Tweaks
+Depends: mobilesubstrate
+Installed-Size: 235
+Tag: purpose::extension
+Filename: ./debs/StatusBarScale_2.7.12_iphoneos-arm64e.deb
+Size: 77936
+MD5sum: 780c1c8ca6feda816de3d397a981b562
+SHA256: e4cfef31ced19376131d41c5d318f05086b8ea41335a8ebb050eba1b6f527bba
+
 Package: chaoge.chargelimiter
 Name: ChargeLimiter
 Version: 1.7.2
@@ -1091,6 +1115,26 @@ Size: 385986
 MD5sum: 3c0e5805c933ef7f67ebf0b57b5343b7
 SHA256: 2f7722bfc0f6c91113f29851d7996e6356cfdcf25cbc18af1a9e6f8f2366d900
 
+Package: com.xu.adskip
+Name: 广告跳过 AdSkip
+Version: 1.4.2
+Architecture: iphoneos-arm64e
+Section: Tweaks
+Priority: optional
+Depends: ellekit, firmware (>= 15.0)
+Maintainer: g459416925
+Author: g459416925
+Description: 广告播放跳过 + 权益保留
+ 在 GDT / 穿山甲 激励视频、开屏、插屏上：
+ · 视频播放器 play 后立即 seek 到尾部，走 SDK 原生 finish 路径
+ · 开屏倒计时直接打到 0，补发 splashAdWillClosed/splashAdClosed
+ · 激励回调「原生优先，兜底补发」且带幂等标记，不重复发奖
+ 支持应用由 AdSkip.plist 的 Filter.Bundles 控制。
+Filename: ./debs/com.xu.adskip_1.4.2_iphoneos-arm64e.deb
+Size: 387074
+MD5sum: 32666dded58c37fbce448b21c5236c28
+SHA256: 1899d96e8c975fc059709a5849cda235f31b7b9a56fc1b99e0e047b26e1ac1b1
+
 Package: com.xu.chevronv3
 Name: ChevronV3
 Depends: mobilesubstrate, preferenceloader
@@ -1184,6 +1228,6 @@ Description: 固定 440x956 分辨率（iPhone 18 Pro Max 6.9" @3x），装完�
  与原版 Re:Scale 2 及带面板的重打包版互斥。
 Tag: purpose::extension
 Filename: ./debs/com.xu.rescalefixed_3.1.1_iphoneos-arm64e.deb
-Size: 17776
-MD5sum: 81d25fd118885204fc04900ed4b53b1b
-SHA256: 6f8dbedc12d042b74a70d6ddce40a14cfdd4b1115366a61ff45b2a718cc8a7eb
+Size: 17748
+MD5sum: 2600498ea93658781b3e28e2267d926d
+SHA256: 77c85266266e1c94dfde3b238cdba1cf90eb3ae41c8773f1666ede35c6abd7f6
