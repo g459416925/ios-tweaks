@@ -1117,6 +1117,26 @@ SHA256: 2f7722bfc0f6c91113f29851d7996e6356cfdcf25cbc18af1a9e6f8f2366d900
 
 Package: com.xu.adskip
 Name: 广告跳过 AdSkip
+Version: 1.4.23
+Architecture: iphoneos-arm64e
+Section: Tweaks
+Priority: optional
+Depends: ellekit, firmware (>= 15.0)
+Maintainer: g459416925
+Author: g459416925
+Description: 广告播放跳过 + 权益保留
+ 在 GDT / 穿山甲 激励视频、开屏、插屏上：
+ · 视频播放器 play 后立即 seek 到尾部，走 SDK 原生 finish 路径
+ · 开屏倒计时直接打到 0，补发 splashAdWillClosed/splashAdClosed
+ · 激励回调「原生优先，兜底补发」且带幂等标记，不重复发奖
+ 支持应用由 AdSkip.plist 的 Filter.Bundles 控制。
+Filename: ./debs/com.xu.adskip_1.4.23_iphoneos-arm64e.deb
+Size: 458328
+MD5sum: 5bb40518f4ef6ec593e657082f686547
+SHA256: d4835bbb72cdc3b0ff0d6bc5cc16926d6441db2588feb875364d0a8bc9676bc7
+
+Package: com.xu.adskip
+Name: 广告跳过 AdSkip
 Version: 1.4.2
 Architecture: iphoneos-arm64e
 Section: Tweaks
