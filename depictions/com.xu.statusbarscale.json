@@ -9,11 +9,26 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "**灵动岛机型状态栏图标缩放对齐 + 资源库背景透明**",
+          "markdown": "**状态栏图标缩放对齐 + 资源库透明 + 控制中心模块**",
           "useSpacing": true
         },
         {
           "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "功能",
+          "useBottomMargin": true,
+          "useBoldText": true
+        },
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "- 灵动岛右侧状态栏图标缩小，与时间字高精确对齐\n- 时间旁、灵动岛左侧的辅助图标（闹钟/定位/录屏等）单独缩小\n- App 资源库分类卡片背景板透明，只留图标浮于壁纸\n- 资源库搜索框背景透明\n- 控制中心无 FaceTime 会话时自动合成麦克风模式/视频效果模块（不依赖通话）\n- 灵动岛折叠环处理，可用文件关闭：`fold_disabled`\n- 纯缩放实现，图标间距与点击区域不受影响",
+          "useSpacing": true
+        },
+        {
+          "class": "DepictionSpacerView",
+          "spacing": 12
         },
         {
           "class": "DepictionHeaderView",
@@ -28,11 +43,6 @@
         },
         {
           "class": "DepictionTableTextView",
-          "title": "宿主",
-          "text": "仅 SpringBoard（App 内状态栏由 SB 远程渲染）"
-        },
-        {
-          "class": "DepictionTableTextView",
           "title": "兼容",
           "text": "iOS 16.x · RootHide 无根 · arm64e"
         },
@@ -40,33 +50,6 @@
           "class": "DepictionTableTextView",
           "title": "包名",
           "text": "com.xu.statusbarscale"
-        },
-        {
-          "class": "DepictionSpacerView",
-          "spacing": 12
-        },
-        {
-          "class": "DepictionHeaderView",
-          "title": "功能",
-          "useBottomMargin": true,
-          "useBoldText": true
-        },
-        {
-          "class": "DepictionMarkdownView",
-          "markdown": "- 灵动岛右侧图标 ×0.9025 绕中心缩放 + 垂直微调，墨迹高度 13→12px 与时间对齐\n- 时间右侧、岛左侧图标按坐标区间发现，单独 ×0.5038\n- App 资源库分类卡片背景板与搜索框背景材质清成透明，只留图标浮于壁纸\n- 受管表带撤销：视图脱离命中区间 1.5s 先摘登记再还原，防复用池换身份误伤\n- 纯 transform 实现，不参与 frame 布局，间距与点击区域不受影响",
-          "useSpacing": true
-        },
-        {
-          "class": "DepictionSpacerView",
-          "spacing": 16
-        },
-        {
-          "class": "DepictionSeparatorView"
-        },
-        {
-          "class": "DepictionMarkdownView",
-          "markdown": "源码与版本记录：<https://github.com/g459416925/ios-tweaks>",
-          "useSpacing": true
         }
       ]
     }

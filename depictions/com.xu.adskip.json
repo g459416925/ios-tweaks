@@ -9,11 +9,26 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "**自动跳过开屏/激励/插屏广告并保留奖励权益**",
+          "markdown": "**开屏零帧清除 / 激励视频秒收尾 / 信息流拦截**",
           "useSpacing": true
         },
         {
           "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "功能",
+          "useBottomMargin": true,
+          "useBoldText": true
+        },
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "- 开屏广告零帧清除：广告不显示，直接进入应用\n- 激励视频秒收尾：立即播完并照常发放奖励，不重复发奖、不丢奖\n- 插屏广告命中即自动关闭\n- 微信公众号信息流广告去除（数据层拦截）\n- 微信文章页广告去除：文中 / 底部 / 留言区 / 顶部全覆盖\n- 支持多应用：生效列表由 `AdSkip.plist` 配置\n- 微信模块开关：`Documents/wxadskip_off`",
+          "useSpacing": true
+        },
+        {
+          "class": "DepictionSpacerView",
+          "spacing": 12
         },
         {
           "class": "DepictionHeaderView",
@@ -28,11 +43,6 @@
         },
         {
           "class": "DepictionTableTextView",
-          "title": "范围",
-          "text": "生效应用由 `AdSkip.plist` 的 Filter.Bundles 控制"
-        },
-        {
-          "class": "DepictionTableTextView",
           "title": "兼容",
           "text": "iOS 15.0+ · RootHide 无根 · arm64e · ellekit"
         },
@@ -40,33 +50,6 @@
           "class": "DepictionTableTextView",
           "title": "包名",
           "text": "com.xu.adskip"
-        },
-        {
-          "class": "DepictionSpacerView",
-          "spacing": 12
-        },
-        {
-          "class": "DepictionHeaderView",
-          "title": "功能",
-          "useBottomMargin": true,
-          "useBoldText": true
-        },
-        {
-          "class": "DepictionMarkdownView",
-          "markdown": "- 激励视频：play 后立即 seek 到尾部，走 SDK 原生 finish 路径，奖励照常发放\n- 开屏广告：倒计时直接清零，补发 splashAdWillClosed / splashAdClosed 完成关闭\n- 插屏与信息流：命中即收场，覆盖 GDT / 穿山甲 / 微信公众号信息流等宿主\n- 激励回调「原生优先、兜底补发」带幂等标记，不重复发奖、不丢奖",
-          "useSpacing": true
-        },
-        {
-          "class": "DepictionSpacerView",
-          "spacing": 16
-        },
-        {
-          "class": "DepictionSeparatorView"
-        },
-        {
-          "class": "DepictionMarkdownView",
-          "markdown": "源码与版本记录：<https://github.com/g459416925/ios-tweaks>",
-          "useSpacing": true
         }
       ]
     }

@@ -12,6 +12,11 @@ Sileo 渲染规则（coolstar RawDocs）：
     键值走 DepictionTableTextView（自动分列、右侧灰字），
     分组靠 DepictionHeaderView + DepictionSeparatorView + DepictionSpacerView。
 
+详情页布局约定（用户视角，不写实现机制/宿主/依赖）：
+    ① 一句话定位（加粗）
+    ② 功能列表（主要功能点，全量）
+    ③ 基本信息表：分类 / 类型（独立应用时）/ 兼容 / 包名
+
 用法：
     python3 tools/gen_depictions.py
 """
@@ -23,7 +28,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 
-from pkgmeta import PKGS, CATEGORIES, depiction_url
+from pkgmeta import PKGS, depiction_url
 
 OUT_DIR = os.path.join(ROOT, "depictions")
 
@@ -34,12 +39,9 @@ def md(text, spacing=True):
     return {"class": "DepictionMarkdownView", "markdown": text, "useSpacing": spacing}
 
 
-def hdr(title, sub=False, bold=True):
-    cls = "DepictionSubheaderView" if sub else "DepictionHeaderView"
-    v = {"class": cls, "title": title, "useBottomMargin": True}
-    if not sub:
-        v["useBoldText"] = bold
-    return v
+def hdr(title):
+    return {"class": "DepictionHeaderView", "title": title,
+            "useBottomMargin": True, "useBoldText": True}
 
 
 def sep():
@@ -58,39 +60,22 @@ def build(pkg):
     m = PKGS[pkg]
     views = []
 
-    # ---- 概览 ----
+    # ---- ① 一句话定位 ----
     views.append(md("**%s**" % m["tagline"]))
     views.append(sep())
 
-    # ---- 信息表 ----
+    # ---- ② 功能（主体，全量）----
+    views.append(hdr("功能"))
+    views.append(md("\n".join("- " + f for f in m["features"])))
+
+    # ---- ③ 基本信息 ----
+    views.append(spacer(12))
     views.append(hdr("基本信息"))
     views.append(table_text("分类", m["category"]))
     if m.get("type"):
         views.append(table_text("类型", m["type"]))
-    if m.get("host"):
-        views.append(table_text("宿主", m["host"]))
-    if m.get("scope"):
-        views.append(table_text("范围", m["scope"]))
-    for label, val in m.get("extra", []):
-        views.append(table_text(label, val))
     views.append(table_text("兼容", m["compat"]))
     views.append(table_text("包名", pkg))
-
-    # ---- 功能 ----
-    views.append(spacer(12))
-    views.append(hdr("功能"))
-    views.append(md("\n".join("- " + f for f in m["features"])))
-
-    # ---- 备注 ----
-    if m.get("notes"):
-        views.append(spacer(12))
-        views.append(hdr("备注", sub=True))
-        views.append(md(m["notes"]))
-
-    # ---- 底部 ----
-    views.append(spacer(16))
-    views.append(sep())
-    views.append(md("源码与版本记录：<https://github.com/g459416925/ios-tweaks>"))
 
     return {
         "minVersion": "0.4",

@@ -93,99 +93,98 @@
 
   <section class="pkg">
     <h3>BounceIt16 <span class="ver">1.1.10</span></h3>
-    <p class="tagline">界面视觉 · SpringBoard 系统动画果冻弹性回弹</p>
+    <p class="tagline">界面视觉 · 系统动画果冻弹性回弹</p>
     <ul>
-      <li>界面推入/退出时冲过头 → 回弹 → 小幅震荡后停止</li>
-      <li>默认 ζ=0.325，弹 2 下即停，约 0.48s 收敛</li>
-      <li>hook <code>SBFFluidBehaviorSettings -setDampingRatio:</code> 强制写入</li>
-      <li>hook <code>SBFAnimationSettings</code> 的 damping / stiffness / mass / epsilon，getter 恒返回本插件值</li>
+      <li>全局系统动画加入弹簧回弹：界面推入/退出时冲过头 → 回弹 → 小幅震荡后停下</li>
+      <li>默认手感 ζ=0.325：约 34% 过冲、0.48s 收敛，弹两下即停</li>
+      <li>回弹力度可通过偏好键 <code>kBDamping</code> / <code>kBDRatio</code> 调节</li>
+      <li>卸载即恢复系统原生动画</li>
     </ul>
     <dl>
       <dt>包名</dt><dd><code>com.xu.bounceit16</code></dd>
-      <dt>宿主</dt><dd>SpringBoard</dd>
       <dt>兼容</dt><dd>iOS 16.x · RootHide 无根 · arm64e · ellekit</dd>
-      <dt>备注</dt><dd>原版 BounceIt 的 arm64e 切片会被 roothidepatch 改坏签名（dyld 拒绝加载、静默失效），故自行重写</dd>
     </dl>
   </section>
 
   <section class="pkg">
     <h3>CompactorFix <span class="ver">1.0.0</span></h3>
-    <p class="tagline">界面视觉 · 系统 UI 字体整体切换为 Apple Watch 的 SF Compact</p>
+    <p class="tagline">界面视觉 · 系统 UI 字体整体切换为 SF Compact</p>
     <ul>
-      <li>在 dyld 构造函数（早于 main）调用 <code>CTFontSetAltTextStyleSpec</code>，解决原版调用时机过晚不生效</li>
-      <li>全部 <code>kCTFontUIFontType</code> 0..24 映射为 <code>.SFCompact-*</code>，实测整屏 13.07% 像素变化</li>
-      <li>拉丁/希腊/西里尔字符生效；中日韩回退苹方 PingFang（预期行为，非缺陷）</li>
+      <li>系统 UI 字体整体换成 Apple Watch 的 SF Compact，覆盖全部系统字体类型</li>
+      <li>英文等拉丁系字符全部生效，观感与 Apple Watch 一致</li>
+      <li>中文等中日韩字符不受影响（仍回退苹方，属预期）</li>
+      <li>全部 App 与主屏统一生效</li>
     </ul>
     <dl>
       <dt>包名</dt><dd><code>com.xu.compactorfix</code></dd>
-      <dt>宿主</dt><dd>全部 UIKit 应用 + SpringBoard</dd>
       <dt>兼容</dt><dd>iOS 16.x · RootHide 无根 · arm64e</dd>
     </dl>
   </section>
 
   <section class="pkg">
     <h3>KeyboardCorner16 <span class="ver">1.0.93</span></h3>
-    <p class="tagline">界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合</p>
+    <p class="tagline">界面视觉 · 系统键盘圆角 / 候选栏 / OLED / 快捷操作整合</p>
     <ul>
-      <li>全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘</li>
+      <li>全键盘按键 10pt 圆角增强，字母、数字、拨号键盘全覆盖</li>
+      <li>候选栏常显：无候选词时也保留候选栏，输入区不再上下跳动</li>
+      <li>预测栏强制常显</li>
       <li>OLED 纯黑键盘背景，深色模式省电</li>
-      <li>UnderDock 快捷操作条与 Kayoko 剪贴板整合</li>
-      <li>候选栏常显判定：composing / visibleCandidateText / listCandidates</li>
+      <li>UnderDock 键盘下方快捷操作条</li>
+      <li>Kayoko 剪贴板整合</li>
+      <li>数字键盘重影修复、拨号圆点尺寸修正</li>
     </ul>
     <dl>
       <dt>包名</dt><dd><code>com.xu.keyboardcorner16</code></dd>
-      <dt>宿主</dt><dd>系统键盘独立进程</dd>
       <dt>兼容</dt><dd>iOS 16.x · RootHide 无根 · arm64e</dd>
     </dl>
   </section>
 
   <section class="pkg">
     <h3>NoHomeIcons <span class="ver">0.7.5</span></h3>
-    <p class="tagline">界面视觉 · 主屏零图标净空，App 仅进资源库，Dock 保留</p>
+    <p class="tagline">界面视觉 · 主屏零图标净空，App 只进资源库</p>
     <ul>
-      <li>纯视图层隐藏（alpha=0 + 禁交互），不写 IconState，卸载即恢复原布局</li>
-      <li>锁定「新下载的 App = 仅 App 资源库」：<code>SBHomeAutomaticallyAddsNewApplications</code> 恒返回 NO</li>
-      <li>移除「设置 → 主屏幕」入口，从根上断掉改设置的可能</li>
+      <li>主屏所有页面隐藏全部 App 图标，只留壁纸、小组件与 Dock</li>
+      <li>新下载的 App 强制「仅 App 资源库」，不会冒回主屏</li>
+      <li>移除「设置 → 主屏幕」入口，从根上防止改回</li>
+      <li>卸载即完整恢复原主屏布局</li>
+      <li>停用开关：<code>/var/mobile/Library/com.xu.nohomeicons/disabled</code></li>
     </ul>
     <dl>
       <dt>包名</dt><dd><code>com.xu.nohomeicons</code></dd>
-      <dt>宿主</dt><dd>SpringBoard + 设置</dd>
       <dt>兼容</dt><dd>iOS 16.x · RootHide 无根 · arm64e</dd>
-      <dt>备注</dt><dd>停用开关：<code>/var/mobile/Library/com.xu.nohomeicons/disabled</code></dd>
     </dl>
   </section>
 
   <section class="pkg">
     <h3>Re:Scale Fixed 440 <span class="ver">3.1.1</span></h3>
-    <p class="tagline">界面视觉 · 固定 440×956 画布（iPhone 18 Pro Max 6.9&quot; @3x），装完即生效</p>
+    <p class="tagline">界面视觉 · 固定 440×956 分辨率，装完即生效</p>
     <ul>
-      <li>安装即写入固定画布偏好 1320×2868（=440×956pt @3x），无面板、无需确认</li>
-      <li>分辨率注入复用原版 <code>ReScale.dylib</code>（字节未改、签名受信），键盘 414→440 修正内联在 ReScaleKB</li>
-      <li>自带自检 <code>/usr/bin/rf_check</code>（--fix 可修复丢失的标记/偏好）</li>
-      <li>自愈守护 <code>com.xu.rescalefixed.heal</code>：开机 / userspace reboot 自动补文件，仅确实修复时重启一次 backboardd</li>
+      <li>固定 440×956 显示画布（iPhone 18 Pro Max 6.9&quot; @3x 档），respring 一次全局生效</li>
+      <li>无设置面板、无需任何确认，装完即用</li>
+      <li>自带自检工具 <code>/usr/bin/rf_check</code>，<code>--fix</code> 一键修复</li>
+      <li>自愈守护：开机 / 重启自动补齐丢失文件，无需手动干预</li>
+      <li>与原版 Re:Scale 2 及带面板重打包版互斥，安装时自动替换旧版</li>
     </ul>
     <dl>
       <dt>包名</dt><dd><code>com.xu.rescalefixed</code></dd>
-      <dt>宿主</dt><dd>backboardd</dd>
-      <dt>互斥</dt><dd>原版 Re:Scale 2 及带面板重打包版（Conflicts / Replaces 已声明）</dd>
       <dt>兼容</dt><dd>iOS 14.0+ · RootHide 无根 · arm64e</dd>
-      <dt>备注</dt><dd>postinst 绝不重启系统进程；自愈守护修复文件时屏幕闪一下属预期</dd>
     </dl>
   </section>
 
   <section class="pkg">
     <h3>StatusBarScale <span class="ver">2.8.7</span></h3>
-    <p class="tagline">界面视觉 · 灵动岛机型状态栏图标缩放对齐 + 资源库背景透明</p>
+    <p class="tagline">界面视觉 · 状态栏图标缩放对齐 + 资源库透明 + 控制中心模块</p>
     <ul>
-      <li>灵动岛右侧图标 ×0.9025 绕中心缩放 + 垂直微调，墨迹高度 13→12px 与时间对齐</li>
-      <li>时间右侧、岛左侧图标按坐标区间发现，单独 ×0.5038</li>
-      <li>App 资源库分类卡片背景板与搜索框背景材质清成透明，只留图标浮于壁纸</li>
-      <li>受管表带撤销：视图脱离命中区间 1.5s 先摘登记再还原，防复用池换身份误伤</li>
-      <li>纯 transform 实现，不参与 frame 布局，间距与点击区域不受影响</li>
+      <li>灵动岛右侧状态栏图标缩小，与时间字高精确对齐</li>
+      <li>时间旁、灵动岛左侧的辅助图标（闹钟/定位/录屏等）单独缩小</li>
+      <li>App 资源库分类卡片背景板透明，只留图标浮于壁纸</li>
+      <li>资源库搜索框背景透明</li>
+      <li>控制中心无 FaceTime 会话时自动合成麦克风模式/视频效果模块（不依赖通话）</li>
+      <li>灵动岛折叠环处理，可用文件关闭：<code>fold_disabled</code></li>
+      <li>纯缩放实现，图标间距与点击区域不受影响</li>
     </ul>
     <dl>
       <dt>包名</dt><dd><code>com.xu.statusbarscale</code></dd>
-      <dt>宿主</dt><dd>仅 SpringBoard（App 内状态栏由 SB 远程渲染）</dd>
       <dt>兼容</dt><dd>iOS 16.x · RootHide 无根 · arm64e</dd>
     </dl>
   </section>
@@ -194,47 +193,53 @@
 
   <section class="pkg">
     <h3>ScreenTimeLocker16 <span class="ver">5.2.1</span></h3>
-    <p class="tagline">系统增强 · 把「屏幕使用时间」的 App 限额变成一把真正的锁</p>
+    <p class="tagline">系统增强 · 屏幕使用时间 App 限额真正锁得住</p>
     <ul>
-      <li>数据层：禁止「再使用一分钟」，0/0 限额可长期生效</li>
-      <li>设置页：允许把限额设成 0 小时 0 分钟</li>
-      <li>拦截页：认证优先 Face ID，不可用时回落屏幕使用时间密码</li>
-      <li>菜单弹窗保持系统原样，不注入额外选项，「请求更多使用时间」照常保留</li>
+      <li>禁止「再使用一分钟」，App 限额到期真正锁住</li>
+      <li>限额可设 0 小时 0 分钟，长期生效</li>
+      <li>解锁认证优先 Face ID，不可用时回落屏幕使用时间密码</li>
+      <li>保持系统原生弹窗与「请求更多使用时间」流程不变</li>
     </ul>
     <dl>
       <dt>包名</dt><dd><code>com.xu.screentimelocker16</code></dd>
-      <dt>宿主</dt><dd>SpringBoard</dd>
       <dt>兼容</dt><dd>iOS 16.x · RootHide 无根 · arm64e</dd>
     </dl>
   </section>
 
   <section class="pkg">
     <h3>ChargeLimiter <span class="ver">1.7.2</span></h3>
-    <p class="tagline">系统增强 · 电池充电上限锁定，保护电池健康</p>
+    <p class="tagline">系统增强 · 电池充电上限锁定（AlDente 替代）</p>
     <ul>
       <li>设置充电上限百分比，达到阈值自动停止充电</li>
-      <li>自带 watchdog 守护进程，异常掉线自动恢复设置</li>
-      <li>独立图形界面应用，安装后桌面即有图标</li>
+      <li>整夜充电 / 长期插电场景保护电池健康度</li>
+      <li>悬浮窗实时显示充电状态</li>
+      <li>高温模拟（锁屏时失效）</li>
+      <li>watchdog 守护：异常掉线自动恢复设置</li>
+      <li>支持有根/无根越狱与巨魔，iOS 12–17；永久免费无广告</li>
     </ul>
     <dl>
       <dt>包名</dt><dd><code>chaoge.chargelimiter</code></dd>
       <dt>类型</dt><dd>独立应用（非 tweak）</dd>
-      <dt>兼容</dt><dd>iOS 16.x · RootHide 无根 · arm64e</dd>
+      <dt>兼容</dt><dd>iOS 12–17 · 有根 / 无根 / 巨魔</dd>
     </dl>
   </section>
 
   <section class="pkg">
     <h3>ChevronV3 <span class="ver">1.0.18-227+env-fast-1+debug</span></h3>
-    <p class="tagline">系统增强 · 侧滑呼出启动器 + 应用分屏浮窗</p>
+    <p class="tagline">系统增强 · 边缘启动器 + 应用分屏浮窗</p>
     <ul>
-      <li>屏幕侧边快速呼出应用启动栏，点按直达应用</li>
-      <li>应用分屏浮窗（CV3FloatingAppWindow），横竖屏方向 / 旋转自适应</li>
-      <li>几何与旋转统一收敛单一决策函数，Scene 托管横屏下按 axesDiffer 判定真实方向</li>
+      <li>屏幕边缘热区快速呼出启动器，点按直达应用</li>
+      <li>应用分屏浮窗：任意 App 以独立窗口悬浮使用，带独立键盘与键盘避让</li>
+      <li>浮窗支持移动、缩放、贴边磁吸对齐、多窗等距平铺（Expose）</li>
+      <li>从启动器拖出 App 图标直接创建分屏；同一 App 复用已有窗口</li>
+      <li>每个浮窗自动记忆位置与方向，重启后恢复</li>
+      <li>贴边收纳与一键恢复，收纳时目标 App 转后台不耗资源</li>
+      <li>视频类内容自动横屏，退出恢复竖屏</li>
+      <li>浮窗菜单支持截图复制为图片，粘贴到支持图片粘贴的 App</li>
+      <li>场景断连自动检测与恢复</li>
     </ul>
     <dl>
       <dt>包名</dt><dd><code>com.xu.chevronv3</code></dd>
-      <dt>宿主</dt><dd>SpringBoard</dd>
-      <dt>依赖</dt><dd>mobilesubstrate（ellekit）· preferenceloader</dd>
       <dt>兼容</dt><dd>iOS 16.x · RootHide 无根 · arm64e</dd>
     </dl>
   </section>
@@ -243,16 +248,18 @@
 
   <section class="pkg">
     <h3>广告跳过 AdSkip <span class="ver">1.4.24</span></h3>
-    <p class="tagline">广告拦截 · 自动跳过开屏/激励/插屏广告并保留奖励权益</p>
+    <p class="tagline">广告拦截 · 开屏零帧清除 / 激励视频秒收尾 / 信息流拦截</p>
     <ul>
-      <li>激励视频：play 后立即 seek 到尾部，走 SDK 原生 finish 路径，奖励照常发放</li>
-      <li>开屏广告：倒计时直接清零，补发 splashAdWillClosed / splashAdClosed 完成关闭</li>
-      <li>插屏与信息流：命中即收场，覆盖 GDT / 穿山甲 / 微信公众号信息流等宿主</li>
-      <li>激励回调「原生优先、兜底补发」带幂等标记，不重复发奖、不丢奖</li>
+      <li>开屏广告零帧清除：广告不显示，直接进入应用</li>
+      <li>激励视频秒收尾：立即播完并照常发放奖励，不重复发奖、不丢奖</li>
+      <li>插屏广告命中即自动关闭</li>
+      <li>微信公众号信息流广告去除（数据层拦截）</li>
+      <li>微信文章页广告去除：文中 / 底部 / 留言区 / 顶部全覆盖</li>
+      <li>支持多应用：生效列表由 <code>AdSkip.plist</code> 配置</li>
+      <li>微信模块开关：<code>Documents/wxadskip_off</code></li>
     </ul>
     <dl>
       <dt>包名</dt><dd><code>com.xu.adskip</code></dd>
-      <dt>范围</dt><dd>生效应用由 <code>AdSkip.plist</code> 的 Filter.Bundles 控制</dd>
       <dt>兼容</dt><dd>iOS 15.0+ · RootHide 无根 · arm64e · ellekit</dd>
     </dl>
   </section>
@@ -261,33 +268,30 @@
 
   <section class="pkg">
     <h3>LeafCrack <span class="ver">1.2.1</span></h3>
-    <p class="tagline">会员解锁 · Leaf VPN 高级会员状态直写，隧道可用</p>
+    <p class="tagline">会员解锁 · Leaf VPN 高级会员解锁，隧道可用</p>
     <ul>
-      <li>写入 <code>LEAF_ENC_IS_PREMIUM_ACTIVATED</code> / <code>TOTAL_POINTS</code> / <code>LAST_DEDUCT_TIME</code> 会员标记</li>
-      <li>swizzle <code>NSUserDefaults</code> setBool/setInteger/setDouble:forKey:，标记改不回去</li>
-      <li>RevenueCat <code>RCEntitlementInfo(s)</code> 的 isActive / active 系列恒返回 YES</li>
-      <li>自动确保 <code>LEAF_ENC_DEFAULT_CONFIG_KEY</code> 指向有效配置，点 GO 可正常建隧道</li>
-      <li>后台巡检 10 分钟，会员标记被覆盖立刻重写</li>
+      <li>高级会员状态直写：会员标记 / 积分 / 扣费时间全部置为会员态</li>
+      <li>RevenueCat 订阅权益恒显示激活</li>
+      <li>VPN 隧道可用：自动修复默认配置，点 GO 正常建立隧道</li>
+      <li>后台每 10 分钟巡检，会员标记被覆盖立即重写</li>
     </ul>
     <dl>
       <dt>包名</dt><dd><code>com.xu.leafcrack</code></dd>
-      <dt>宿主</dt><dd><code>com.kitslabs.production.Leaf</code></dd>
       <dt>兼容</dt><dd>iOS 16.x · RootHide 无根 · arm64e</dd>
     </dl>
   </section>
 
   <section class="pkg">
     <h3>HGVip <span class="ver">1.0.0</span></h3>
-    <p class="tagline">会员解锁 · 黄果短剧 PWA 会员解锁（WKWebView 脚本注入）</p>
+    <p class="tagline">会员解锁 · 黄果短剧会员解锁</p>
     <ul>
-      <li>documentStart 注入，接管 <code>/api/app/</code> 的 JSON 响应与 <code>localStorage.userInfo</code></li>
-      <li>isVip / vipLevel / vipExpireDate 置为会员态</li>
-      <li>permission / lockStatus / accessType / canPlay 置为已解锁</li>
-      <li>unlockCoins / price 归零，freeEpisode 放开</li>
+      <li>会员状态解锁：会员标识 / 等级 / 到期时间全部置为会员态</li>
+      <li>剧集权限解锁：锁定状态 / 可播 / 访问类型全部放开</li>
+      <li>付费内容免费：金币消耗归零、价格清零、免费剧集放开</li>
+      <li>自检与补打：<code>xnotify com.xu.hgvip.selftest</code> / <code>repair</code></li>
     </ul>
     <dl>
       <dt>包名</dt><dd><code>com.xu.hgvip</code></dd>
-      <dt>自检</dt><dd><code>xnotify com.xu.hgvip.selftest</code> ｜ 补打 <code>xnotify com.xu.hgvip.repair</code></dd>
       <dt>兼容</dt><dd>iOS 15.0+ · RootHide 无根 · arm64e · ellekit</dd>
     </dl>
   </section>
@@ -296,8 +300,8 @@
     <h3>黄果短剧 <span class="ver">1.0.0</span></h3>
     <p class="tagline">会员解锁 · 黄果短剧独立宿主（内置会员解锁）</p>
     <ul>
-      <li>独立 WKWebView 宿主应用，不依赖系统 PWA 安装流程</li>
-      <li>内置 HGVip 同款会员解锁逻辑，开箱即用</li>
+      <li>黄果短剧独立宿主 App：自带浏览器直接看，不依赖系统 PWA 安装流程</li>
+      <li>内置会员解锁逻辑，开箱即用</li>
     </ul>
     <dl>
       <dt>包名</dt><dd><code>com.xu.hgweb</code></dd>

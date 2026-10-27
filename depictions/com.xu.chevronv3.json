@@ -9,11 +9,26 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "**侧滑呼出启动器 + 应用分屏浮窗**",
+          "markdown": "**边缘启动器 + 应用分屏浮窗**",
           "useSpacing": true
         },
         {
           "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "功能",
+          "useBottomMargin": true,
+          "useBoldText": true
+        },
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "- 屏幕边缘热区快速呼出启动器，点按直达应用\n- 应用分屏浮窗：任意 App 以独立窗口悬浮使用，带独立键盘与键盘避让\n- 浮窗支持移动、缩放、贴边磁吸对齐、多窗等距平铺（Expose）\n- 从启动器拖出 App 图标直接创建分屏；同一 App 复用已有窗口\n- 每个浮窗自动记忆位置与方向，重启后恢复\n- 贴边收纳与一键恢复，收纳时目标 App 转后台不耗资源\n- 视频类内容自动横屏，退出恢复竖屏\n- 浮窗菜单支持截图复制为图片，粘贴到支持图片粘贴的 App\n- 场景断连自动检测与恢复",
+          "useSpacing": true
+        },
+        {
+          "class": "DepictionSpacerView",
+          "spacing": 12
         },
         {
           "class": "DepictionHeaderView",
@@ -28,16 +43,6 @@
         },
         {
           "class": "DepictionTableTextView",
-          "title": "宿主",
-          "text": "SpringBoard"
-        },
-        {
-          "class": "DepictionTableTextView",
-          "title": "依赖",
-          "text": "mobilesubstrate（ellekit）· preferenceloader"
-        },
-        {
-          "class": "DepictionTableTextView",
           "title": "兼容",
           "text": "iOS 16.x · RootHide 无根 · arm64e"
         },
@@ -45,33 +50,6 @@
           "class": "DepictionTableTextView",
           "title": "包名",
           "text": "com.xu.chevronv3"
-        },
-        {
-          "class": "DepictionSpacerView",
-          "spacing": 12
-        },
-        {
-          "class": "DepictionHeaderView",
-          "title": "功能",
-          "useBottomMargin": true,
-          "useBoldText": true
-        },
-        {
-          "class": "DepictionMarkdownView",
-          "markdown": "- 屏幕侧边快速呼出应用启动栏，点按直达应用\n- 应用分屏浮窗（CV3FloatingAppWindow），横竖屏方向 / 旋转自适应\n- 几何与旋转统一收敛单一决策函数，Scene 托管横屏下按 axesDiffer 判定真实方向",
-          "useSpacing": true
-        },
-        {
-          "class": "DepictionSpacerView",
-          "spacing": 16
-        },
-        {
-          "class": "DepictionSeparatorView"
-        },
-        {
-          "class": "DepictionMarkdownView",
-          "markdown": "源码与版本记录：<https://github.com/g459416925/ios-tweaks>",
-          "useSpacing": true
         }
       ]
     }
