@@ -38,15 +38,7 @@ def pkg_cards(cat):
         rows = [("包名", "<code>%s</code>" % pkg)]
         if m.get("type"):
             rows.append(("类型", html.escape(m["type"]) + "（非 tweak）"))
-        if m.get("host"):
-            rows.append(("宿主", inline_md(m["host"])))
-        if m.get("scope"):
-            rows.append(("范围", inline_md(m["scope"])))
-        for label, val in m.get("extra", []):
-            rows.append((label, inline_md(val)))
         rows.append(("兼容", html.escape(m["compat"])))
-        if m.get("notes"):
-            rows.append(("备注", inline_md(m["notes"])))
         dl = "\n".join("      <dt>%s</dt><dd>%s</dd>" % (k, v) for k, v in rows)
         out.append("""  <section class="pkg">
     <h3>%s <span class="ver">%s</span></h3>

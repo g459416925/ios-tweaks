@@ -9,11 +9,26 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "**SpringBoard 系统动画果冻弹性回弹**",
+          "markdown": "**系统动画果冻弹性回弹**",
           "useSpacing": true
         },
         {
           "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "功能",
+          "useBottomMargin": true,
+          "useBoldText": true
+        },
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "- 全局系统动画加入弹簧回弹：界面推入/退出时冲过头 → 回弹 → 小幅震荡后停下\n- 默认手感 ζ=0.325：约 34% 过冲、0.48s 收敛，弹两下即停\n- 回弹力度可通过偏好键 `kBDamping` / `kBDRatio` 调节\n- 卸载即恢复系统原生动画",
+          "useSpacing": true
+        },
+        {
+          "class": "DepictionSpacerView",
+          "spacing": 12
         },
         {
           "class": "DepictionHeaderView",
@@ -28,11 +43,6 @@
         },
         {
           "class": "DepictionTableTextView",
-          "title": "宿主",
-          "text": "SpringBoard"
-        },
-        {
-          "class": "DepictionTableTextView",
           "title": "兼容",
           "text": "iOS 16.x · RootHide 无根 · arm64e · ellekit"
         },
@@ -40,47 +50,6 @@
           "class": "DepictionTableTextView",
           "title": "包名",
           "text": "com.xu.bounceit16"
-        },
-        {
-          "class": "DepictionSpacerView",
-          "spacing": 12
-        },
-        {
-          "class": "DepictionHeaderView",
-          "title": "功能",
-          "useBottomMargin": true,
-          "useBoldText": true
-        },
-        {
-          "class": "DepictionMarkdownView",
-          "markdown": "- 界面推入/退出时冲过头 → 回弹 → 小幅震荡后停止\n- 默认 ζ=0.325，弹 2 下即停，约 0.48s 收敛\n- hook `SBFFluidBehaviorSettings -setDampingRatio:` 强制写入\n- hook `SBFAnimationSettings` 的 damping / stiffness / mass / epsilon，getter 恒返回本插件值",
-          "useSpacing": true
-        },
-        {
-          "class": "DepictionSpacerView",
-          "spacing": 12
-        },
-        {
-          "class": "DepictionSubheaderView",
-          "title": "备注",
-          "useBottomMargin": true
-        },
-        {
-          "class": "DepictionMarkdownView",
-          "markdown": "原版 BounceIt 的 arm64e 切片会被 roothidepatch 改坏签名（dyld 拒绝加载、静默失效），故自行重写",
-          "useSpacing": true
-        },
-        {
-          "class": "DepictionSpacerView",
-          "spacing": 16
-        },
-        {
-          "class": "DepictionSeparatorView"
-        },
-        {
-          "class": "DepictionMarkdownView",
-          "markdown": "源码与版本记录：<https://github.com/g459416925/ios-tweaks>",
-          "useSpacing": true
         }
       ]
     }

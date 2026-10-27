@@ -9,11 +9,26 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "**系统 UI 字体整体切换为 Apple Watch 的 SF Compact**",
+          "markdown": "**系统 UI 字体整体切换为 SF Compact**",
           "useSpacing": true
         },
         {
           "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "功能",
+          "useBottomMargin": true,
+          "useBoldText": true
+        },
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "- 系统 UI 字体整体换成 Apple Watch 的 SF Compact，覆盖全部系统字体类型\n- 英文等拉丁系字符全部生效，观感与 Apple Watch 一致\n- 中文等中日韩字符不受影响（仍回退苹方，属预期）\n- 全部 App 与主屏统一生效",
+          "useSpacing": true
+        },
+        {
+          "class": "DepictionSpacerView",
+          "spacing": 12
         },
         {
           "class": "DepictionHeaderView",
@@ -28,11 +43,6 @@
         },
         {
           "class": "DepictionTableTextView",
-          "title": "宿主",
-          "text": "全部 UIKit 应用 + SpringBoard"
-        },
-        {
-          "class": "DepictionTableTextView",
           "title": "兼容",
           "text": "iOS 16.x · RootHide 无根 · arm64e"
         },
@@ -40,33 +50,6 @@
           "class": "DepictionTableTextView",
           "title": "包名",
           "text": "com.xu.compactorfix"
-        },
-        {
-          "class": "DepictionSpacerView",
-          "spacing": 12
-        },
-        {
-          "class": "DepictionHeaderView",
-          "title": "功能",
-          "useBottomMargin": true,
-          "useBoldText": true
-        },
-        {
-          "class": "DepictionMarkdownView",
-          "markdown": "- 在 dyld 构造函数（早于 main）调用 `CTFontSetAltTextStyleSpec`，解决原版调用时机过晚不生效\n- 全部 `kCTFontUIFontType` 0..24 映射为 `.SFCompact-*`，实测整屏 13.07% 像素变化\n- 拉丁/希腊/西里尔字符生效；中日韩回退苹方 PingFang（预期行为，非缺陷）",
-          "useSpacing": true
-        },
-        {
-          "class": "DepictionSpacerView",
-          "spacing": 16
-        },
-        {
-          "class": "DepictionSeparatorView"
-        },
-        {
-          "class": "DepictionMarkdownView",
-          "markdown": "源码与版本记录：<https://github.com/g459416925/ios-tweaks>",
-          "useSpacing": true
         }
       ]
     }

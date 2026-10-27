@@ -9,11 +9,26 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "**电池充电上限锁定，保护电池健康**",
+          "markdown": "**电池充电上限锁定（AlDente 替代）**",
           "useSpacing": true
         },
         {
           "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "功能",
+          "useBottomMargin": true,
+          "useBoldText": true
+        },
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "- 设置充电上限百分比，达到阈值自动停止充电\n- 整夜充电 / 长期插电场景保护电池健康度\n- 悬浮窗实时显示充电状态\n- 高温模拟（锁屏时失效）\n- watchdog 守护：异常掉线自动恢复设置\n- 支持有根/无根越狱与巨魔，iOS 12–17；永久免费无广告",
+          "useSpacing": true
+        },
+        {
+          "class": "DepictionSpacerView",
+          "spacing": 12
         },
         {
           "class": "DepictionHeaderView",
@@ -34,39 +49,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "兼容",
-          "text": "iOS 16.x · RootHide 无根 · arm64e"
+          "text": "iOS 12–17 · 有根 / 无根 / 巨魔"
         },
         {
           "class": "DepictionTableTextView",
           "title": "包名",
           "text": "chaoge.chargelimiter"
-        },
-        {
-          "class": "DepictionSpacerView",
-          "spacing": 12
-        },
-        {
-          "class": "DepictionHeaderView",
-          "title": "功能",
-          "useBottomMargin": true,
-          "useBoldText": true
-        },
-        {
-          "class": "DepictionMarkdownView",
-          "markdown": "- 设置充电上限百分比，达到阈值自动停止充电\n- 自带 watchdog 守护进程，异常掉线自动恢复设置\n- 独立图形界面应用，安装后桌面即有图标",
-          "useSpacing": true
-        },
-        {
-          "class": "DepictionSpacerView",
-          "spacing": 16
-        },
-        {
-          "class": "DepictionSeparatorView"
-        },
-        {
-          "class": "DepictionMarkdownView",
-          "markdown": "源码与版本记录：<https://github.com/g459416925/ios-tweaks>",
-          "useSpacing": true
         }
       ]
     }

@@ -9,11 +9,26 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "**固定 440×956 画布（iPhone 18 Pro Max 6.9\" @3x），装完即生效**",
+          "markdown": "**固定 440×956 分辨率，装完即生效**",
           "useSpacing": true
         },
         {
           "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "功能",
+          "useBottomMargin": true,
+          "useBoldText": true
+        },
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "- 固定 440×956 显示画布（iPhone 18 Pro Max 6.9\" @3x 档），respring 一次全局生效\n- 无设置面板、无需任何确认，装完即用\n- 自带自检工具 `/usr/bin/rf_check`，`--fix` 一键修复\n- 自愈守护：开机 / 重启自动补齐丢失文件，无需手动干预\n- 与原版 Re:Scale 2 及带面板重打包版互斥，安装时自动替换旧版",
+          "useSpacing": true
+        },
+        {
+          "class": "DepictionSpacerView",
+          "spacing": 12
         },
         {
           "class": "DepictionHeaderView",
@@ -28,16 +43,6 @@
         },
         {
           "class": "DepictionTableTextView",
-          "title": "宿主",
-          "text": "backboardd"
-        },
-        {
-          "class": "DepictionTableTextView",
-          "title": "互斥",
-          "text": "原版 Re:Scale 2 及带面板重打包版（Conflicts / Replaces 已声明）"
-        },
-        {
-          "class": "DepictionTableTextView",
           "title": "兼容",
           "text": "iOS 14.0+ · RootHide 无根 · arm64e"
         },
@@ -45,47 +50,6 @@
           "class": "DepictionTableTextView",
           "title": "包名",
           "text": "com.xu.rescalefixed"
-        },
-        {
-          "class": "DepictionSpacerView",
-          "spacing": 12
-        },
-        {
-          "class": "DepictionHeaderView",
-          "title": "功能",
-          "useBottomMargin": true,
-          "useBoldText": true
-        },
-        {
-          "class": "DepictionMarkdownView",
-          "markdown": "- 安装即写入固定画布偏好 1320×2868（=440×956pt @3x），无面板、无需确认\n- 分辨率注入复用原版 `ReScale.dylib`（字节未改、签名受信），键盘 414→440 修正内联在 ReScaleKB\n- 自带自检 `/usr/bin/rf_check`（--fix 可修复丢失的标记/偏好）\n- 自愈守护 `com.xu.rescalefixed.heal`：开机 / userspace reboot 自动补文件，仅确实修复时重启一次 backboardd",
-          "useSpacing": true
-        },
-        {
-          "class": "DepictionSpacerView",
-          "spacing": 12
-        },
-        {
-          "class": "DepictionSubheaderView",
-          "title": "备注",
-          "useBottomMargin": true
-        },
-        {
-          "class": "DepictionMarkdownView",
-          "markdown": "postinst 绝不重启系统进程；自愈守护修复文件时屏幕闪一下属预期",
-          "useSpacing": true
-        },
-        {
-          "class": "DepictionSpacerView",
-          "spacing": 16
-        },
-        {
-          "class": "DepictionSeparatorView"
-        },
-        {
-          "class": "DepictionMarkdownView",
-          "markdown": "源码与版本记录：<https://github.com/g459416925/ios-tweaks>",
-          "useSpacing": true
         }
       ]
     }

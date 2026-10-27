@@ -9,11 +9,26 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "**主屏零图标净空，App 仅进资源库，Dock 保留**",
+          "markdown": "**主屏零图标净空，App 只进资源库**",
           "useSpacing": true
         },
         {
           "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "功能",
+          "useBottomMargin": true,
+          "useBoldText": true
+        },
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "- 主屏所有页面隐藏全部 App 图标，只留壁纸、小组件与 Dock\n- 新下载的 App 强制「仅 App 资源库」，不会冒回主屏\n- 移除「设置 → 主屏幕」入口，从根上防止改回\n- 卸载即完整恢复原主屏布局\n- 停用开关：`/var/mobile/Library/com.xu.nohomeicons/disabled`",
+          "useSpacing": true
+        },
+        {
+          "class": "DepictionSpacerView",
+          "spacing": 12
         },
         {
           "class": "DepictionHeaderView",
@@ -28,11 +43,6 @@
         },
         {
           "class": "DepictionTableTextView",
-          "title": "宿主",
-          "text": "SpringBoard + 设置"
-        },
-        {
-          "class": "DepictionTableTextView",
           "title": "兼容",
           "text": "iOS 16.x · RootHide 无根 · arm64e"
         },
@@ -40,47 +50,6 @@
           "class": "DepictionTableTextView",
           "title": "包名",
           "text": "com.xu.nohomeicons"
-        },
-        {
-          "class": "DepictionSpacerView",
-          "spacing": 12
-        },
-        {
-          "class": "DepictionHeaderView",
-          "title": "功能",
-          "useBottomMargin": true,
-          "useBoldText": true
-        },
-        {
-          "class": "DepictionMarkdownView",
-          "markdown": "- 纯视图层隐藏（alpha=0 + 禁交互），不写 IconState，卸载即恢复原布局\n- 锁定「新下载的 App = 仅 App 资源库」：`SBHomeAutomaticallyAddsNewApplications` 恒返回 NO\n- 移除「设置 → 主屏幕」入口，从根上断掉改设置的可能",
-          "useSpacing": true
-        },
-        {
-          "class": "DepictionSpacerView",
-          "spacing": 12
-        },
-        {
-          "class": "DepictionSubheaderView",
-          "title": "备注",
-          "useBottomMargin": true
-        },
-        {
-          "class": "DepictionMarkdownView",
-          "markdown": "停用开关：`/var/mobile/Library/com.xu.nohomeicons/disabled`",
-          "useSpacing": true
-        },
-        {
-          "class": "DepictionSpacerView",
-          "spacing": 16
-        },
-        {
-          "class": "DepictionSeparatorView"
-        },
-        {
-          "class": "DepictionMarkdownView",
-          "markdown": "源码与版本记录：<https://github.com/g459416925/ios-tweaks>",
-          "useSpacing": true
         }
       ]
     }
