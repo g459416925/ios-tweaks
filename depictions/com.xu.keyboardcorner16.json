@@ -1,0 +1,74 @@
+{
+  "minVersion": "0.4",
+  "tintColor": "#0071e3",
+  "class": "DepictionTabView",
+  "tabs": [
+    {
+      "tabname": "详情",
+      "class": "DepictionStackView",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "**系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合**",
+          "useSpacing": true
+        },
+        {
+          "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "基本信息",
+          "useBottomMargin": true,
+          "useBoldText": true
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "分类",
+          "text": "界面视觉"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "宿主",
+          "text": "系统键盘独立进程"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "兼容",
+          "text": "iOS 16.x · RootHide 无根 · arm64e"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "包名",
+          "text": "com.xu.keyboardcorner16"
+        },
+        {
+          "class": "DepictionSpacerView",
+          "spacing": 12
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "功能",
+          "useBottomMargin": true,
+          "useBoldText": true
+        },
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "- 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘\n- OLED 纯黑键盘背景，深色模式省电\n- UnderDock 快捷操作条与 Kayoko 剪贴板整合\n- 候选栏常显判定：composing / visibleCandidateText / listCandidates",
+          "useSpacing": true
+        },
+        {
+          "class": "DepictionSpacerView",
+          "spacing": 16
+        },
+        {
+          "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "源码与版本记录：<https://github.com/g459416925/ios-tweaks>",
+          "useSpacing": true
+        }
+      ]
+    }
+  ]
+}

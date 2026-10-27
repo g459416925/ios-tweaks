@@ -1,0 +1,74 @@
+{
+  "minVersion": "0.4",
+  "tintColor": "#0071e3",
+  "class": "DepictionTabView",
+  "tabs": [
+    {
+      "tabname": "详情",
+      "class": "DepictionStackView",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "**灵动岛机型状态栏图标缩放对齐 + 资源库背景透明**",
+          "useSpacing": true
+        },
+        {
+          "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "基本信息",
+          "useBottomMargin": true,
+          "useBoldText": true
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "分类",
+          "text": "界面视觉"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "宿主",
+          "text": "仅 SpringBoard（App 内状态栏由 SB 远程渲染）"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "兼容",
+          "text": "iOS 16.x · RootHide 无根 · arm64e"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "包名",
+          "text": "com.xu.statusbarscale"
+        },
+        {
+          "class": "DepictionSpacerView",
+          "spacing": 12
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "功能",
+          "useBottomMargin": true,
+          "useBoldText": true
+        },
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "- 灵动岛右侧图标 ×0.9025 绕中心缩放 + 垂直微调，墨迹高度 13→12px 与时间对齐\n- 时间右侧、岛左侧图标按坐标区间发现，单独 ×0.5038\n- App 资源库分类卡片背景板与搜索框背景材质清成透明，只留图标浮于壁纸\n- 受管表带撤销：视图脱离命中区间 1.5s 先摘登记再还原，防复用池换身份误伤\n- 纯 transform 实现，不参与 frame 布局，间距与点击区域不受影响",
+          "useSpacing": true
+        },
+        {
+          "class": "DepictionSpacerView",
+          "spacing": 16
+        },
+        {
+          "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "源码与版本记录：<https://github.com/g459416925/ios-tweaks>",
+          "useSpacing": true
+        }
+      ]
+    }
+  ]
+}
