@@ -19,7 +19,7 @@
     font:16px/1.6 -apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",sans-serif;
     -webkit-font-smoothing:antialiased;
   }
-  .wrap{max-width:680px;margin:0 auto;padding:56px 22px 72px}
+  .wrap{max-width:760px;margin:0 auto;padding:56px 22px 72px}
   h1{font-size:32px;letter-spacing:-.02em;margin:0 0 6px}
   .sub{color:var(--sub);font-size:15px;margin:0 0 34px}
   h2{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--sub);
@@ -32,9 +32,26 @@
   table{width:100%;border-collapse:collapse;font-size:15px}
   th,td{text-align:left;padding:11px 6px;border-bottom:1px solid var(--line);vertical-align:top}
   th{color:var(--sub);font-weight:500;font-size:13px}
+  td.cat{color:var(--sub);font-size:13px;white-space:nowrap}
   code{background:var(--card);border-radius:5px;padding:2px 6px;font-size:13px}
   a{color:var(--accent);text-decoration:none}
   a:hover{text-decoration:underline}
+
+  /* 统一插件卡片 */
+  .pkg{border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin:14px 0}
+  .pkg h3{margin:0 0 2px;font-size:18px}
+  .pkg .ver{color:var(--sub);font-weight:400;font-size:13px;margin-left:8px}
+  .pkg .tagline{color:var(--sub);font-size:14px;margin:0 0 10px}
+  .pkg ul{margin:8px 0 12px;padding-left:20px;font-size:15px}
+  .pkg ul li{margin:6px 0}
+  .pkg dl{display:grid;grid-template-columns:64px 1fr;gap:4px 10px;
+          margin:0;font-size:13px;color:var(--sub);
+          border-top:1px solid var(--line);padding-top:10px}
+  .pkg dt{font-weight:600}
+  .pkg dd{margin:0}
+  .pkg dd code{font-size:12px}
+  .cat-head{margin:34px 0 4px;font-size:20px}
+  .cat-head small{display:block;color:var(--sub);font-weight:400;font-size:13px;margin-top:2px}
   footer{margin-top:46px;color:var(--sub);font-size:13px}
 </style>
 </head>
@@ -48,162 +65,253 @@
 
   <h2>安装步骤</h2>
   <ol>
-    <li>Sileo → <b>软件源</b> → 右上角 <b>+</b></li>
+    <li>Sileo → <b>软件源</b> → 右上角 <b>＋</b></li>
     <li>粘贴上面的地址 → <b>添加</b></li>
     <li>搜索插件名 → 安装</li>
   </ol>
 
-  <h2>插件列表</h2>
+  <h2>插件总表（按功能分类）</h2>
   <table>
-    <tr><th>包名</th><th>版本</th><th>说明</th></tr>
-    <tr>
-      <td><code>com.xu.leafcrack</code></td>
-      <td>1.2.1</td>
-      <td>Leaf 会员解锁 LeafCrack — 写入高级会员状态，RevenueCat 权益恒为激活，隧道可用</td>
-    </tr>
-    <tr>
-      <td><code>com.xu.nohomeicons</code></td>
-      <td>0.7.5</td>
-      <td>桌面净空 NoHomeIcons — 主屏不放任何 App 图标，App 只进资源库，Dock 保留</td>
-    </tr>
-    <tr>
-      <td><code>com.xu.rescalefixed</code></td>
-      <td>3.1.1</td>
-      <td>Re:Scale Fixed 440 — 固定 440×956（18 Pro Max）分辨率，无面板、装完即生效，自带自检与自愈守护</td>
-    </tr>
+    <tr><th>分类</th><th>插件</th><th>包名</th><th>版本</th></tr>
+    <tr><td class="cat" rowspan="6">界面视觉</td>
+        <td>BounceIt16</td><td><code>com.xu.bounceit16</code></td><td>1.1.10</td></tr>
+    <tr><td>CompactorFix</td><td><code>com.xu.compactorfix</code></td><td>1.0.0</td></tr>
+    <tr><td>KeyboardCorner16</td><td><code>com.xu.keyboardcorner16</code></td><td>1.0.93</td></tr>
+    <tr><td>NoHomeIcons</td><td><code>com.xu.nohomeicons</code></td><td>0.7.5</td></tr>
+    <tr><td>Re:Scale Fixed 440</td><td><code>com.xu.rescalefixed</code></td><td>3.1.1</td></tr>
+    <tr><td>StatusBarScale</td><td><code>com.xu.statusbarscale</code></td><td>2.7.12</td></tr>
+    <tr><td class="cat" rowspan="3">系统增强</td>
+        <td>ScreenTimeLocker16</td><td><code>com.xu.screentimelocker16</code></td><td>5.2.1</td></tr>
+    <tr><td>ChargeLimiter</td><td><code>chaoge.chargelimiter</code></td><td>1.7.2</td></tr>
+    <tr><td>ChevronV3</td><td><code>com.xu.chevronv3</code></td><td>1.0.18-227</td></tr>
+    <tr><td class="cat">广告拦截</td>
+        <td>广告跳过 AdSkip</td><td><code>com.xu.adskip</code></td><td>1.4.23</td></tr>
+    <tr><td class="cat" rowspan="3">会员解锁</td>
+        <td>LeafCrack</td><td><code>com.xu.leafcrack</code></td><td>1.2.1</td></tr>
+    <tr><td>HGVip</td><td><code>com.xu.hgvip</code></td><td>1.0.0</td></tr>
+    <tr><td>黄果短剧</td><td><code>com.xu.hgweb</code></td><td>1.0.0</td></tr>
   </table>
 
-  <h2>LeafCrack（Leaf 会员解锁）</h2>
-  <ol>
-    <li>注入 <code>com.kitslabs.production.Leaf</code>，直接写入高级会员状态：
-        <code>LEAF_ENC_IS_PREMIUM_ACTIVATED</code> /
-        <code>TOTAL_POINTS</code> / <code>LAST_DEDUCT_TIME</code></li>
-    <li>swizzle <code>NSUserDefaults</code> 的
-        <code>setBool:forKey:</code> / <code>setInteger:forKey:</code> /
-        <code>setDouble:forKey:</code>，App 想把标记改回去会被强制覆盖</li>
-    <li>swizzle RevenueCat 的 <code>RCEntitlementInfo</code> /
-        <code>RCEntitlementInfos</code> 的
-        <code>isActive</code> / <code>active</code> 系列 → 恒返回 YES</li>
-    <li>启动后自动确保 <code>LEAF_ENC_DEFAULT_CONFIG_KEY</code> 指向有效配置文件，
-        否则点 GO 会静默失败（界面停在 Ready to Connect，LeafTunnel 不启动）</li>
-    <li>后台巡检 10 分钟，会员标记被覆盖立刻重写</li>
-  </ol>
-  <p class="sub" style="margin-top:14px">
-    RootHide 注入点在 <code>/usr/lib/TweakInject/</code>，
-    并带 <code>.roothidepatch</code> 软链指向 <code>AutoPatches.dylib</code>。
-    装完杀掉 Leaf 重开即生效。
-  </p>
+  <h2>插件详情</h2>
 
-  <h2>BounceIt16</h2>
-  <ol>
-    <li>给 SpringBoard 系统动画加<b>弹簧回弹</b>：界面冲过头 → 回弹 → 小幅震荡几下才停</li>
-    <li>hook <code>SBFFluidBehaviorSettings -setDampingRatio:</code> 与
-        <code>SBFAnimationSettings</code> 的 <code>damping / stiffness / mass / epsilon</code>
-        （两者继承 <code>PTSettings</code>，属性走 getter）</li>
-    <li>原版 <b>Bounce It!</b> 的另外 19 个 hook 点在 iOS 16 <b>已全部失效</b>
-        （相关类已不存在 / 属性被移除），故本插件只挂真实存在的 5 个目标</li>
-    <li>手感：阻尼比 ζ ≈ <b>0.33</b>（过冲 34%、约 <b>0.48 s</b> 收敛）—— 弹 2 下即停；
-        只调 damping、不动 stiffness（改 stiffness 会改动画节奏）</li>
-  </ol>
-  <p class="sub" style="margin-top:14px">
-    ⚠️ 仅注入 SpringBoard。原版 BounceIt 的二进制在 RootHide 下<b>无法加载</b>
-    （roothidepatch 破坏 arm64e 切片签名 → dyld 拒绝），故本版为自行重写。
-  </p>
+  <!-- ==================== 一、界面视觉 ==================== -->
+  <h3 class="cat-head">一、界面视觉<small>动效 / 字体 / 键盘 / 桌面 / 分辨率 / 状态栏</small></h3>
 
-  <h2>CompactorFix</h2>
-  <ol>
-    <li>原版 Compactor 失效是<b>调用时机太晚</b>，本版改在 <b>dyld 构造函数</b>里调用私有 API</li>
-    <li>实测：全部 UI 字体类型 <code>0..24</code> 变为 <code>.SFCompact-*</code>，整屏 13.07% 像素变化</li>
-    <li>注入到<b>全部 UIKit App + SpringBoard</b>（<code>Filter.Classes = UIApplication</code>）</li>
-  </ol>
-  <p class="sub" style="margin-top:14px">
-    ⚠️ SF Compact 是<b>拉丁系</b>字体（拉丁/希腊/西里尔，共 1358 码位），
-    <b>不含中日韩</b> → 中文仍回退<b>苹方 PingFang</b>，中文外观不变属<b>预期行为</b>。
-  </p>
+  <section class="pkg">
+    <h3>BounceIt16 <span class="ver">1.1.10</span></h3>
+    <p class="tagline">界面动效 · SpringBoard 系统动画果冻弹性回弹（BounceIt 自研重写版）</p>
+    <ul>
+      <li>界面推入/退出时冲过头 → 回弹 → 小幅震荡后停止，默认 ζ=0.325 弹 2 下即停</li>
+      <li>hook <code>SBFFluidBehaviorSettings -setDampingRatio:</code> 强制写入</li>
+      <li>hook <code>SBFAnimationSettings</code> 的 damping / stiffness / mass / epsilon，getter 恒返回本插件值</li>
+    </ul>
+    <dl>
+      <dt>包名</dt><dd><code>com.xu.bounceit16</code></dd>
+      <dt>宿主</dt><dd>SpringBoard</dd>
+      <dt>兼容</dt><dd>iOS 16.x · RootHide 无根 · arm64e · ellekit</dd>
+      <dt>备注</dt><dd>原版 BounceIt 的 arm64e 切片会被 roothidepatch 改坏签名（dyld 拒绝加载、静默失效），故自行重写</dd>
+    </dl>
+  </section>
 
-  <h2>ScreenTimeLocker16</h2>
-  <ol>
-    <li>禁止「再使用一分钟」（0&nbsp;/&nbsp;0 限额可长期生效）</li>
-    <li>允许把限额设为 <b>0 小时 0 分钟</b></li>
-    <li>认证优先走 <b>Face ID</b>，用不了时回落<b>屏幕使用时间密码</b></li>
-    <li>菜单弹窗保持系统原样，不注入额外选项</li>
-  </ol>
-  <p class="sub" style="margin-top:14px">
-    不隐藏任何原生按钮，「请求更多使用时间」照常保留。宿主进程 SpringBoard。
-  </p>
+  <section class="pkg">
+    <h3>CompactorFix <span class="ver">1.0.0</span></h3>
+    <p class="tagline">界面字体 · 系统 UI 字体整体切换为 Apple Watch 的 SF Compact</p>
+    <ul>
+      <li>在 dyld 构造函数（早于 main）调用 <code>CTFontSetAltTextStyleSpec</code>，解决原版调用时机过晚不生效</li>
+      <li>全部 <code>kCTFontUIFontType</code> 0..24 映射为 <code>.SFCompact-*</code>，实测整屏 13.07% 像素变化</li>
+      <li>拉丁/希腊/西里尔字符生效；中日韩回退苹方 PingFang（预期行为，非缺陷）</li>
+    </ul>
+    <dl>
+      <dt>包名</dt><dd><code>com.xu.compactorfix</code></dd>
+      <dt>宿主</dt><dd>全部 UIKit 应用 + SpringBoard</dd>
+      <dt>兼容</dt><dd>iOS 16.x · RootHide 无根 · arm64e</dd>
+    </dl>
+  </section>
 
-  <h2>StatusBarScale</h2>
-  <ol>
-    <li>灵动岛右侧图标比时间<b>大一号且重心偏高 1.66px</b> —— 本插件缩放对齐</li>
-    <li>hook <code>_UIStatusBarForegroundView -layoutSubviews</code>，每次布局后对命中图标施加
-        <b>绕中心缩放 + 垂直微调</b>；transform 不参与布局 → <b>间距与点击区域不受影响</b>，
-        灵动岛展开自动跟随</li>
-    <li><b>主缩放</b>：<code>frame.minX ≥ 280</code>（灵动岛右缘）的状态栏图标 × <b>0.9025</b>；
-        垂直下移按绑定曲线 <code>dy(s)=K·(1−s)</code> 实时推算（当前 0.43pt）</li>
-    <li><b>时间旁缩放</b>：时间右侧、灵动岛左侧那批图标（闹钟/定位/录屏等，无法按标识枚举）
-        × <b>0.5038</b>；运行时按 fg 坐标系 <b>frame 区间</b>发现，带三道场景门禁
-        （只处理全屏宽度 fg / 无可视时间跳过 / 岛左缘须在 60~200）</li>
-    <li>带<b>撤销/复核</b>：状态栏 item 视图会被系统复用池回收后换身份，脱离命中区间即
-        「先摘登记、再还原」（防「时间被缩放」）</li>
-    <li><b>参数已硬编码进源码</b>：不含设置面板、不读取任何配置文件</li>
-    <li><b>资源库背景透明</b>（v2.1.0 卡片 / v2.1.1 搜索框）：App 资源库分类卡片的背景板
-        (<code>SBHLibraryCategoryPodBackgroundView</code>) 与顶部搜索框的背景材质
-        (<code>SBHSearchTextField</code> 内的 <code>MTMaterialView</code>) 清成透明，
-        只留图标与文字。⚠️ 搜索框是常驻视图、进资源库不重新布局 ⇒ 需每 2s 主动扫描处理</li>
-  </ol>
-  <p class="sub" style="margin-top:14px">
-    ⚠️ 仅注入 SpringBoard（<code>Filter.Bundles = com.apple.springboard</code>）——
-    普通 App / WebKit / PosterBoard 不加载本插件；App 内状态栏由 SpringBoard 远程渲染，
-    观感一致。
-  </p>
+  <section class="pkg">
+    <h3>KeyboardCorner16 <span class="ver">1.0.93</span></h3>
+    <p class="tagline">键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合</p>
+    <ul>
+      <li>全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘</li>
+      <li>OLED 纯黑键盘背景，深色模式省电</li>
+      <li>UnderDock 快捷操作条与 Kayoko 剪贴板整合</li>
+      <li>候选栏常显判定：composing / visibleCandidateText / listCandidates</li>
+    </ul>
+    <dl>
+      <dt>包名</dt><dd><code>com.xu.keyboardcorner16</code></dd>
+      <dt>宿主</dt><dd>系统键盘独立进程</dd>
+      <dt>兼容</dt><dd>iOS 16.x · RootHide 无根 · arm64e</dd>
+    </dl>
+  </section>
 
-  <h2>NoHomeIcons16</h2>
-  <ol>
-    <li><b>主屏（所有页）不显示任何 App 图标</b>，只剩壁纸、小组件与搜索；<b>Dock 保留</b></li>
-    <li>机制：<b>纯视图层隐藏</b> —— <code>SBIconListView -layoutIconsNow</code> 后对每个
-        <code>SBIconView</code> 设 <code>alpha=0</code> + 禁交互（视图经
-        <code>-iconViewForIcon:</code> 取得），<code>-layoutSubviews</code> 兜底重压。
-        <b>不写 IconState</b>，卸载即恢复原布局</li>
-    <li><b>锁定「新下载的 App = 仅 App 资源库」</b>：hook <code>NSUserDefaults -boolForKey:</code> /
-        <code>CFPreferencesGetAppBooleanValue</code>，读取
-        <code>SBHomeAutomaticallyAddsNewApplications</code> 时恒返回 NO，改 plist 或第三方工具无效</li>
-    <li><b>移除「设置 → 主屏幕」入口</b>：设置根列表由
-        <code>PreferenceManifests.bundle</code> 的 Mach-O 生成（无 plist 可改），
-        故在 <code>PSUIPrefsListController -specifiers</code> 层过滤
-        （该条 <code>detail=DBSHomeScreenPhoneListController</code>，没有 bundle 属性）</li>
-    <li>实测：手工把图标写进 <code>iconLists</code> 后界面不可见（<code>hiddenViews=1</code>），
-        多任务 <code>RecentAppLayouts</code> 正常累积；设置根列表 32 → <b>31 项</b></li>
-  </ol>
-  <p class="sub" style="margin-top:14px">
-    ⚠️ 0.6.0 曾用 <code>SBIconModel -isIconVisible:</code> 实现，会把多任务一起废掉
-    （上滑只剩 1 个卡片）—— 该判断被 <code>SBRecentAppLayouts</code> 共用，已弃用。
-    停用开关：<code>/var/mobile/Library/com.xu.nohomeicons/disabled</code>。
-    注入 SpringBoard + 设置两个进程。
-  </p>
+  <section class="pkg">
+    <h3>NoHomeIcons <span class="ver">0.7.5</span></h3>
+    <p class="tagline">桌面布局 · 主屏零图标净空（App 仅进资源库，Dock 保留）</p>
+    <ul>
+      <li>纯视图层隐藏（alpha=0 + 禁交互），不写 IconState，卸载即恢复原布局</li>
+      <li>锁定「新下载的 App = 仅 App 资源库」：<code>SBHomeAutomaticallyAddsNewApplications</code> 恒返回 NO</li>
+      <li>移除「设置 → 主屏幕」入口，从根上断掉改设置的可能</li>
+    </ul>
+    <dl>
+      <dt>包名</dt><dd><code>com.xu.nohomeicons</code></dd>
+      <dt>宿主</dt><dd>SpringBoard + 设置</dd>
+      <dt>兼容</dt><dd>iOS 16.x · RootHide 无根 · arm64e</dd>
+      <dt>备注</dt><dd>停用开关：<code>/var/mobile/Library/com.xu.nohomeicons/disabled</code></dd>
+    </dl>
+  </section>
 
-  <h2>Re:Scale Fixed 440（当前推荐）</h2>
-  <ol>
-    <li><b>固定 440×956pt（1320×2868 @3x，iPhone 18 Pro Max 6.9"）</b>，装完 respring 一次即全局生效，
-        <b>没有设置界面、不需要点确认</b></li>
-    <li>复用原版 <code>ReScale.dylib</code>（by Sniper_GER）<b>字节完全未改</b>：
-        RootHide trustcache 只认已登记 CDHash，自己编译/重签的 dylib 注入 backboardd 会被 amfid 拒绝
-        → 崩溃循环 → 看门狗。分辨率靠 <code>postinst</code> 写死偏好
-        （<code>canvas_width=1320</code> / <code>canvas_height=2868</code> / <code>confirmedResolution=true</code>）实现</li>
-    <li>键盘 414→440 修正内联在 <code>ReScaleKB</code>（行为级重写，非指令 patch）</li>
-    <li><b>guard 标记 <code>chflags uchg</code> 锁死</b>：原版 dylib 靠
-        <code>/Library/dpkg/info/tf.festival.rescale2.list</code> 决定装不装 hook，
-        缺了会<b>静默失效</b>（分辨率无声回落），故设为不可删</li>
-    <li><b>自带自检</b> <code>/usr/bin/rf_check</code>（15 项）与<b>自愈守护</b>
-        <code>com.xu.rescalefixed.heal</code>：开机 / userspace reboot 自动补文件，
-        respring 后 ≤2 分钟补齐；仅"确实修了东西"时才重启一次 backboardd 让画布重读（10 分钟防抖）</li>
-    <li>与原版及旧重打包版互斥（仅为包管理器元数据，旧包本身未安装/不在仓库）：
-        <code>Conflicts / Replaces: tf.festival.rescale2, com.xu.rescalekb440fix, com.xu.rescale2plus</code></li>
-  </ol>
-  <p class="sub" style="margin-top:14px">
-    ⚠️ <code>postinst</code> <b>绝不重启任何系统进程</b>（dpkg 事务里 kill backboardd 会进 spawn 循环
-    → 看门狗，已踩过两次）。装完由系统触发一次 respring 即生效。
-    自愈守护真的修复文件时会重启一次 backboardd，表现为屏幕闪一下，属预期。
-  </p>
+  <section class="pkg">
+    <h3>Re:Scale Fixed 440 <span class="ver">3.1.1</span></h3>
+    <p class="tagline">显示分辨率 · 固定 440×956 画布（iPhone 18 Pro Max 6.9" @3x），装完即生效</p>
+    <ul>
+      <li>安装即写入固定画布偏好 1320×2868（=440×956pt @3x），无面板、无需确认</li>
+      <li>分辨率注入复用原版 <code>ReScale.dylib</code>（字节未改、签名受信），键盘 414→440 修正内联在 ReScaleKB</li>
+      <li>自带自检 <code>/usr/bin/rf_check</code>（--fix 可修复丢失的标记/偏好）</li>
+      <li>自愈守护 <code>com.xu.rescalefixed.heal</code>：开机 / userspace reboot 自动补文件，仅确实修复时重启一次 backboardd</li>
+    </ul>
+    <dl>
+      <dt>包名</dt><dd><code>com.xu.rescalefixed</code></dd>
+      <dt>互斥</dt><dd>原版 Re:Scale 2 及带面板重打包版（Conflicts / Replaces 已声明）</dd>
+      <dt>兼容</dt><dd>iOS 14.0+ · RootHide 无根 · arm64e</dd>
+      <dt>备注</dt><dd>postinst 绝不重启系统进程；自愈守护修复文件时屏幕闪一下属预期</dd>
+    </dl>
+  </section>
+
+  <section class="pkg">
+    <h3>StatusBarScale <span class="ver">2.7.12</span></h3>
+    <p class="tagline">状态栏修正 · 灵动岛机型状态栏图标缩放对齐 + 资源库背景透明</p>
+    <ul>
+      <li>灵动岛右侧图标 ×0.9025 绕中心缩放 + 垂直微调，图标墨迹高度 13→12px 与时间对齐</li>
+      <li>时间右侧、岛左侧图标按坐标区间发现，单独 ×0.5038</li>
+      <li>App 资源库分类卡片背景板与搜索框背景材质清成透明，只留图标浮于壁纸</li>
+      <li>受管表带撤销：视图脱离命中区间 1.5s 先摘登记再还原，防复用池换身份误伤</li>
+      <li>纯 transform 实现，不参与 frame 布局，间距与点击区域不受影响</li>
+    </ul>
+    <dl>
+      <dt>包名</dt><dd><code>com.xu.statusbarscale</code></dd>
+      <dt>宿主</dt><dd>仅 SpringBoard（App 内状态栏由 SB 远程渲染）</dd>
+      <dt>兼容</dt><dd>iOS 16.x · RootHide 无根 · arm64e</dd>
+    </dl>
+  </section>
+
+  <!-- ==================== 二、系统增强 ==================== -->
+  <h3 class="cat-head">二、系统增强<small>限制锁定 / 充电管理 / 启动器</small></h3>
+
+  <section class="pkg">
+    <h3>ScreenTimeLocker16 <span class="ver">5.2.1</span></h3>
+    <p class="tagline">系统限制 · 把「屏幕使用时间」的 App 限额变成一把真正的锁</p>
+    <ul>
+      <li>数据层：禁止「再使用一分钟」，0/0 限额可长期生效</li>
+      <li>设置页：允许把限额设成 0 小时 0 分钟</li>
+      <li>拦截页：认证优先 Face ID，不可用时回落屏幕使用时间密码</li>
+      <li>菜单弹窗保持系统原样，不注入额外选项，「请求更多使用时间」照常保留</li>
+    </ul>
+    <dl>
+      <dt>包名</dt><dd><code>com.xu.screentimelocker16</code></dd>
+      <dt>宿主</dt><dd>SpringBoard</dd>
+      <dt>兼容</dt><dd>iOS 16.x · RootHide 无根 · arm64e</dd>
+    </dl>
+  </section>
+
+  <section class="pkg">
+    <h3>ChargeLimiter <span class="ver">1.7.2</span></h3>
+    <p class="tagline">充电管理 · 电池充电上限锁定，保护电池健康</p>
+    <ul>
+      <li>设置充电上限百分比，达到阈值自动停止充电</li>
+      <li>自带 watchdog 守护进程，异常掉线自动恢复设置</li>
+      <li>独立图形界面应用，安装后桌面即有图标</li>
+    </ul>
+    <dl>
+      <dt>包名</dt><dd><code>chaoge.chargelimiter</code></dd>
+      <dt>类型</dt><dd>独立应用（非 tweak）</dd>
+      <dt>兼容</dt><dd>iOS 16.x · RootHide 无根 · arm64e</dd>
+    </dl>
+  </section>
+
+  <section class="pkg">
+    <h3>ChevronV3 <span class="ver">1.0.18-227</span></h3>
+    <p class="tagline">启动器 · Chevron 启动器第三代（侧滑呼出 + 分屏浮窗）</p>
+    <ul>
+      <li>屏幕侧边快速呼出应用启动栏，点按直达应用</li>
+      <li>应用分屏浮窗（CV3FloatingAppWindow），横竖屏方向 / 旋转自适应</li>
+      <li>几何与旋转统一收敛单一决策函数，Scene 托管横屏下按 axesDiffer 判定真实方向</li>
+    </ul>
+    <dl>
+      <dt>包名</dt><dd><code>com.xu.chevronv3</code></dd>
+      <dt>宿主</dt><dd>SpringBoard</dd>
+      <dt>依赖</dt><dd>mobilesubstrate（ellekit）· preferenceloader</dd>
+      <dt>兼容</dt><dd>iOS 16.x · RootHide 无根 · arm64e</dd>
+    </dl>
+  </section>
+
+  <!-- ==================== 三、广告拦截 ==================== -->
+  <h3 class="cat-head">三、广告拦截<small>开屏 / 激励 / 插屏 / 信息流</small></h3>
+
+  <section class="pkg">
+    <h3>广告跳过 AdSkip <span class="ver">1.4.23</span></h3>
+    <p class="tagline">广告拦截 · 自动跳过开屏/激励/插屏广告并保留奖励权益</p>
+    <ul>
+      <li>激励视频：play 后立即 seek 到尾部，走 SDK 原生 finish 路径，奖励照常发放</li>
+      <li>开屏广告：倒计时直接清零，补发 splashAdWillClosed / splashAdClosed 完成关闭</li>
+      <li>插屏与信息流：命中即收场，覆盖 GDT / 穿山甲 / 微信公众号信息流等宿主</li>
+      <li>激励回调「原生优先、兜底补发」带幂等标记，不重复发奖、不丢奖</li>
+    </ul>
+    <dl>
+      <dt>包名</dt><dd><code>com.xu.adskip</code></dd>
+      <dt>范围</dt><dd>生效应用由 <code>AdSkip.plist</code> 的 Filter.Bundles 控制</dd>
+      <dt>兼容</dt><dd>iOS 15.0+ · RootHide 无根 · arm64e · ellekit</dd>
+    </dl>
+  </section>
+
+  <!-- ==================== 四、会员解锁 ==================== -->
+  <h3 class="cat-head">四、会员解锁<small>VPN / 短剧 PWA / 独立宿主</small></h3>
+
+  <section class="pkg">
+    <h3>LeafCrack <span class="ver">1.2.1</span></h3>
+    <p class="tagline">会员解锁 · Leaf VPN 高级会员状态直写，隧道可用</p>
+    <ul>
+      <li>写入 <code>LEAF_ENC_IS_PREMIUM_ACTIVATED</code> / <code>TOTAL_POINTS</code> / <code>LAST_DEDUCT_TIME</code> 会员标记</li>
+      <li>swizzle <code>NSUserDefaults</code> setBool/setInteger/setDouble:forKey:，标记改不回去</li>
+      <li>RevenueCat <code>RCEntitlementInfo(s)</code> 的 isActive / active 系列恒返回 YES</li>
+      <li>自动确保 <code>LEAF_ENC_DEFAULT_CONFIG_KEY</code> 指向有效配置，点 GO 可正常建隧道</li>
+      <li>后台巡检 10 分钟，会员标记被覆盖立刻重写</li>
+    </ul>
+    <dl>
+      <dt>包名</dt><dd><code>com.xu.leafcrack</code></dd>
+      <dt>宿主</dt><dd><code>com.kitslabs.production.Leaf</code></dd>
+      <dt>兼容</dt><dd>iOS 16.x · RootHide 无根 · arm64e</dd>
+    </dl>
+  </section>
+
+  <section class="pkg">
+    <h3>HGVip <span class="ver">1.0.0</span></h3>
+    <p class="tagline">会员解锁 · 黄果短剧 PWA 会员解锁（WKWebView 脚本注入）</p>
+    <ul>
+      <li>documentStart 注入，接管 <code>/api/app/</code> 的 JSON 响应与 <code>localStorage.userInfo</code></li>
+      <li>isVip / vipLevel / vipExpireDate 置为会员态</li>
+      <li>permission / lockStatus / accessType / canPlay 置为已解锁</li>
+      <li>unlockCoins / price 归零，freeEpisode 放开</li>
+    </ul>
+    <dl>
+      <dt>包名</dt><dd><code>com.xu.hgvip</code></dd>
+      <dt>自检</dt><dd><code>xnotify com.xu.hgvip.selftest</code> ｜ 补打 <code>xnotify com.xu.hgvip.repair</code> ｜ 日志 HGVip.log</dd>
+      <dt>兼容</dt><dd>iOS 15.0+ · RootHide 无根 · arm64e · ellekit</dd>
+    </dl>
+  </section>
+
+  <section class="pkg">
+    <h3>黄果短剧 <span class="ver">1.0.0</span></h3>
+    <p class="tagline">会员解锁 · 黄果短剧独立宿主（内置会员解锁）</p>
+    <ul>
+      <li>独立 WKWebView 宿主应用，不依赖系统 PWA 安装流程</li>
+      <li>内置 HGVip 同款会员解锁逻辑，开箱即用</li>
+    </ul>
+    <dl>
+      <dt>包名</dt><dd><code>com.xu.hgweb</code></dd>
+      <dt>类型</dt><dd>独立应用（非 tweak）</dd>
+      <dt>兼容</dt><dd>iOS 15.0+ · RootHide 无根 · arm64e</dd>
+    </dl>
+  </section>
 
   <h2>索引文件</h2>
   <p style="font-size:15px">

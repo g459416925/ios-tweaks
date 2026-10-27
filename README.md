@@ -14,15 +14,37 @@ https://g459416925.github.io/ios-tweaks/
 
 在 Sileo 里：**软件源 → 右上角 ➕ → 粘贴上面的地址 → 添加 → 搜索插件名 → 安装**。
 
-## 插件列表
+## 插件列表（按功能分类）
 
-| 包名 | 版本 | 说明 |
-|---|---|---|
-| `com.xu.bounceit16` | 1.0.2 | **BounceIt16** — SpringBoard 果冻弹性动画（界面冲过头 → 回弹 → 震荡几下停） |
-| `com.xu.compactorfix` | 1.0.0 | **CompactorFix** — 把系统 UI 字体整体换成 Apple Watch 的 SF Compact |
-| `com.xu.keyboardcorner16` | 1.0.0 | **KeyboardCorner16** — 系统键盘全按键圆角增强修复版（完美支持字母与数字键盘圆角矩形） |
-| `com.xu.screentimelocker16` | 5.2.1 | **ScreenTimeLocker16** — 让「屏幕使用时间」的 App 限额真正锁得住 |
-| `com.xu.statusbarscale` | 2.1.1 | **StatusBarScale** — 状态栏图标缩放（灵动岛右侧 0.90× 对齐时间、时间旁/岛左 0.50×）+ 资源库分类卡片与搜索框背景透明 |
+> 详情页（index.html）与 deb 内 Description 采用同一套规范格式：首行「分类 · 一句话定位」→【功能】→【宿主/类型】→【兼容】。
+
+| 分类 | 插件 | 包名 | 版本 | 定位 |
+|---|---|---|---|---|
+| 界面视觉 | BounceIt16 | `com.xu.bounceit16` | 1.1.10 | SpringBoard 系统动画果冻弹性回弹 |
+| 界面视觉 | CompactorFix | `com.xu.compactorfix` | 1.0.0 | 系统 UI 字体整体切换为 SF Compact |
+| 界面视觉 | KeyboardCorner16 | `com.xu.keyboardcorner16` | 1.0.93 | 键盘圆角 / OLED / UnderDock 整合 |
+| 界面视觉 | NoHomeIcons | `com.xu.nohomeicons` | 0.7.5 | 主屏零图标净空，App 仅进资源库 |
+| 界面视觉 | Re:Scale Fixed 440 | `com.xu.rescalefixed` | 3.1.1 | 固定 440×956 画布，装完即生效 |
+| 界面视觉 | StatusBarScale | `com.xu.statusbarscale` | 2.7.12 | 状态栏图标缩放对齐 + 资源库透明 |
+| 系统增强 | ScreenTimeLocker16 | `com.xu.screentimelocker16` | 5.2.1 | 屏幕使用时间 App 限额真正锁得住 |
+| 系统增强 | ChargeLimiter | `chaoge.chargelimiter` | 1.7.2 | 电池充电上限锁定（独立应用） |
+| 系统增强 | ChevronV3 | `com.xu.chevronv3` | 1.0.18-227 | 侧滑启动器 + 分屏浮窗 |
+| 广告拦截 | 广告跳过 AdSkip | `com.xu.adskip` | 1.4.23 | 开屏/激励/插屏自动跳过且保留奖励 |
+| 会员解锁 | LeafCrack | `com.xu.leafcrack` | 1.2.1 | Leaf VPN 高级会员状态直写 |
+| 会员解锁 | HGVip | `com.xu.hgvip` | 1.0.0 | 黄果短剧 PWA 会员解锁 |
+| 会员解锁 | 黄果短剧 | `com.xu.hgweb` | 1.0.0 | 黄果短剧独立宿主（内置解锁） |
+
+### 规范 Description 的维护
+
+全部 deb 的 Description 由 `tools/rewrite_descriptions.py` 统一写入（同一包所有历史版本共用同一份描述）。改描述的流程：
+
+```bash
+# 1. 编辑 tools/rewrite_descriptions.py 里的 DESCS 表
+# 2. 重写全部 deb 并自检（data.tar 字节零改动校验）
+/Users/xu/.workbuddy/binaries/python/versions/3.13.12/bin/python3 tools/rewrite_descriptions.py
+# 3. 重建 APT 索引
+/Users/xu/.workbuddy/binaries/python/versions/3.13.12/bin/python3 tools/gen_repo.py
+```
 
 ### BounceIt16
 
