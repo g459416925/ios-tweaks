@@ -1,0 +1,74 @@
+{
+  "minVersion": "0.4",
+  "tintColor": "#0071e3",
+  "class": "DepictionTabView",
+  "tabs": [
+    {
+      "tabname": "详情",
+      "class": "DepictionStackView",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "**黄果短剧独立宿主（内置会员解锁）**",
+          "useSpacing": true
+        },
+        {
+          "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "基本信息",
+          "useBottomMargin": true,
+          "useBoldText": true
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "分类",
+          "text": "会员解锁"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "类型",
+          "text": "独立应用"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "兼容",
+          "text": "iOS 15.0+ · RootHide 无根 · arm64e"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "包名",
+          "text": "com.xu.hgweb"
+        },
+        {
+          "class": "DepictionSpacerView",
+          "spacing": 12
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "功能",
+          "useBottomMargin": true,
+          "useBoldText": true
+        },
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "- 独立 WKWebView 宿主应用，不依赖系统 PWA 安装流程\n- 内置 HGVip 同款会员解锁逻辑，开箱即用",
+          "useSpacing": true
+        },
+        {
+          "class": "DepictionSpacerView",
+          "spacing": 16
+        },
+        {
+          "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "源码与版本记录：<https://github.com/g459416925/ios-tweaks>",
+          "useSpacing": true
+        }
+      ]
+    }
+  ]
+}

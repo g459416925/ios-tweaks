@@ -1,0 +1,74 @@
+{
+  "minVersion": "0.4",
+  "tintColor": "#0071e3",
+  "class": "DepictionTabView",
+  "tabs": [
+    {
+      "tabname": "详情",
+      "class": "DepictionStackView",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "**把「屏幕使用时间」的 App 限额变成一把真正的锁**",
+          "useSpacing": true
+        },
+        {
+          "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "基本信息",
+          "useBottomMargin": true,
+          "useBoldText": true
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "分类",
+          "text": "系统增强"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "宿主",
+          "text": "SpringBoard"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "兼容",
+          "text": "iOS 16.x · RootHide 无根 · arm64e"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "包名",
+          "text": "com.xu.screentimelocker16"
+        },
+        {
+          "class": "DepictionSpacerView",
+          "spacing": 12
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "功能",
+          "useBottomMargin": true,
+          "useBoldText": true
+        },
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "- 数据层：禁止「再使用一分钟」，0/0 限额可长期生效\n- 设置页：允许把限额设成 0 小时 0 分钟\n- 拦截页：认证优先 Face ID，不可用时回落屏幕使用时间密码\n- 菜单弹窗保持系统原样，不注入额外选项，「请求更多使用时间」照常保留",
+          "useSpacing": true
+        },
+        {
+          "class": "DepictionSpacerView",
+          "spacing": 16
+        },
+        {
+          "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "源码与版本记录：<https://github.com/g459416925/ios-tweaks>",
+          "useSpacing": true
+        }
+      ]
+    }
+  ]
+}

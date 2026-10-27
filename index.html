@@ -37,7 +37,6 @@
   a{color:var(--accent);text-decoration:none}
   a:hover{text-decoration:underline}
 
-  /* 统一插件卡片 */
   .pkg{border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin:14px 0}
   .pkg h3{margin:0 0 2px;font-size:18px}
   .pkg .ver{color:var(--sub);font-weight:400;font-size:13px;margin-left:8px}
@@ -73,35 +72,31 @@
   <h2>插件总表（按功能分类）</h2>
   <table>
     <tr><th>分类</th><th>插件</th><th>包名</th><th>版本</th></tr>
-    <tr><td class="cat" rowspan="6">界面视觉</td>
-        <td>BounceIt16</td><td><code>com.xu.bounceit16</code></td><td>1.1.10</td></tr>
+    <tr><td class="cat" rowspan="6">界面视觉</td><td>BounceIt16</td><td><code>com.xu.bounceit16</code></td><td>1.1.10</td></tr>
     <tr><td>CompactorFix</td><td><code>com.xu.compactorfix</code></td><td>1.0.0</td></tr>
     <tr><td>KeyboardCorner16</td><td><code>com.xu.keyboardcorner16</code></td><td>1.0.93</td></tr>
     <tr><td>NoHomeIcons</td><td><code>com.xu.nohomeicons</code></td><td>0.7.5</td></tr>
     <tr><td>Re:Scale Fixed 440</td><td><code>com.xu.rescalefixed</code></td><td>3.1.1</td></tr>
-    <tr><td>StatusBarScale</td><td><code>com.xu.statusbarscale</code></td><td>2.7.12</td></tr>
-    <tr><td class="cat" rowspan="3">系统增强</td>
-        <td>ScreenTimeLocker16</td><td><code>com.xu.screentimelocker16</code></td><td>5.2.1</td></tr>
+    <tr><td>StatusBarScale</td><td><code>com.xu.statusbarscale</code></td><td>2.8.7</td></tr>
+    <tr><td class="cat" rowspan="3">系统增强</td><td>ScreenTimeLocker16</td><td><code>com.xu.screentimelocker16</code></td><td>5.2.1</td></tr>
     <tr><td>ChargeLimiter</td><td><code>chaoge.chargelimiter</code></td><td>1.7.2</td></tr>
-    <tr><td>ChevronV3</td><td><code>com.xu.chevronv3</code></td><td>1.0.18-227</td></tr>
-    <tr><td class="cat">广告拦截</td>
-        <td>广告跳过 AdSkip</td><td><code>com.xu.adskip</code></td><td>1.4.23</td></tr>
-    <tr><td class="cat" rowspan="3">会员解锁</td>
-        <td>LeafCrack</td><td><code>com.xu.leafcrack</code></td><td>1.2.1</td></tr>
+    <tr><td>ChevronV3</td><td><code>com.xu.chevronv3</code></td><td>1.0.18-227+env-fast-1+debug</td></tr>
+    <tr><td class="cat" rowspan="1">广告拦截</td><td>广告跳过 AdSkip</td><td><code>com.xu.adskip</code></td><td>1.4.24</td></tr>
+    <tr><td class="cat" rowspan="3">会员解锁</td><td>LeafCrack</td><td><code>com.xu.leafcrack</code></td><td>1.2.1</td></tr>
     <tr><td>HGVip</td><td><code>com.xu.hgvip</code></td><td>1.0.0</td></tr>
     <tr><td>黄果短剧</td><td><code>com.xu.hgweb</code></td><td>1.0.0</td></tr>
   </table>
 
   <h2>插件详情</h2>
 
-  <!-- ==================== 一、界面视觉 ==================== -->
   <h3 class="cat-head">一、界面视觉<small>动效 / 字体 / 键盘 / 桌面 / 分辨率 / 状态栏</small></h3>
 
   <section class="pkg">
     <h3>BounceIt16 <span class="ver">1.1.10</span></h3>
-    <p class="tagline">界面动效 · SpringBoard 系统动画果冻弹性回弹（BounceIt 自研重写版）</p>
+    <p class="tagline">界面视觉 · SpringBoard 系统动画果冻弹性回弹</p>
     <ul>
-      <li>界面推入/退出时冲过头 → 回弹 → 小幅震荡后停止，默认 ζ=0.325 弹 2 下即停</li>
+      <li>界面推入/退出时冲过头 → 回弹 → 小幅震荡后停止</li>
+      <li>默认 ζ=0.325，弹 2 下即停，约 0.48s 收敛</li>
       <li>hook <code>SBFFluidBehaviorSettings -setDampingRatio:</code> 强制写入</li>
       <li>hook <code>SBFAnimationSettings</code> 的 damping / stiffness / mass / epsilon，getter 恒返回本插件值</li>
     </ul>
@@ -115,7 +110,7 @@
 
   <section class="pkg">
     <h3>CompactorFix <span class="ver">1.0.0</span></h3>
-    <p class="tagline">界面字体 · 系统 UI 字体整体切换为 Apple Watch 的 SF Compact</p>
+    <p class="tagline">界面视觉 · 系统 UI 字体整体切换为 Apple Watch 的 SF Compact</p>
     <ul>
       <li>在 dyld 构造函数（早于 main）调用 <code>CTFontSetAltTextStyleSpec</code>，解决原版调用时机过晚不生效</li>
       <li>全部 <code>kCTFontUIFontType</code> 0..24 映射为 <code>.SFCompact-*</code>，实测整屏 13.07% 像素变化</li>
@@ -130,7 +125,7 @@
 
   <section class="pkg">
     <h3>KeyboardCorner16 <span class="ver">1.0.93</span></h3>
-    <p class="tagline">键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合</p>
+    <p class="tagline">界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合</p>
     <ul>
       <li>全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘</li>
       <li>OLED 纯黑键盘背景，深色模式省电</li>
@@ -146,7 +141,7 @@
 
   <section class="pkg">
     <h3>NoHomeIcons <span class="ver">0.7.5</span></h3>
-    <p class="tagline">桌面布局 · 主屏零图标净空（App 仅进资源库，Dock 保留）</p>
+    <p class="tagline">界面视觉 · 主屏零图标净空，App 仅进资源库，Dock 保留</p>
     <ul>
       <li>纯视图层隐藏（alpha=0 + 禁交互），不写 IconState，卸载即恢复原布局</li>
       <li>锁定「新下载的 App = 仅 App 资源库」：<code>SBHomeAutomaticallyAddsNewApplications</code> 恒返回 NO</li>
@@ -162,7 +157,7 @@
 
   <section class="pkg">
     <h3>Re:Scale Fixed 440 <span class="ver">3.1.1</span></h3>
-    <p class="tagline">显示分辨率 · 固定 440×956 画布（iPhone 18 Pro Max 6.9" @3x），装完即生效</p>
+    <p class="tagline">界面视觉 · 固定 440×956 画布（iPhone 18 Pro Max 6.9&quot; @3x），装完即生效</p>
     <ul>
       <li>安装即写入固定画布偏好 1320×2868（=440×956pt @3x），无面板、无需确认</li>
       <li>分辨率注入复用原版 <code>ReScale.dylib</code>（字节未改、签名受信），键盘 414→440 修正内联在 ReScaleKB</li>
@@ -171,6 +166,7 @@
     </ul>
     <dl>
       <dt>包名</dt><dd><code>com.xu.rescalefixed</code></dd>
+      <dt>宿主</dt><dd>backboardd</dd>
       <dt>互斥</dt><dd>原版 Re:Scale 2 及带面板重打包版（Conflicts / Replaces 已声明）</dd>
       <dt>兼容</dt><dd>iOS 14.0+ · RootHide 无根 · arm64e</dd>
       <dt>备注</dt><dd>postinst 绝不重启系统进程；自愈守护修复文件时屏幕闪一下属预期</dd>
@@ -178,10 +174,10 @@
   </section>
 
   <section class="pkg">
-    <h3>StatusBarScale <span class="ver">2.7.12</span></h3>
-    <p class="tagline">状态栏修正 · 灵动岛机型状态栏图标缩放对齐 + 资源库背景透明</p>
+    <h3>StatusBarScale <span class="ver">2.8.7</span></h3>
+    <p class="tagline">界面视觉 · 灵动岛机型状态栏图标缩放对齐 + 资源库背景透明</p>
     <ul>
-      <li>灵动岛右侧图标 ×0.9025 绕中心缩放 + 垂直微调，图标墨迹高度 13→12px 与时间对齐</li>
+      <li>灵动岛右侧图标 ×0.9025 绕中心缩放 + 垂直微调，墨迹高度 13→12px 与时间对齐</li>
       <li>时间右侧、岛左侧图标按坐标区间发现，单独 ×0.5038</li>
       <li>App 资源库分类卡片背景板与搜索框背景材质清成透明，只留图标浮于壁纸</li>
       <li>受管表带撤销：视图脱离命中区间 1.5s 先摘登记再还原，防复用池换身份误伤</li>
@@ -194,12 +190,11 @@
     </dl>
   </section>
 
-  <!-- ==================== 二、系统增强 ==================== -->
   <h3 class="cat-head">二、系统增强<small>限制锁定 / 充电管理 / 启动器</small></h3>
 
   <section class="pkg">
     <h3>ScreenTimeLocker16 <span class="ver">5.2.1</span></h3>
-    <p class="tagline">系统限制 · 把「屏幕使用时间」的 App 限额变成一把真正的锁</p>
+    <p class="tagline">系统增强 · 把「屏幕使用时间」的 App 限额变成一把真正的锁</p>
     <ul>
       <li>数据层：禁止「再使用一分钟」，0/0 限额可长期生效</li>
       <li>设置页：允许把限额设成 0 小时 0 分钟</li>
@@ -215,7 +210,7 @@
 
   <section class="pkg">
     <h3>ChargeLimiter <span class="ver">1.7.2</span></h3>
-    <p class="tagline">充电管理 · 电池充电上限锁定，保护电池健康</p>
+    <p class="tagline">系统增强 · 电池充电上限锁定，保护电池健康</p>
     <ul>
       <li>设置充电上限百分比，达到阈值自动停止充电</li>
       <li>自带 watchdog 守护进程，异常掉线自动恢复设置</li>
@@ -229,8 +224,8 @@
   </section>
 
   <section class="pkg">
-    <h3>ChevronV3 <span class="ver">1.0.18-227</span></h3>
-    <p class="tagline">启动器 · Chevron 启动器第三代（侧滑呼出 + 分屏浮窗）</p>
+    <h3>ChevronV3 <span class="ver">1.0.18-227+env-fast-1+debug</span></h3>
+    <p class="tagline">系统增强 · 侧滑呼出启动器 + 应用分屏浮窗</p>
     <ul>
       <li>屏幕侧边快速呼出应用启动栏，点按直达应用</li>
       <li>应用分屏浮窗（CV3FloatingAppWindow），横竖屏方向 / 旋转自适应</li>
@@ -244,11 +239,10 @@
     </dl>
   </section>
 
-  <!-- ==================== 三、广告拦截 ==================== -->
   <h3 class="cat-head">三、广告拦截<small>开屏 / 激励 / 插屏 / 信息流</small></h3>
 
   <section class="pkg">
-    <h3>广告跳过 AdSkip <span class="ver">1.4.23</span></h3>
+    <h3>广告跳过 AdSkip <span class="ver">1.4.24</span></h3>
     <p class="tagline">广告拦截 · 自动跳过开屏/激励/插屏广告并保留奖励权益</p>
     <ul>
       <li>激励视频：play 后立即 seek 到尾部，走 SDK 原生 finish 路径，奖励照常发放</li>
@@ -263,7 +257,6 @@
     </dl>
   </section>
 
-  <!-- ==================== 四、会员解锁 ==================== -->
   <h3 class="cat-head">四、会员解锁<small>VPN / 短剧 PWA / 独立宿主</small></h3>
 
   <section class="pkg">
@@ -294,7 +287,7 @@
     </ul>
     <dl>
       <dt>包名</dt><dd><code>com.xu.hgvip</code></dd>
-      <dt>自检</dt><dd><code>xnotify com.xu.hgvip.selftest</code> ｜ 补打 <code>xnotify com.xu.hgvip.repair</code> ｜ 日志 HGVip.log</dd>
+      <dt>自检</dt><dd><code>xnotify com.xu.hgvip.selftest</code> ｜ 补打 <code>xnotify com.xu.hgvip.repair</code></dd>
       <dt>兼容</dt><dd>iOS 15.0+ · RootHide 无根 · arm64e · ellekit</dd>
     </dl>
   </section>
@@ -318,6 +311,7 @@
     <a href="./Release">Release</a> ·
     <a href="./Packages">Packages</a> ·
     <a href="./Packages.bz2">Packages.bz2</a> ·
+    <a href="./depictions/">Sileo Depictions</a> ·
     <a href="https://github.com/g459416925/ios-tweaks">GitHub 仓库</a>
   </p>
 

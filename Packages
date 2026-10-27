@@ -2,13 +2,15 @@ Package: com.xu.bounceit16
 Name: BounceIt16
 Version: 1.0.2
 Architecture: iphoneos-arm64e
-Description: 界面动效 · SpringBoard 系统动画果冻弹性回弹（BounceIt 自研重写版）
+Description: 界面视觉 · SpringBoard 系统动画果冻弹性回弹
  【功能】
- · 界面推入/退出时冲过头 → 回弹 → 小幅震荡后停止，默认 ζ=0.325 弹 2 下即停
- · hook SBFFluidBehaviorSettings -setDampingRatio: 强制写入
- · hook SBFAnimationSettings 的 damping / stiffness / mass / epsilon，getter 恒返回本插件值
+ · 界面推入/退出时冲过头 → 回弹 → 小幅震荡后停止
+ · 默认 ζ=0.325，弹 2 下即停，约 0.48s 收敛
+ · hook `SBFFluidBehaviorSettings -setDampingRatio:` 强制写入
+ · hook `SBFAnimationSettings` 的 damping / stiffness / mass / epsilon，getter 恒返回本插件值
  【宿主】SpringBoard
  【兼容】iOS 16.x · RootHide 无根 · arm64e · ellekit
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.bounceit16.json
 Maintainer: g459416925
 Author: g459416925
 Section: Tweaks
@@ -16,21 +18,23 @@ Depends: mobilesubstrate
 Installed-Size: 66
 Tag: purpose::extension
 Filename: ./debs/BounceIt16_1.0.2_iphoneos-arm64e.deb
-Size: 4568
-MD5sum: 73d20e30e65fdd5f8855166f65db75ea
-SHA256: b5c8789a7e6fa0cb1eb9fc99c4db368c24135d77f214f17f5451300bd52ad5d6
+Size: 4612
+MD5sum: e07001738725c520f2fe728ab602981f
+SHA256: 55ec6b48dc95a05e71fa6967d60f498e3c96aadeea80eb099a9f0ca488bf7bd3
 
 Package: com.xu.bounceit16
 Name: BounceIt16
 Version: 1.1.10
 Architecture: iphoneos-arm64e
-Description: 界面动效 · SpringBoard 系统动画果冻弹性回弹（BounceIt 自研重写版）
+Description: 界面视觉 · SpringBoard 系统动画果冻弹性回弹
  【功能】
- · 界面推入/退出时冲过头 → 回弹 → 小幅震荡后停止，默认 ζ=0.325 弹 2 下即停
- · hook SBFFluidBehaviorSettings -setDampingRatio: 强制写入
- · hook SBFAnimationSettings 的 damping / stiffness / mass / epsilon，getter 恒返回本插件值
+ · 界面推入/退出时冲过头 → 回弹 → 小幅震荡后停止
+ · 默认 ζ=0.325，弹 2 下即停，约 0.48s 收敛
+ · hook `SBFFluidBehaviorSettings -setDampingRatio:` 强制写入
+ · hook `SBFAnimationSettings` 的 damping / stiffness / mass / epsilon，getter 恒返回本插件值
  【宿主】SpringBoard
  【兼容】iOS 16.x · RootHide 无根 · arm64e · ellekit
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.bounceit16.json
 Maintainer: g459416925
 Author: g459416925
 Section: Tweaks
@@ -38,21 +42,22 @@ Depends: mobilesubstrate
 Installed-Size: 69
 Tag: purpose::extension
 Filename: ./debs/BounceIt16_1.1.10_iphoneos-arm64e.deb
-Size: 7276
-MD5sum: 70ca094333747f94d7ecfae3db01ce45
-SHA256: 509fe22a76f1c181ec722f853eea7deceb52756e882726ea937e8c7f638b8c10
+Size: 7318
+MD5sum: e0db4677b77e76309a889148fe469e67
+SHA256: 35cb652cd54f42869f1567c16b9258571bd24016c1460de0484690ec9c08cf85
 
 Package: com.xu.compactorfix
 Name: CompactorFix
 Version: 1.0.0
 Architecture: iphoneos-arm64e
-Description: 界面字体 · 系统 UI 字体整体切换为 Apple Watch 的 SF Compact
+Description: 界面视觉 · 系统 UI 字体整体切换为 Apple Watch 的 SF Compact
  【功能】
- · 在 dyld 构造函数（早于 main）调用 CTFontSetAltTextStyleSpec，解决原版调用时机过晚不生效
- · 全部 kCTFontUIFontType 0..24 映射为 .SFCompact-*，实测整屏 13.07% 像素变化
+ · 在 dyld 构造函数（早于 main）调用 `CTFontSetAltTextStyleSpec`，解决原版调用时机过晚不生效
+ · 全部 `kCTFontUIFontType` 0..24 映射为 `.SFCompact-*`，实测整屏 13.07% 像素变化
  · 拉丁/希腊/西里尔字符生效；中日韩回退苹方 PingFang（预期行为，非缺陷）
  【宿主】全部 UIKit 应用 + SpringBoard
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.compactorfix.json
 Maintainer: g459416925
 Author: g459416925 (iOS 16.5.1 / RootHide 重写版)
 Section: Tweaks
@@ -60,15 +65,15 @@ Depends: mobilesubstrate
 Installed-Size: 49
 Tag: purpose::extension
 Filename: ./debs/CompactorFix_1.0.0_iphoneos-arm64e.deb
-Size: 2692
-MD5sum: aa1dd4ee9694d57ded763306e560558a
-SHA256: a9819edf4bfa54de0c9a50e01c93de3cdf6be419ff541d7ecc55f4e6a3e9789b
+Size: 2746
+MD5sum: 5a9b7b3bd1fc445eba945d0de9af749d
+SHA256: 8909a32bacd41367ff0266cad8d79fa71f0c9dbdff0f40dca151f8e6b7803f11
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.0
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -76,6 +81,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj
 Replaces: com.liuf.jpyj, com.xu.kbprobe
 Provides: com.liuf.jpyj
@@ -86,15 +92,15 @@ Depends: mobilesubstrate
 Installed-Size: 67
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.0_iphoneos-arm64e.deb
-Size: 4726
-MD5sum: 52d07b021d5727710328fd2c8e7e339e
-SHA256: e8ad3a86e9a5a3df00c3dd2b4e3313dd1a43e4c462eacd4880f6c66a3e7c6c16
+Size: 4778
+MD5sum: f1a8e0d7bf7b806c5e8aea39012463ff
+SHA256: bb585b1bbef3fe58d83fee26de31d1110a1a1e8a745bc16b87512577e7dfef16
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.12
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -102,6 +108,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj
 Replaces: com.liuf.jpyj, com.xu.kbprobe
 Provides: com.liuf.jpyj
@@ -112,15 +119,15 @@ Depends: mobilesubstrate
 Installed-Size: 67
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.12_iphoneos-arm64e.deb
-Size: 5566
-MD5sum: 76a0b4866744c7bb7e1695e7c8e72526
-SHA256: 449c6ee5595066b39741d9e40003aaafd0cbb1269046149be8d4447a6f1077fc
+Size: 5616
+MD5sum: fb9875a837133480f00d10f46eed60f8
+SHA256: bec47862c4cb15f8b94b44e0732d33a44756756021df45453c2a4095b87ce72b
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.1
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -128,6 +135,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj
 Replaces: com.liuf.jpyj, com.xu.kbprobe
 Provides: com.liuf.jpyj
@@ -138,15 +146,15 @@ Depends: mobilesubstrate
 Installed-Size: 66
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.1_iphoneos-arm64e.deb
-Size: 4122
-MD5sum: 0ed474f2561fdc2744bdfcd0d42326a2
-SHA256: 05ad3ad40325aaa29efae8a746662a2bb14cf97616f6223c957b0d419c42af62
+Size: 4172
+MD5sum: 810fdb21a1e8213182b00083d1530791
+SHA256: c1f3969de7778dfad5c0be20e8fc078a74b9e51d553722016949dea21329ce23
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.2
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -154,6 +162,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj
 Replaces: com.liuf.jpyj, com.xu.kbprobe
 Provides: com.liuf.jpyj
@@ -164,15 +173,15 @@ Depends: mobilesubstrate
 Installed-Size: 66
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.2_iphoneos-arm64e.deb
-Size: 4174
-MD5sum: d37ff477808ecf8943cef42ebd2c7f57
-SHA256: 762a1ad363c165dca97a301df945d461ea7f626964417436e97893e37349ef35
+Size: 4226
+MD5sum: f70de535faf9d4aa26ae95ae635de40a
+SHA256: 7f1279807f8ebab9832f97d89c89b1dd6f984a76cb702d66126450379606cf8e
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.3
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -180,6 +189,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj
 Replaces: com.liuf.jpyj, com.xu.kbprobe
 Provides: com.liuf.jpyj
@@ -190,15 +200,15 @@ Depends: mobilesubstrate
 Installed-Size: 67
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.3_iphoneos-arm64e.deb
-Size: 4560
-MD5sum: a6dc643ad585f221885a70c4cf45ea37
-SHA256: fd48c5bac4fae57be5c61aaaac2dacbada32d0aec4777321e7ef0e2568ab6ecc
+Size: 4612
+MD5sum: 0f341b60004988ffa4af061c00b90cb0
+SHA256: ebbe3ea5146b9a3bcf003bbed10dac9d060ef6d69fa6b9ea67b719a96c4e1998
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.4-probe
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -206,6 +216,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj
 Replaces: com.liuf.jpyj, com.xu.kbprobe
 Provides: com.liuf.jpyj
@@ -216,15 +227,15 @@ Depends: mobilesubstrate
 Installed-Size: 67
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.4-probe_iphoneos-arm64e.deb
-Size: 5722
-MD5sum: ce4fb92b23aa7f91bc489c3461bd1aa8
-SHA256: 81447ff6608dfe6e8df97e4895649d308a1b217124900a8f4582235c45f650c1
+Size: 5772
+MD5sum: 5962cb61af4ffe609328808c294e3879
+SHA256: 0c121385bd347f1cf333a1a325c2e58fa46943dcc806ea5e5edbc64e5f5e6bbe
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.40
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -232,6 +243,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj
 Replaces: com.liuf.jpyj, com.xu.kbprobe
 Provides: com.liuf.jpyj
@@ -242,15 +254,15 @@ Depends: mobilesubstrate
 Installed-Size: 68
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.40_iphoneos-arm64e.deb
-Size: 6734
-MD5sum: 9e958ea60e64b948e5e49302227f8f70
-SHA256: 16a6ea2031f1afdbfc884650c4a0ef089a5626ddf131ab705375d078a7f5987f
+Size: 6786
+MD5sum: 2481610ff76cbe1af4a00a69df6591cf
+SHA256: cd26b9a4f106528ed1d7671f3c6a4d34d10da6ec349bc1910fa648d0ab17264a
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.49
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -258,6 +270,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj
 Replaces: com.liuf.jpyj, com.xu.kbprobe
 Provides: com.liuf.jpyj
@@ -268,15 +281,15 @@ Depends: mobilesubstrate
 Installed-Size: 70
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.49_iphoneos-arm64e.deb
-Size: 10904
-MD5sum: ef074bb2a767a528ea946909c09fb4c0
-SHA256: 9ce81b3efbdddb7a179c37b9cc7fd5ea42b487f6b21beb691c8f3e178c620fd6
+Size: 10956
+MD5sum: 47951f5ef9dcfe51cc61c0a75fe1368e
+SHA256: 49fbb69f348c7bea0b3bec4635fb8ffbbe34d2b558a0e8addec8769e23672d40
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.50
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -284,6 +297,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj
 Replaces: com.liuf.jpyj, com.xu.kbprobe
 Provides: com.liuf.jpyj
@@ -294,15 +308,15 @@ Depends: mobilesubstrate
 Installed-Size: 70
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.50_iphoneos-arm64e.deb
-Size: 11980
-MD5sum: d73d50b20011c082b4acc81e50282c4d
-SHA256: 7bc9318c3e2907d92dfedf4935a9a33cc354092dbb08811a9ece820164b7ac63
+Size: 12032
+MD5sum: 241c7e5212ee8674e552568c29c3e3fe
+SHA256: 3f7046c4356888515cf8ffbde991d649a5033d3901c501e08804375c1baca74a
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.51
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -310,6 +324,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj
 Replaces: com.liuf.jpyj, com.xu.kbprobe
 Provides: com.liuf.jpyj
@@ -320,15 +335,15 @@ Depends: mobilesubstrate
 Installed-Size: 70
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.51_iphoneos-arm64e.deb
-Size: 10838
-MD5sum: adfa48b743343d1b4105ce32cd033189
-SHA256: 4a3ad53297dccf23696f8dc2edb4df984e955e5c2fef44dbb6da1f0cd077109c
+Size: 10892
+MD5sum: 61a60ce43bd05067244344966ad6afbf
+SHA256: 6c6f450f7fd39a8d8651cf861a3bc67d3483a4a84031d0dabaf8213edc4ee597
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.52
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -336,6 +351,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj
 Replaces: com.liuf.jpyj, com.xu.kbprobe
 Provides: com.liuf.jpyj
@@ -346,15 +362,15 @@ Depends: mobilesubstrate
 Installed-Size: 71
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.52_iphoneos-arm64e.deb
-Size: 11514
-MD5sum: 669e728a470b9ce32bd65ddede410536
-SHA256: 83ce13e77ae6e94c2c7ce7dea1345d1e7b48063eca8787d479ffdefd15b41a4e
+Size: 11566
+MD5sum: 77b91e9ce3ff81e6c8009921dd3df965
+SHA256: ae03325302eddfef80e39b67473e0df349dcd1680b2deaf60f0a448ec67da1e0
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.53
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -362,6 +378,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj
 Replaces: com.liuf.jpyj, com.xu.kbprobe
 Provides: com.liuf.jpyj
@@ -372,15 +389,15 @@ Depends: mobilesubstrate
 Installed-Size: 71
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.53_iphoneos-arm64e.deb
-Size: 12782
-MD5sum: eb38fbf362becaa02545eb7e6b6c1ae3
-SHA256: 57591b855dc9ba21bf6f7f5fc355a0c92b549ad6630aed5851d26aa4668d3b2f
+Size: 12834
+MD5sum: 0a176743a6016e7175ffd5001129418f
+SHA256: f89371f17befe2713d3c850350d26fb74fc7260d4c51b1bf7cc238859491b47b
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.54
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -388,6 +405,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj
 Replaces: com.liuf.jpyj, com.xu.kbprobe
 Provides: com.liuf.jpyj
@@ -398,15 +416,15 @@ Depends: mobilesubstrate
 Installed-Size: 72
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.54_iphoneos-arm64e.deb
-Size: 13736
-MD5sum: 3615c47d4a76f748a8194e011223ac3b
-SHA256: 7ed02e81e76fe31217e909d279aaef5428bdb3a483c69804df2628cc51b492ca
+Size: 13788
+MD5sum: 2b8a739c133adabcadff7ff9dea0481e
+SHA256: cb4a899fa2c55cc78451935284dbfb78399882fb8bf4726e06a2330ce03f1029
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.56
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -414,6 +432,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, com.restiveconch.actionbar, com.udevs.dockx
 Replaces: com.liuf.jpyj, com.xu.kbprobe, byg.iosios.net.oledkeyboard, com.p2kdev.underdock
 Provides: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock
@@ -424,15 +443,15 @@ Depends: mobilesubstrate
 Installed-Size: 115
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.56_iphoneos-arm64e.deb
-Size: 27818
-MD5sum: e4a8b1e238d91e5a2a28df842fff1f16
-SHA256: 869242f74f3b5fd45b960e8c2f50fab72c09443cd11050cf4c11fd657e104335
+Size: 27864
+MD5sum: 3975abc42cebb8ba062eaede839cad57
+SHA256: 0fa88d7752a2a905d53951239fa12ef62fa8e6b9c5c942928684badb0437310d
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.57
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -440,6 +459,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, com.restiveconch.actionbar, com.udevs.dockx
 Replaces: com.liuf.jpyj, com.xu.kbprobe, byg.iosios.net.oledkeyboard, com.p2kdev.underdock
 Provides: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock
@@ -450,15 +470,15 @@ Depends: mobilesubstrate
 Installed-Size: 115
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.57_iphoneos-arm64e.deb
-Size: 27816
-MD5sum: bfcd9b19ea4df93e1eb56db16f326519
-SHA256: 807db83dec81676a35d89b7ce48b44dac607c0cf3a92b636d8266b53685e15ca
+Size: 27862
+MD5sum: 275f130e1c05979ed3b54b7554c7f8e3
+SHA256: 81be60f2cc2432ceab29b2c04bcb64b137f1800f6990e425b617067d79d8361d
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.58
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -466,6 +486,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko, com.restiveconch.actionbar, com.udevs.dockx
 Replaces: com.liuf.jpyj, com.xu.kbprobe, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
 Provides: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
@@ -476,15 +497,15 @@ Depends: mobilesubstrate, preferenceloader, com.opa334.libsandy
 Installed-Size: 1270
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.58_iphoneos-arm64e.deb
-Size: 355320
-MD5sum: 44ec1cec924dadaef4ec3ddb1b21f634
-SHA256: 13b72b050f54c1a2b4d4581e2b49a7a314217c2b7696dcc8b53bb80da3894838
+Size: 355370
+MD5sum: 90a7db0c73f6d209fa090acb08dba971
+SHA256: 164326eeff96ac0e1a2fa623c7c63cac34b1ccff420828ce12e2b2b7450a4322
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.59
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -492,6 +513,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko, com.restiveconch.actionbar, com.udevs.dockx
 Replaces: com.liuf.jpyj, com.xu.kbprobe, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
 Provides: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
@@ -502,15 +524,15 @@ Depends: mobilesubstrate, preferenceloader, com.opa334.libsandy
 Installed-Size: 1274
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.59_iphoneos-arm64e.deb
-Size: 359982
-MD5sum: 151dbb2f730aa4cb198a99174be12949
-SHA256: 4c9f37d8ddffbf4b275e59ef72f824cef56a5ae7691d476374ca47155e0ddaa7
+Size: 360034
+MD5sum: 87310a6be94b9d8353f350b3920d9ac7
+SHA256: 23092498fabf9cdb5de07f60100a37caf52bb2e2be4d378f01dc9e3a434a21a8
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.5
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -518,6 +540,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj
 Replaces: com.liuf.jpyj, com.xu.kbprobe
 Provides: com.liuf.jpyj
@@ -528,15 +551,15 @@ Depends: mobilesubstrate
 Installed-Size: 66
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.5_iphoneos-arm64e.deb
-Size: 4314
-MD5sum: 59eb6ba517502f1b626ab6f08b2cc5f3
-SHA256: cca8755ac520b8cd33175c5a82e80390e47d08a8025007999ddd57d395855afd
+Size: 4366
+MD5sum: 285593427335f7261da6e069c5cb77f5
+SHA256: 8618bdbab8fe7af20195eac70c8e0f2bb818906e339fee2753b7b791ff20cd16
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.61
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -544,6 +567,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko, com.restiveconch.actionbar, com.udevs.dockx
 Replaces: com.liuf.jpyj, com.xu.kbprobe, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
 Provides: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
@@ -554,15 +578,15 @@ Depends: mobilesubstrate, preferenceloader, com.opa334.libsandy
 Installed-Size: 1291
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.61_iphoneos-arm64e.deb
-Size: 362520
-MD5sum: 003a1e5e45b4fc16ebc110b97f280170
-SHA256: 6ee5ce3b525bac406a5430252055722e46b3ebac5d387cc2b7fc403c7b242e0d
+Size: 362572
+MD5sum: 5c31ad9c62e7e1188bffaf6e00ffb19e
+SHA256: 74e292a87b72110a775ff82a572bfee744264d7e7a745a37570ee800c43d506a
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.62
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -570,6 +594,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko, com.restiveconch.actionbar, com.udevs.dockx
 Replaces: com.liuf.jpyj, com.xu.kbprobe, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
 Provides: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
@@ -580,15 +605,15 @@ Depends: mobilesubstrate, preferenceloader, com.opa334.libsandy
 Installed-Size: 1291
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.62_iphoneos-arm64e.deb
-Size: 362640
-MD5sum: f13bbca8fd7b65c46bb6937a438e9c7f
-SHA256: a75b2ca9c92a39cbb658a26560db68cc26b5099eb532c8ebae2631a3238a7357
+Size: 362690
+MD5sum: e48543b87feadab6e89bf36e170bcbad
+SHA256: c3e49c82c337bad5445de7f4c7da38f51d8bdb4228e2f573c949c435c5a291a6
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.66
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -596,6 +621,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko, com.restiveconch.actionbar, com.udevs.dockx
 Replaces: com.liuf.jpyj, com.xu.kbprobe, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
 Provides: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
@@ -606,15 +632,15 @@ Depends: mobilesubstrate, preferenceloader, com.opa334.libsandy
 Installed-Size: 1294
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.66_iphoneos-arm64e.deb
-Size: 366728
-MD5sum: eeff4bf13bd4d67d9d2b43c8cc690eab
-SHA256: 68b1442f6a68027e74aa6784e918470fcb8f53b08cedfd41f54501433e71a0b3
+Size: 366778
+MD5sum: 736ace7dd932617d369a06ea8aeccfed
+SHA256: 85a217d7baec71bf7b05828882e6c8b5b28cf657ffd48c07c22b0fe334d51ea8
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.67
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -622,6 +648,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko, com.restiveconch.actionbar, com.udevs.dockx
 Replaces: com.liuf.jpyj, com.xu.kbprobe, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
 Provides: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
@@ -632,15 +659,15 @@ Depends: mobilesubstrate, preferenceloader, com.opa334.libsandy
 Installed-Size: 1294
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.67_iphoneos-arm64e.deb
-Size: 366738
-MD5sum: caccc02fc8631f89331efbd6384c0451
-SHA256: 65cce9e2e4c88a151bc5244f30b9016f113ce942815ea62dadfe8624fa0c412f
+Size: 366788
+MD5sum: 83724e9f7beab9b194a349c59cd48fc5
+SHA256: 601cf3f4420496e1f2d874f162e51c380805e61a7692b79a4c69787afb72a2c6
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.6
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -648,6 +675,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj
 Replaces: com.liuf.jpyj, com.xu.kbprobe
 Provides: com.liuf.jpyj
@@ -658,15 +686,15 @@ Depends: mobilesubstrate
 Installed-Size: 66
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.6_iphoneos-arm64e.deb
-Size: 3684
-MD5sum: 8ec7749526594923ca6234c9660170f0
-SHA256: b7875a87fd9ee76afbc7f98d7782c22895ceaaa834d5bf2b7aaedb96c13086a4
+Size: 3736
+MD5sum: 5ef3b0c045eecb58967757f0e9df9c3a
+SHA256: 0536a9fe695d573e0aa0fb675d7afda73c74633999cb010db0cf77a92ce73338
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.70
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -674,6 +702,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko, com.restiveconch.actionbar, com.udevs.dockx
 Replaces: com.liuf.jpyj, com.xu.kbprobe, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
 Provides: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
@@ -684,15 +713,15 @@ Depends: mobilesubstrate, preferenceloader, com.opa334.libsandy
 Installed-Size: 1312
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.70_iphoneos-arm64e.deb
-Size: 371338
-MD5sum: a503b018f13d3208b3584b07fd3789e5
-SHA256: ea42c4db663a302d3fd1385185deff6cf658a829b4a4b60f7c703046aeb4318f
+Size: 371388
+MD5sum: d5d080c69b295ddbf201890173978e22
+SHA256: ff9ba18d1e3279d3cdee4213a22a3616920e145264cd64f1644a05ac5742fc3c
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.74
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -700,6 +729,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko, com.restiveconch.actionbar, com.udevs.dockx
 Replaces: com.liuf.jpyj, com.xu.kbprobe, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
 Provides: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
@@ -710,15 +740,15 @@ Depends: mobilesubstrate, preferenceloader, com.opa334.libsandy
 Installed-Size: 1330
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.74_iphoneos-arm64e.deb
-Size: 374356
-MD5sum: 84532ab61bd147f1b508d10f21cfe608
-SHA256: 622db0f3df3a671ec8421eb9e42384a9237a309958485f267e40bb144356cf58
+Size: 374408
+MD5sum: 4f4e655a97182b88b27a1dbf36449802
+SHA256: 849cca52faed52afab59cd96969448003042b7e36fd77015a8930144a06a9c1d
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.75
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -726,6 +756,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko, com.restiveconch.actionbar, com.udevs.dockx
 Replaces: com.liuf.jpyj, com.xu.kbprobe, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
 Provides: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
@@ -736,15 +767,15 @@ Depends: mobilesubstrate, preferenceloader, com.opa334.libsandy
 Installed-Size: 1330
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.75_iphoneos-arm64e.deb
-Size: 374538
-MD5sum: 76c4e192be75f2a51ffd6351beacb19d
-SHA256: 40fb4481e9602936f7d6b0d97f1875abcdf5f4f8afbc48c371ecbc7a3a99550a
+Size: 374590
+MD5sum: eea1fbad33e8b299cfc59049c1083915
+SHA256: 6d762fc735293f17cc3717cbd5fbd610050dce0ab02c6766c028a3211f81ff2a
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.76
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -752,6 +783,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko, com.restiveconch.actionbar, com.udevs.dockx
 Replaces: com.liuf.jpyj, com.xu.kbprobe, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
 Provides: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
@@ -762,15 +794,15 @@ Depends: mobilesubstrate, preferenceloader, com.opa334.libsandy
 Installed-Size: 1330
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.76_iphoneos-arm64e.deb
-Size: 374880
-MD5sum: 2741c6180499794e2bfe718ccd4b2d95
-SHA256: 21dd614b235a164ab2e7c696eee72a935bc4625df0e8200898493d7b8f86f9a7
+Size: 374930
+MD5sum: 854be4d13a13128c2b138f507aa0abaf
+SHA256: 1b550450e295fa362911f4db383bddcbe80920600985d154cc82cc5c24ce329a
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.82
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -778,6 +810,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko, com.restiveconch.actionbar, com.udevs.dockx
 Replaces: com.liuf.jpyj, com.xu.kbprobe, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
 Provides: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
@@ -788,15 +821,15 @@ Depends: mobilesubstrate, preferenceloader, com.opa334.libsandy
 Installed-Size: 1331
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.82_iphoneos-arm64e.deb
-Size: 376054
-MD5sum: 8a1cfa16e2617bc672f7c4d01819ae64
-SHA256: eda13cd2777b852a9dcf3fd3c993eeb2f673cf5fbe91884b3bed286ed8157b6e
+Size: 376106
+MD5sum: 52d8d7c765a5b2581d2dd264b2aa847f
+SHA256: 68031782ac1b50872c01c51300acdf991398112b74dd81d77d883156f476409c
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.85
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -804,6 +837,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko, com.restiveconch.actionbar, com.udevs.dockx
 Replaces: com.liuf.jpyj, com.xu.kbprobe, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
 Provides: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
@@ -814,15 +848,15 @@ Depends: mobilesubstrate, preferenceloader, com.opa334.libsandy
 Installed-Size: 1331
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.85_iphoneos-arm64e.deb
-Size: 376692
-MD5sum: dda6ab37886fed16eb65b2d7f2083056
-SHA256: 57b49e53ba39834cb64604174c1ef8a0de80f20264d53a4a4bff5a34743a1eac
+Size: 376744
+MD5sum: e0634f8125920cf248a44aae4f465044
+SHA256: 4a027a8d7d704d173f45324eb3b06b82b48cf0a2a469d4b7102b5a4ecbd118aa
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.86
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -830,6 +864,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko, com.restiveconch.actionbar, com.udevs.dockx
 Replaces: com.liuf.jpyj, com.xu.kbprobe, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
 Provides: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
@@ -840,15 +875,15 @@ Depends: mobilesubstrate, preferenceloader, com.opa334.libsandy
 Installed-Size: 1331
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.86_iphoneos-arm64e.deb
-Size: 377090
-MD5sum: 53a2a103e1c4d5540795a3d41c0feb6d
-SHA256: d9dec772b9c209fb1a4a36a1933d18d1a45929139a1a7f901504e594493d656e
+Size: 377142
+MD5sum: ff2159fd6e5de1cabcffbe066acdcf15
+SHA256: 4bd0a615738b6216b2a26bf2de3225dff8d6355761070290e7aabbdc27571b68
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.88
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -856,6 +891,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko, com.restiveconch.actionbar, com.udevs.dockx
 Replaces: com.liuf.jpyj, com.xu.kbprobe, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
 Provides: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
@@ -866,15 +902,15 @@ Depends: mobilesubstrate, preferenceloader, com.opa334.libsandy
 Installed-Size: 1331
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.88_iphoneos-arm64e.deb
-Size: 377198
-MD5sum: ed8ffdf14646218d73479846bb654ad6
-SHA256: 6e9b89ea4cea59bbd0a0f3c11f1270d991b2d67c881d1b5d1ee60d8eb644ce03
+Size: 377250
+MD5sum: 8a94cd08d19c52db8e15aa2d72203ae7
+SHA256: 1a80f92a67b452849e2bd8f293929e97bc5234ee171faab675349e4bfa25bd93
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.90
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -882,6 +918,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko, com.restiveconch.actionbar, com.udevs.dockx
 Replaces: com.liuf.jpyj, com.xu.kbprobe, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
 Provides: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
@@ -892,15 +929,15 @@ Depends: mobilesubstrate, preferenceloader, com.opa334.libsandy
 Installed-Size: 1331
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.90_iphoneos-arm64e.deb
-Size: 377724
-MD5sum: 663950066a69f4fcce0dd268a14b990a
-SHA256: 2687d9dcbd6b63675133b482a3d6c3043da0d5902f0bd5b348942e53dcd5fde6
+Size: 377774
+MD5sum: ac17a7c965e5f323e4b9d5762e023cea
+SHA256: 7fad721222c476673aec74f6facafd107a02b7f4564e45bc6027e4c1b9fc9561
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.91
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -908,6 +945,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko, com.restiveconch.actionbar, com.udevs.dockx
 Replaces: com.liuf.jpyj, com.xu.kbprobe, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
 Provides: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
@@ -918,15 +956,15 @@ Depends: mobilesubstrate, preferenceloader, com.opa334.libsandy
 Installed-Size: 1331
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.91_iphoneos-arm64e.deb
-Size: 375598
-MD5sum: 622ef7745750124503eca3553575e1ac
-SHA256: d4079a5573f5e42d081b64a63544103b68d037acb3649529ff22b11da3d73fe5
+Size: 375650
+MD5sum: d51bce1bc9cd995653721eb2c4b0d8c4
+SHA256: 36aee8c484d50d5ff13302b23f4de3be5a13164c70a83499b8c68faf31713262
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.92
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -934,6 +972,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko, com.restiveconch.actionbar, com.udevs.dockx
 Replaces: com.liuf.jpyj, com.xu.kbprobe, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
 Provides: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
@@ -944,15 +983,15 @@ Depends: mobilesubstrate, preferenceloader, com.opa334.libsandy
 Installed-Size: 1331
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.92_iphoneos-arm64e.deb
-Size: 375658
-MD5sum: 471979f1983b95276cfe85517a9dea45
-SHA256: 732086291c8a6e163f526c862f3571e409f04a25af65c50cfd8959b4354e230b
+Size: 375710
+MD5sum: fc63fb5cd211029ef197dca833b72d8b
+SHA256: 97cdd10821998b10c42017504211d67839a2172fe9ea3c069620c83e3a696d13
 
 Package: com.xu.keyboardcorner16
 Name: KeyboardCorner16
 Version: 1.0.93
 Architecture: iphoneos-arm64e
-Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
+Description: 界面视觉 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷操作整合
  【功能】
  · 全按键 10pt 圆角矩形增强，覆盖字母、数字与拨号键盘
  · OLED 纯黑键盘背景，深色模式省电
@@ -960,6 +999,7 @@ Description: 键盘增强 · 系统键盘圆角 / OLED 深色 / UnderDock 快捷
  · 候选栏常显判定：composing / visibleCandidateText / listCandidates
  【宿主】系统键盘独立进程
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.keyboardcorner16.json
 Conflicts: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko, com.restiveconch.actionbar, com.udevs.dockx
 Replaces: com.liuf.jpyj, com.xu.kbprobe, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
 Provides: com.liuf.jpyj, byg.iosios.net.oledkeyboard, com.p2kdev.underdock, codes.aurora.kayoko
@@ -970,9 +1010,9 @@ Depends: mobilesubstrate, preferenceloader, com.opa334.libsandy
 Installed-Size: 1332
 Tag: purpose::extension
 Filename: ./debs/KeyboardCorner16_1.0.93_iphoneos-arm64e.deb
-Size: 376312
-MD5sum: 2600d9811059d73cba80e8e1e4a1fc0d
-SHA256: b13d352bd802bc4fa1cabaa26d8228379f68abf52bc33712fde906007c96f2e6
+Size: 376366
+MD5sum: cc3aaec1a7c6a3015845a4b5e319082a
+SHA256: 1a1b697aac59e7237185856005f4fbcf387c7f7b1bba7ee3f6b609480246451f
 
 Package: com.xu.leafcrack
 Name: Leaf 会员解锁 LeafCrack
@@ -980,49 +1020,51 @@ Version: 1.2.1
 Architecture: iphoneos-arm64e
 Description: 会员解锁 · Leaf VPN 高级会员状态直写，隧道可用
  【功能】
- · 写入 LEAF_ENC_IS_PREMIUM_ACTIVATED / TOTAL_POINTS / LAST_DEDUCT_TIME 会员标记
- · swizzle NSUserDefaults setBool/setInteger/setDouble:forKey:，标记改不回去
- · RevenueCat RCEntitlementInfo(s) 的 isActive / active 系列恒返回 YES
- · 自动确保 LEAF_ENC_DEFAULT_CONFIG_KEY 指向有效配置，点 GO 可正常建隧道
+ · 写入 `LEAF_ENC_IS_PREMIUM_ACTIVATED` / `TOTAL_POINTS` / `LAST_DEDUCT_TIME` 会员标记
+ · swizzle `NSUserDefaults` setBool/setInteger/setDouble:forKey:，标记改不回去
+ · RevenueCat `RCEntitlementInfo(s)` 的 isActive / active 系列恒返回 YES
+ · 自动确保 `LEAF_ENC_DEFAULT_CONFIG_KEY` 指向有效配置，点 GO 可正常建隧道
  · 后台巡检 10 分钟，会员标记被覆盖立刻重写
- 【宿主】com.kitslabs.production.Leaf
+ 【宿主】`com.kitslabs.production.Leaf`
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.leafcrack.json
 Maintainer: g459416925
 Author: g459416925
 Section: Tweaks
 Depends: mobilesubstrate
 Tag: purpose::extension
 Filename: ./debs/LeafCrack_1.2.1_iphoneos-arm64e.deb
-Size: 7552
-MD5sum: 2329acbdf35a03eba5a90a0ff857a447
-SHA256: 65fce01086be3e3677cd84e7438622d00a9f4c76ed9a9ac73dfd22a843111b7a
+Size: 7604
+MD5sum: 2dc310bef4cb7ce9cbf67f6df06285b4
+SHA256: 293f1004fec18bfed08cc11e247d621223ec1cb04f5254224abb61992df71bd8
 
 Package: com.xu.nohomeicons
 Name: 桌面净空 NoHomeIcons
 Version: 0.7.4
 Architecture: iphoneos-arm64e
-Description: 桌面布局 · 主屏零图标净空（App 仅进资源库，Dock 保留）
+Description: 界面视觉 · 主屏零图标净空，App 仅进资源库，Dock 保留
  【功能】
  · 纯视图层隐藏（alpha=0 + 禁交互），不写 IconState，卸载即恢复原布局
- · 锁定「新下载的 App = 仅 App 资源库」：SBHomeAutomaticallyAddsNewApplications 恒返回 NO
+ · 锁定「新下载的 App = 仅 App 资源库」：`SBHomeAutomaticallyAddsNewApplications` 恒返回 NO
  · 移除「设置 → 主屏幕」入口，从根上断掉改设置的可能
  【宿主】SpringBoard + 设置
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.nohomeicons.json
 Maintainer: g459416925
 Author: g459416925
 Section: Tweaks
 Depends: mobilesubstrate
 Tag: purpose::extension
 Filename: ./debs/NoHomeIcons16_0.7.4_iphoneos-arm64e.deb
-Size: 16126
-MD5sum: ddc6654d7e70691b5ce5304c82e82543
-SHA256: 0a7c6d2be10848f031392d2657d83ccfc285bdee4041e89d4a32f63b78b0afd1
+Size: 16174
+MD5sum: 612c8bcb4570af05f236e96efc4facb4
+SHA256: abb245c2661a7d159805f2ece0374dc2b2f2e42ca51f646b9bdc323d4aeb315e
 
 Package: com.xu.screentimelocker16
 Name: ScreenTimeLocker16
 Version: 5.2.0
 Architecture: iphoneos-arm64e
-Description: 系统限制 · 把「屏幕使用时间」的 App 限额变成一把真正的锁
+Description: 系统增强 · 把「屏幕使用时间」的 App 限额变成一把真正的锁
  【功能】
  · 数据层：禁止「再使用一分钟」，0/0 限额可长期生效
  · 设置页：允许把限额设成 0 小时 0 分钟
@@ -1030,6 +1072,7 @@ Description: 系统限制 · 把「屏幕使用时间」的 App 限额变成一�
  · 菜单弹窗保持系统原样，不注入额外选项，「请求更多使用时间」照常保留
  【宿主】SpringBoard
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.screentimelocker16.json
 Maintainer: g459416925
 Author: g459416925 (iOS 16.5.1 / RootHide 重写版)
 Section: Tweaks
@@ -1037,15 +1080,15 @@ Depends: mobilesubstrate
 Installed-Size: 94
 Tag: purpose::extension
 Filename: ./debs/ScreenTimeLocker16_5.2.0_iphoneos-arm64e.deb
-Size: 19454
-MD5sum: 4728d5d6f5345c0e074da9403f46915b
-SHA256: dc9f4fa2806a34c9ff57364379fa774f34c84dc3105e0edec09b956915b8673b
+Size: 19500
+MD5sum: 74278fd1b775f675cf530a209c1d856b
+SHA256: 5119ad62b5170d855c4477a58ed4ed7084a95faa4c3e14833169aabffeeec92b
 
 Package: com.xu.screentimelocker16
 Name: ScreenTimeLocker16
 Version: 5.2.1
 Architecture: iphoneos-arm64e
-Description: 系统限制 · 把「屏幕使用时间」的 App 限额变成一把真正的锁
+Description: 系统增强 · 把「屏幕使用时间」的 App 限额变成一把真正的锁
  【功能】
  · 数据层：禁止「再使用一分钟」，0/0 限额可长期生效
  · 设置页：允许把限额设成 0 小时 0 分钟
@@ -1053,6 +1096,7 @@ Description: 系统限制 · 把「屏幕使用时间」的 App 限额变成一�
  · 菜单弹窗保持系统原样，不注入额外选项，「请求更多使用时间」照常保留
  【宿主】SpringBoard
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.screentimelocker16.json
 Maintainer: g459416925
 Author: g459416925 (iOS 16.5.1 / RootHide 重写版)
 Section: Tweaks
@@ -1060,23 +1104,24 @@ Depends: mobilesubstrate
 Installed-Size: 94
 Tag: purpose::extension
 Filename: ./debs/ScreenTimeLocker16_5.2.1_iphoneos-arm64e.deb
-Size: 19576
-MD5sum: 15ab60a35fd5d65bc6cbdc1340605b39
-SHA256: 841e294dcb24bcdd558c05def277e45988a1738d5366d18f30abee3c1cad8fde
+Size: 19622
+MD5sum: bc6ed242706c9741caebcf5d835a38e7
+SHA256: b55de7305e97b70d1af30f3257124c21160bc80842d755e3b9cffb7e94304be9
 
 Package: com.xu.statusbarscale
 Name: StatusBarScale
 Version: 2.1.1
 Architecture: iphoneos-arm64e
-Description: 状态栏修正 · 灵动岛机型状态栏图标缩放对齐 + 资源库背景透明
+Description: 界面视觉 · 灵动岛机型状态栏图标缩放对齐 + 资源库背景透明
  【功能】
- · 灵动岛右侧图标 ×0.9025 绕中心缩放 + 垂直微调，图标墨迹高度 13→12px 与时间对齐
+ · 灵动岛右侧图标 ×0.9025 绕中心缩放 + 垂直微调，墨迹高度 13→12px 与时间对齐
  · 时间右侧、岛左侧图标按坐标区间发现，单独 ×0.5038
  · App 资源库分类卡片背景板与搜索框背景材质清成透明，只留图标浮于壁纸
  · 受管表带撤销：视图脱离命中区间 1.5s 先摘登记再还原，防复用池换身份误伤
  · 纯 transform 实现，不参与 frame 布局，间距与点击区域不受影响
  【宿主】仅 SpringBoard（App 内状态栏由 SB 远程渲染）
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.statusbarscale.json
 Maintainer: g459416925
 Author: g459416925 (iOS 16.5.1 / RootHide)
 Section: Tweaks
@@ -1084,23 +1129,24 @@ Depends: mobilesubstrate
 Installed-Size: 92
 Tag: purpose::extension
 Filename: ./debs/StatusBarScale_2.1.1_iphoneos-arm64e.deb
-Size: 19872
-MD5sum: b2ab5e30f1a84847a9699dba889003a2
-SHA256: a5bcb718a96a45a2e80c716712408c5eedcc69e14320f11d7efc549523c2c6a0
+Size: 19920
+MD5sum: 15379b33527bea18c8c9399264e25298
+SHA256: e5924248e11f77736a6cdd5f9eab69ac7c36eae142b6c9b35428b59503b3b3f0
 
 Package: com.xu.statusbarscale
 Name: StatusBarScale
 Version: 2.3.1
 Architecture: iphoneos-arm64e
-Description: 状态栏修正 · 灵动岛机型状态栏图标缩放对齐 + 资源库背景透明
+Description: 界面视觉 · 灵动岛机型状态栏图标缩放对齐 + 资源库背景透明
  【功能】
- · 灵动岛右侧图标 ×0.9025 绕中心缩放 + 垂直微调，图标墨迹高度 13→12px 与时间对齐
+ · 灵动岛右侧图标 ×0.9025 绕中心缩放 + 垂直微调，墨迹高度 13→12px 与时间对齐
  · 时间右侧、岛左侧图标按坐标区间发现，单独 ×0.5038
  · App 资源库分类卡片背景板与搜索框背景材质清成透明，只留图标浮于壁纸
  · 受管表带撤销：视图脱离命中区间 1.5s 先摘登记再还原，防复用池换身份误伤
  · 纯 transform 实现，不参与 frame 布局，间距与点击区域不受影响
  【宿主】仅 SpringBoard（App 内状态栏由 SB 远程渲染）
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.statusbarscale.json
 Maintainer: g459416925
 Author: g459416925 (iOS 16.5.1 / RootHide)
 Section: Tweaks
@@ -1108,23 +1154,24 @@ Depends: mobilesubstrate
 Installed-Size: 114
 Tag: purpose::extension
 Filename: ./debs/StatusBarScale_2.3.1_iphoneos-arm64e.deb
-Size: 25306
-MD5sum: 7c70be79edf4ce7fca8b8bf99fba6f8f
-SHA256: 9d5ba6cb7df427c9ce86fe8110d8895e396a5eb57bfe190ca65f4f433fecb323
+Size: 25350
+MD5sum: f1b9cdbe0eef7f6f9acca89badc0bf3c
+SHA256: 7b6968f2c1a286d7f0a247e40ddabb0f4623e6f9a4dd80a6b4dcd7b53116922f
 
 Package: com.xu.statusbarscale
 Name: StatusBarScale
 Version: 2.5.0
 Architecture: iphoneos-arm64e
-Description: 状态栏修正 · 灵动岛机型状态栏图标缩放对齐 + 资源库背景透明
+Description: 界面视觉 · 灵动岛机型状态栏图标缩放对齐 + 资源库背景透明
  【功能】
- · 灵动岛右侧图标 ×0.9025 绕中心缩放 + 垂直微调，图标墨迹高度 13→12px 与时间对齐
+ · 灵动岛右侧图标 ×0.9025 绕中心缩放 + 垂直微调，墨迹高度 13→12px 与时间对齐
  · 时间右侧、岛左侧图标按坐标区间发现，单独 ×0.5038
  · App 资源库分类卡片背景板与搜索框背景材质清成透明，只留图标浮于壁纸
  · 受管表带撤销：视图脱离命中区间 1.5s 先摘登记再还原，防复用池换身份误伤
  · 纯 transform 实现，不参与 frame 布局，间距与点击区域不受影响
  【宿主】仅 SpringBoard（App 内状态栏由 SB 远程渲染）
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.statusbarscale.json
 Maintainer: g459416925
 Author: g459416925 (iOS 16.5.1 / RootHide)
 Section: Tweaks
@@ -1132,23 +1179,24 @@ Depends: mobilesubstrate
 Installed-Size: 115
 Tag: purpose::extension
 Filename: ./debs/StatusBarScale_2.5.0_iphoneos-arm64e.deb
-Size: 26298
-MD5sum: 8b53001b62b4de7267b935f2c1916b75
-SHA256: 2afbf519addc9ee57a954a02955b428b76fc8dafbab898e6f8e955ee1f3edad0
+Size: 26344
+MD5sum: 6dd73d1c3ba02802c09dc822610809ee
+SHA256: 9ac0afe97fee3e2e2f47aa1bf57f099c708573a7bf0e29ed94f57a136e9a2436
 
 Package: com.xu.statusbarscale
 Name: StatusBarScale
 Version: 2.7.0
 Architecture: iphoneos-arm64e
-Description: 状态栏修正 · 灵动岛机型状态栏图标缩放对齐 + 资源库背景透明
+Description: 界面视觉 · 灵动岛机型状态栏图标缩放对齐 + 资源库背景透明
  【功能】
- · 灵动岛右侧图标 ×0.9025 绕中心缩放 + 垂直微调，图标墨迹高度 13→12px 与时间对齐
+ · 灵动岛右侧图标 ×0.9025 绕中心缩放 + 垂直微调，墨迹高度 13→12px 与时间对齐
  · 时间右侧、岛左侧图标按坐标区间发现，单独 ×0.5038
  · App 资源库分类卡片背景板与搜索框背景材质清成透明，只留图标浮于壁纸
  · 受管表带撤销：视图脱离命中区间 1.5s 先摘登记再还原，防复用池换身份误伤
  · 纯 transform 实现，不参与 frame 布局，间距与点击区域不受影响
  【宿主】仅 SpringBoard（App 内状态栏由 SB 远程渲染）
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.statusbarscale.json
 Maintainer: g459416925
 Author: g459416925 (iOS 16.5.1 / RootHide)
 Section: Tweaks
@@ -1156,23 +1204,24 @@ Depends: mobilesubstrate
 Installed-Size: 235
 Tag: purpose::extension
 Filename: ./debs/StatusBarScale_2.7.0_iphoneos-arm64e.deb
-Size: 81030
-MD5sum: 4500eac7a52d396f137073a8d672bfab
-SHA256: 2f5512c58a08fecaad072af158a5efe99a6f8f9b0fb03de67c923ff1a2f3a626
+Size: 81078
+MD5sum: 8e4597bd4ffc9f4c8efefd00ac333c9c
+SHA256: 5369ad89c22056b231b979781d180ed00fe436ccdd9f9396bf4addfdceb2fb8a
 
 Package: com.xu.statusbarscale
 Name: StatusBarScale
 Version: 2.7.12
 Architecture: iphoneos-arm64e
-Description: 状态栏修正 · 灵动岛机型状态栏图标缩放对齐 + 资源库背景透明
+Description: 界面视觉 · 灵动岛机型状态栏图标缩放对齐 + 资源库背景透明
  【功能】
- · 灵动岛右侧图标 ×0.9025 绕中心缩放 + 垂直微调，图标墨迹高度 13→12px 与时间对齐
+ · 灵动岛右侧图标 ×0.9025 绕中心缩放 + 垂直微调，墨迹高度 13→12px 与时间对齐
  · 时间右侧、岛左侧图标按坐标区间发现，单独 ×0.5038
  · App 资源库分类卡片背景板与搜索框背景材质清成透明，只留图标浮于壁纸
  · 受管表带撤销：视图脱离命中区间 1.5s 先摘登记再还原，防复用池换身份误伤
  · 纯 transform 实现，不参与 frame 布局，间距与点击区域不受影响
  【宿主】仅 SpringBoard（App 内状态栏由 SB 远程渲染）
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.statusbarscale.json
 Maintainer: g459416925
 Author: g459416925 (iOS 16.5.1 / RootHide)
 Section: Tweaks
@@ -1180,20 +1229,46 @@ Depends: mobilesubstrate
 Installed-Size: 235
 Tag: purpose::extension
 Filename: ./debs/StatusBarScale_2.7.12_iphoneos-arm64e.deb
-Size: 77932
-MD5sum: f9b45b8fc9ed8ee67f1a4a37e4022746
-SHA256: 260f4fd77b553bb7952afd32e037bdca6bb47c8c89c5bed29ca5fec88bc1639d
+Size: 77980
+MD5sum: 9eb910f544821fb2ef5a08a3aa50b49d
+SHA256: 6756546b12324a68d33be00a936634121625c954ce690c8a4f422a60815bae56
+
+Package: com.xu.statusbarscale
+Name: StatusBarScale
+Version: 2.8.7
+Architecture: iphoneos-arm64e
+Description: 界面视觉 · 灵动岛机型状态栏图标缩放对齐 + 资源库背景透明
+ 【功能】
+ · 灵动岛右侧图标 ×0.9025 绕中心缩放 + 垂直微调，墨迹高度 13→12px 与时间对齐
+ · 时间右侧、岛左侧图标按坐标区间发现，单独 ×0.5038
+ · App 资源库分类卡片背景板与搜索框背景材质清成透明，只留图标浮于壁纸
+ · 受管表带撤销：视图脱离命中区间 1.5s 先摘登记再还原，防复用池换身份误伤
+ · 纯 transform 实现，不参与 frame 布局，间距与点击区域不受影响
+ 【宿主】仅 SpringBoard（App 内状态栏由 SB 远程渲染）
+ 【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.statusbarscale.json
+Maintainer: g459416925
+Author: g459416925 (iOS 16.5.1 / RootHide)
+Section: Tweaks
+Depends: mobilesubstrate
+Installed-Size: 234
+Tag: purpose::extension
+Filename: ./debs/StatusBarScale_2.8.7_iphoneos-arm64e.deb
+Size: 80072
+MD5sum: df57cf82908546d800dea33598967dbf
+SHA256: 12431d20962704c3fae073f97149a51a0b2ef6adf9662972fa5d33a6478a6009
 
 Package: chaoge.chargelimiter
 Name: ChargeLimiter
 Version: 1.7.2
-Description: 充电管理 · 电池充电上限锁定，保护电池健康
+Description: 系统增强 · 电池充电上限锁定，保护电池健康
  【功能】
  · 设置充电上限百分比，达到阈值自动停止充电
  · 自带 watchdog 守护进程，异常掉线自动恢复设置
  · 独立图形界面应用，安装后桌面即有图标
  【类型】独立应用（非 tweak）
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/chaoge.chargelimiter.json
 Section: Applications
 Depends: firmware (>= 5.0)
 Priority: optional
@@ -1201,9 +1276,9 @@ Architecture: iphoneos-arm64e
 Author: chaoge
 Maintainer: chaoge
 Filename: ./debs/chaoge.chargelimiter_1.7.2_iphoneos-arm64e.deb
-Size: 2589330
-MD5sum: 4bad5b623a3acd06894fabaedc561b92
-SHA256: 2407469ffd414eba60e6b237c35db48c0c99df0745b5179c1f95519ded16d5e0
+Size: 2589380
+MD5sum: fa2fcf683879f6fa40010f73e8598183
+SHA256: 20842c18e4888abebe44c73d126fd555ac0d6993c84205e42a665026af35b2cc
 
 Package: com.xu.adskip
 Name: 广告跳过 AdSkip
@@ -1220,12 +1295,13 @@ Description: 广告拦截 · 自动跳过开屏/激励/插屏广告并保留奖�
  · 开屏广告：倒计时直接清零，补发 splashAdWillClosed / splashAdClosed 完成关闭
  · 插屏与信息流：命中即收场，覆盖 GDT / 穿山甲 / 微信公众号信息流等宿主
  · 激励回调「原生优先、兜底补发」带幂等标记，不重复发奖、不丢奖
- 【范围】生效应用由 AdSkip.plist 的 Filter.Bundles 控制
+ 【范围】生效应用由 `AdSkip.plist` 的 Filter.Bundles 控制
  【兼容】iOS 15.0+ · RootHide 无根 · arm64e · ellekit
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.adskip.json
 Filename: ./debs/com.xu.adskip_1.0.0_iphoneos-arm64e.deb
-Size: 25122
-MD5sum: 69e0251b103bb4a7119ade2a53a1e0c3
-SHA256: f56cf270382e23e954b91183ec86873cea0ad67624a39768065aa666fa013a3c
+Size: 25170
+MD5sum: 3c550201256280d53e554d02b816b687
+SHA256: f50c07ae4b8551e1a570fd943955a36986f268a2d811bc09d2bdf0bdd0e87514
 
 Package: com.xu.adskip
 Name: 广告跳过 AdSkip
@@ -1242,12 +1318,13 @@ Description: 广告拦截 · 自动跳过开屏/激励/插屏广告并保留奖�
  · 开屏广告：倒计时直接清零，补发 splashAdWillClosed / splashAdClosed 完成关闭
  · 插屏与信息流：命中即收场，覆盖 GDT / 穿山甲 / 微信公众号信息流等宿主
  · 激励回调「原生优先、兜底补发」带幂等标记，不重复发奖、不丢奖
- 【范围】生效应用由 AdSkip.plist 的 Filter.Bundles 控制
+ 【范围】生效应用由 `AdSkip.plist` 的 Filter.Bundles 控制
  【兼容】iOS 15.0+ · RootHide 无根 · arm64e · ellekit
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.adskip.json
 Filename: ./debs/com.xu.adskip_1.1.0_iphoneos-arm64e.deb
-Size: 46126
-MD5sum: 9e12ede6d4ac9a7280e0e20e94fda33a
-SHA256: 4f58ccd149207e9877f739e95863609e3bc4e4efdd694f71f9ec8e43f0ccba28
+Size: 46174
+MD5sum: 70257752d462f2c904e199bfaf989ecd
+SHA256: eb24e3d5c863429d05227cfcd1d188a4f65d990fbbfc02b407176bf663791d22
 
 Package: com.xu.adskip
 Name: 广告跳过 AdSkip
@@ -1264,12 +1341,13 @@ Description: 广告拦截 · 自动跳过开屏/激励/插屏广告并保留奖�
  · 开屏广告：倒计时直接清零，补发 splashAdWillClosed / splashAdClosed 完成关闭
  · 插屏与信息流：命中即收场，覆盖 GDT / 穿山甲 / 微信公众号信息流等宿主
  · 激励回调「原生优先、兜底补发」带幂等标记，不重复发奖、不丢奖
- 【范围】生效应用由 AdSkip.plist 的 Filter.Bundles 控制
+ 【范围】生效应用由 `AdSkip.plist` 的 Filter.Bundles 控制
  【兼容】iOS 15.0+ · RootHide 无根 · arm64e · ellekit
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.adskip.json
 Filename: ./debs/com.xu.adskip_1.3.0_iphoneos-arm64e.deb
-Size: 59076
-MD5sum: 8448c575ba35b17d4e58e6a68a9ea615
-SHA256: adaa51e666dcdc3b79557726966228b64f976d9855acb6393164b5c26e30d159
+Size: 59124
+MD5sum: ac2ca60123c99f72f6bbf622bf733024
+SHA256: 28a9ac1a945debafbee70a25d5b55b64cab3d9fdfd3c6d5b91448c8841e0d5f5
 
 Package: com.xu.adskip
 Name: 广告跳过 AdSkip
@@ -1286,12 +1364,13 @@ Description: 广告拦截 · 自动跳过开屏/激励/插屏广告并保留奖�
  · 开屏广告：倒计时直接清零，补发 splashAdWillClosed / splashAdClosed 完成关闭
  · 插屏与信息流：命中即收场，覆盖 GDT / 穿山甲 / 微信公众号信息流等宿主
  · 激励回调「原生优先、兜底补发」带幂等标记，不重复发奖、不丢奖
- 【范围】生效应用由 AdSkip.plist 的 Filter.Bundles 控制
+ 【范围】生效应用由 `AdSkip.plist` 的 Filter.Bundles 控制
  【兼容】iOS 15.0+ · RootHide 无根 · arm64e · ellekit
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.adskip.json
 Filename: ./debs/com.xu.adskip_1.3.3_iphoneos-arm64e.deb
-Size: 169458
-MD5sum: 6d6fc98c843926770ad214297445cdcb
-SHA256: 87d5d577129d31f677aefb9f5df20b4cfab8a5338d35201d046ccdaecfac2305
+Size: 169508
+MD5sum: 17a9d40cadc914d88c29965146dddeca
+SHA256: c051b8e85b87e19a6cecdcea52d0b9046d2d74f9b589fdc72c7877673a00147e
 
 Package: com.xu.adskip
 Name: 广告跳过 AdSkip
@@ -1308,12 +1387,13 @@ Description: 广告拦截 · 自动跳过开屏/激励/插屏广告并保留奖�
  · 开屏广告：倒计时直接清零，补发 splashAdWillClosed / splashAdClosed 完成关闭
  · 插屏与信息流：命中即收场，覆盖 GDT / 穿山甲 / 微信公众号信息流等宿主
  · 激励回调「原生优先、兜底补发」带幂等标记，不重复发奖、不丢奖
- 【范围】生效应用由 AdSkip.plist 的 Filter.Bundles 控制
+ 【范围】生效应用由 `AdSkip.plist` 的 Filter.Bundles 控制
  【兼容】iOS 15.0+ · RootHide 无根 · arm64e · ellekit
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.adskip.json
 Filename: ./debs/com.xu.adskip_1.4.0_iphoneos-arm64e.deb
-Size: 386110
-MD5sum: 97964045ceb12e6634ac80a9fd14ab1b
-SHA256: c43d3e0afed67d3cdf6593b45ae21dab72fe442a66477adf599584a7ed4768d1
+Size: 386166
+MD5sum: 57051e755bdad73661761e239b85934b
+SHA256: d6f3588297a35103fb6d0db92d5b4edb3178c0049f45c37f6a6ef724c9d01fb0
 
 Package: com.xu.adskip
 Name: 广告跳过 AdSkip
@@ -1330,12 +1410,36 @@ Description: 广告拦截 · 自动跳过开屏/激励/插屏广告并保留奖�
  · 开屏广告：倒计时直接清零，补发 splashAdWillClosed / splashAdClosed 完成关闭
  · 插屏与信息流：命中即收场，覆盖 GDT / 穿山甲 / 微信公众号信息流等宿主
  · 激励回调「原生优先、兜底补发」带幂等标记，不重复发奖、不丢奖
- 【范围】生效应用由 AdSkip.plist 的 Filter.Bundles 控制
+ 【范围】生效应用由 `AdSkip.plist` 的 Filter.Bundles 控制
  【兼容】iOS 15.0+ · RootHide 无根 · arm64e · ellekit
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.adskip.json
 Filename: ./debs/com.xu.adskip_1.4.23_iphoneos-arm64e.deb
-Size: 458456
-MD5sum: 32cfd45afea8ee373c5a83130b4b404c
-SHA256: 71ae10e3161d0efcd7162daa4582d47667b07e4f652a538374e7a0744bd4d8cd
+Size: 458510
+MD5sum: 52c3b0b8289ad5ada2c1b0e66fd03d66
+SHA256: 26bee275da4341972829c87045a149887363bb10dc575cbec33a867bb8fcbfb1
+
+Package: com.xu.adskip
+Name: 广告跳过 AdSkip
+Version: 1.4.24
+Architecture: iphoneos-arm64e
+Section: Tweaks
+Priority: optional
+Depends: ellekit, firmware (>= 15.0)
+Maintainer: g459416925
+Author: g459416925
+Description: 广告拦截 · 自动跳过开屏/激励/插屏广告并保留奖励权益
+ 【功能】
+ · 激励视频：play 后立即 seek 到尾部，走 SDK 原生 finish 路径，奖励照常发放
+ · 开屏广告：倒计时直接清零，补发 splashAdWillClosed / splashAdClosed 完成关闭
+ · 插屏与信息流：命中即收场，覆盖 GDT / 穿山甲 / 微信公众号信息流等宿主
+ · 激励回调「原生优先、兜底补发」带幂等标记，不重复发奖、不丢奖
+ 【范围】生效应用由 `AdSkip.plist` 的 Filter.Bundles 控制
+ 【兼容】iOS 15.0+ · RootHide 无根 · arm64e · ellekit
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.adskip.json
+Filename: ./debs/com.xu.adskip_1.4.24_iphoneos-arm64e.deb
+Size: 460400
+MD5sum: 42cfc089254d5b064a9ce2a0c0766cfc
+SHA256: 13fecd6cd96e276c699849d3b91b15f4e17995fd134abbbd9b5f27227eb2f606
 
 Package: com.xu.adskip
 Name: 广告跳过 AdSkip
@@ -1352,17 +1456,18 @@ Description: 广告拦截 · 自动跳过开屏/激励/插屏广告并保留奖�
  · 开屏广告：倒计时直接清零，补发 splashAdWillClosed / splashAdClosed 完成关闭
  · 插屏与信息流：命中即收场，覆盖 GDT / 穿山甲 / 微信公众号信息流等宿主
  · 激励回调「原生优先、兜底补发」带幂等标记，不重复发奖、不丢奖
- 【范围】生效应用由 AdSkip.plist 的 Filter.Bundles 控制
+ 【范围】生效应用由 `AdSkip.plist` 的 Filter.Bundles 控制
  【兼容】iOS 15.0+ · RootHide 无根 · arm64e · ellekit
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.adskip.json
 Filename: ./debs/com.xu.adskip_1.4.2_iphoneos-arm64e.deb
-Size: 387200
-MD5sum: d1b1069bbdeac3738d817cfae16a9b19
-SHA256: a0ab35c10c94db8518805bdc14ee50fd20f120d6575df68a35ddccee7e8be5e4
+Size: 387256
+MD5sum: 5603a278c929db581b49a2efe35f9a1d
+SHA256: 30de24799713d11b33214d0a80e2b9d62f386cc551f6df14c892f65845ac3e1a
 
 Package: com.xu.chevronv3
 Name: ChevronV3
 Depends: mobilesubstrate, preferenceloader
-Description: 启动器 · Chevron 启动器第三代（侧滑呼出 + 分屏浮窗）
+Description: 系统增强 · 侧滑呼出启动器 + 应用分屏浮窗
  【功能】
  · 屏幕侧边快速呼出应用启动栏，点按直达应用
  · 应用分屏浮窗（CV3FloatingAppWindow），横竖屏方向 / 旋转自适应
@@ -1370,6 +1475,7 @@ Description: 启动器 · Chevron 启动器第三代（侧滑呼出 + 分屏浮�
  【宿主】SpringBoard
  【依赖】mobilesubstrate（ellekit）· preferenceloader
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.chevronv3.json
 Maintainer: xu
 Author: xu
 Section: Tweaks
@@ -1377,9 +1483,9 @@ Architecture: iphoneos-arm64e
 Version: 1.0.18-227+env-fast-1+debug
 Installed-Size: 3844
 Filename: ./debs/com.xu.chevronv3_1.0.18-227+env-fast-1+debug_iphoneos-arm64e.deb
-Size: 781378
-MD5sum: 08638f14fbbf80fef34b8b1adb3eedc8
-SHA256: 4f25e70bb051d0c9e6076d533a9b1f6d4e6c70833f8c00e323ac8404d6be090d
+Size: 781422
+MD5sum: 1990d611cad1704327e2c1f7f3770799
+SHA256: eb545a528650f3863cedc04bc30d44bc99331e847b0bade4ba51e914c1f0e334
 
 Package: com.xu.hgvip
 Name: 黄果短剧会员 HGVip
@@ -1392,16 +1498,17 @@ Maintainer: local
 Author: local
 Description: 会员解锁 · 黄果短剧 PWA 会员解锁（WKWebView 脚本注入）
  【功能】
- · documentStart 注入，接管 /api/app/ 的 JSON 响应与 localStorage.userInfo
+ · documentStart 注入，接管 `/api/app/` 的 JSON 响应与 `localStorage.userInfo`
  · isVip / vipLevel / vipExpireDate 置为会员态
  · permission / lockStatus / accessType / canPlay 置为已解锁
  · unlockCoins / price 归零，freeEpisode 放开
- 【自检】xnotify com.xu.hgvip.selftest ｜ 补打 xnotify com.xu.hgvip.repair ｜ 日志 HGVip.log
+ 【自检】`xnotify com.xu.hgvip.selftest` ｜ 补打 `xnotify com.xu.hgvip.repair`
  【兼容】iOS 15.0+ · RootHide 无根 · arm64e · ellekit
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.hgvip.json
 Filename: ./debs/com.xu.hgvip_1.0.0_iphoneos-arm64e.deb
-Size: 25822
-MD5sum: fd1204963c3887c4461abef2619c00c4
-SHA256: 38128d187292da474fafa1990a05289c32f9c83e3e5ae5289e12b49760ce0db8
+Size: 25866
+MD5sum: d73b7e69048823a0b25766d6cbfbea09
+SHA256: 94bbe31b6102d6b6910715d30790585eff9dec36ecdf93d65484f215d48a540f
 
 Package: com.xu.hgweb
 Name: 黄果短剧
@@ -1413,34 +1520,36 @@ Description: 会员解锁 · 黄果短剧独立宿主（内置会员解锁）
  · 内置 HGVip 同款会员解锁逻辑，开箱即用
  【类型】独立应用（非 tweak）
  【兼容】iOS 15.0+ · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.hgweb.json
 Maintainer: xu
 Section: Applications
 Depends: firmware (>= 15.0)
 Filename: ./debs/com.xu.hgweb_1.0.0_iphoneos-arm64e.deb
-Size: 34546
-MD5sum: f3f3d57803717ad61a533b1df6cafcb4
-SHA256: d0237d60546261ce09e37287d62cd2fac17c0fe0828d92d1d7b2c2d69b0bcffc
+Size: 34598
+MD5sum: f0e9389f9d61865e173f9d95226dad78
+SHA256: 87ba6592752c1ca30f7dc0dc2f5d7022279e0f345f258a49b020f0a3a4d9e2f7
 
 Package: com.xu.nohomeicons
 Name: 桌面净空 NoHomeIcons
 Version: 0.7.5
 Architecture: iphoneos-arm64e
-Description: 桌面布局 · 主屏零图标净空（App 仅进资源库，Dock 保留）
+Description: 界面视觉 · 主屏零图标净空，App 仅进资源库，Dock 保留
  【功能】
  · 纯视图层隐藏（alpha=0 + 禁交互），不写 IconState，卸载即恢复原布局
- · 锁定「新下载的 App = 仅 App 资源库」：SBHomeAutomaticallyAddsNewApplications 恒返回 NO
+ · 锁定「新下载的 App = 仅 App 资源库」：`SBHomeAutomaticallyAddsNewApplications` 恒返回 NO
  · 移除「设置 → 主屏幕」入口，从根上断掉改设置的可能
  【宿主】SpringBoard + 设置
  【兼容】iOS 16.x · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.nohomeicons.json
 Maintainer: g459416925
 Author: g459416925
 Section: Tweaks
 Depends: mobilesubstrate
 Tag: purpose::extension
 Filename: ./debs/com.xu.nohomeicons_0.7.5_iphoneos-arm64e.deb
-Size: 12880
-MD5sum: b4f715b75736b4f04395320875c6a52d
-SHA256: ae221ec0bf80acd73581b46febb3c189c4b0697f931e58209e8d347dd4c2f8d0
+Size: 12932
+MD5sum: 3150f55a4eedfb299b521b39cbfbcc00
+SHA256: 72f8a97bd6c0a0fd75e21298b63a7c35cf1087933a394a2418e8218080660eea
 
 Package: com.xu.rescalefixed
 Name: Re:Scale Fixed 440
@@ -1452,16 +1561,18 @@ Maintainer: g459416925
 Depends: mobilesubstrate, firmware (>= 14.0)
 Conflicts: tf.festival.rescale2, com.xu.rescalekb440fix, com.xu.rescale2plus
 Replaces: tf.festival.rescale2, com.xu.rescalekb440fix, com.xu.rescale2plus
-Description: 显示分辨率 · 固定 440×956 画布（iPhone 18 Pro Max 6.9" @3x），装完即生效
+Description: 界面视觉 · 固定 440×956 画布（iPhone 18 Pro Max 6.9" @3x），装完即生效
  【功能】
  · 安装即写入固定画布偏好 1320×2868（=440×956pt @3x），无面板、无需确认
- · 分辨率注入复用原版 ReScale.dylib（字节未改、签名受信），键盘 414→440 修正内联在 ReScaleKB
- · 自带自检 /usr/bin/rf_check（--fix 可修复丢失的标记/偏好）
- · 自愈守护 com.xu.rescalefixed.heal：开机 / userspace reboot 自动补文件，仅确实修复时重启一次 backboardd
- 【互斥】与原版 Re:Scale 2 及带面板重打包版互斥（Conflicts / Replaces 已声明）
+ · 分辨率注入复用原版 `ReScale.dylib`（字节未改、签名受信），键盘 414→440 修正内联在 ReScaleKB
+ · 自带自检 `/usr/bin/rf_check`（--fix 可修复丢失的标记/偏好）
+ · 自愈守护 `com.xu.rescalefixed.heal`：开机 / userspace reboot 自动补文件，仅确实修复时重启一次 backboardd
+ 【宿主】backboardd
+ 【互斥】原版 Re:Scale 2 及带面板重打包版（Conflicts / Replaces 已声明）
  【兼容】iOS 14.0+ · RootHide 无根 · arm64e
+SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.rescalefixed.json
 Tag: purpose::extension
 Filename: ./debs/com.xu.rescalefixed_3.1.1_iphoneos-arm64e.deb
-Size: 17712
-MD5sum: 973a3b9d1155e95ea2c895d140f87a5a
-SHA256: e90d8c7f2699473884d5529e05ca56f6f3a47bb414b4417f94885e6a905767a0
+Size: 17764
+MD5sum: b5ffbf6c3b2a88f7cbd878f72a2bacfa
+SHA256: 4d6949700b6711a4934e84bb80378e488f6366a017edf61e034f55b94db28f61
