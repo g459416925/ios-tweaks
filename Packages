@@ -44,6 +44,25 @@ Size: 7296
 MD5sum: 97d4650350628e43284e01e4a6f547b3
 SHA256: 1aed64fb9fc6b64db0e60763f7e9f3e7e8d5af9df43c34a73a1c62b4b54ee12f
 
+Package: com.xu.bounceit16
+Name: BounceIt16
+Version: 1.1.21
+Architecture: iphoneos-arm64e
+Description: SpringBoard 果冻弹性动画（BounceIt 自研替代版）。
+ 三条弹跳链：全局动画参数劫持（SBFFluidBehaviorSettings.setDampingRatio: 与
+ SBFAnimationSettings 四 getter，ζ=0.325）；控制中心/通知中心落位回弹（120pt）；
+ app 开关回主屏壁纸缩放回弹（壁纸窗口 layer 弹簧）。
+Maintainer: g459416925
+Author: g459416925
+Section: Tweaks
+Depends: mobilesubstrate
+Installed-Size: 70
+Tag: purpose::extension
+Filename: ./debs/BounceIt16_1.1.21_iphoneos-arm64e.deb
+Size: 8704
+MD5sum: 6d068333d32eea1f61b686f817d37368
+SHA256: 5c8f45e3216a8c21c998ec150d9ec9fdbd2882f10135425d665de3d1a3a0a092
+
 Package: com.xu.compactorfix
 Name: CompactorFix
 Version: 1.0.0
