@@ -1557,29 +1557,17 @@ SHA256: b1041f54132c0aad8b735b54b3bdff2493bf60d1b8af4d0f66334d00b4eb9bbd
 Package: com.xu.chevronv3
 Name: ChevronV3
 Depends: mobilesubstrate, preferenceloader
-Description: 系统增强 · 边缘启动器 + 应用分屏浮窗
- 【功能】
- · 屏幕边缘热区快速呼出启动器，点按直达应用
- · 应用分屏浮窗：任意 App 以独立窗口悬浮使用，带独立键盘与键盘避让
- · 浮窗支持移动、缩放、贴边磁吸对齐、多窗等距平铺（Expose）
- · 从启动器拖出 App 图标直接创建分屏；同一 App 复用已有窗口
- · 每个浮窗自动记忆位置与方向，重启后恢复
- · 贴边收纳与一键恢复，收纳时目标 App 转后台不耗资源
- · 视频类内容自动横屏，退出恢复竖屏
- · 浮窗菜单支持截图复制为图片，粘贴到支持图片粘贴的 App
- · 场景断连自动检测与恢复
- 【兼容】iOS 16.x · RootHide 无根 · arm64e
-SileoDepiction: https://g459416925.github.io/ios-tweaks/depictions/com.xu.chevronv3.json
+Description: New generation for testing.
 Maintainer: xu
 Author: xu
 Section: Tweaks
 Architecture: iphoneos-arm64e
-Version: 1.0.18-227+env-fast-1+debug
-Installed-Size: 3844
-Filename: ./debs/com.xu.chevronv3_1.0.18-227+env-fast-1+debug_iphoneos-arm64e.deb
-Size: 781620
-MD5sum: 1de223a6127a866d9e76b4d00efb0ed0
-SHA256: 4543c10fb74160f7d3b04d2ebf0c84dabec06751f0b3a1330151eb4bb807dad1
+Version: 1.0.18-233+screentime-drag-gate
+Installed-Size: 2048
+Filename: ./debs/com.xu.chevronv3_1.0.18-233+screentime-drag-gate_iphoneos-arm64e.deb
+Size: 356934
+MD5sum: 7b503344d4fbd65838b36e6b7fde2298
+SHA256: 469ae3a51f32f67ce68bc6354411514bb7be3c8af551366e9f7d47e851919d4d
 
 Package: com.xu.hgvip
 Name: 黄果短剧会员 HGVip
