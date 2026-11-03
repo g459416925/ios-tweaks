@@ -78,7 +78,8 @@
     <tr><td>NoHomeIcons</td><td><code>com.xu.nohomeicons</code></td><td>0.7.5</td></tr>
     <tr><td>Re:Scale Fixed 440</td><td><code>com.xu.rescalefixed</code></td><td>3.1.1</td></tr>
     <tr><td>StatusBarScale</td><td><code>com.xu.statusbarscale</code></td><td>2.8.7</td></tr>
-    <tr><td class="cat" rowspan="3">系统增强</td><td>ScreenTimeLocker16</td><td><code>com.xu.screentimelocker16</code></td><td>5.2.1</td></tr>
+    <tr><td class="cat" rowspan="4">系统增强</td><td>DolbyGlobal</td><td><code>com.xu.dolbyglobal</code></td><td>—</td></tr>
+    <tr><td>ScreenTimeLocker16</td><td><code>com.xu.screentimelocker16</code></td><td>5.2.1</td></tr>
     <tr><td>ChargeLimiter</td><td><code>chaoge.chargelimiter</code></td><td>1.7.2</td></tr>
     <tr><td>ChevronV3</td><td><code>com.xu.chevronv3</code></td><td>1.0.18-227+env-fast-1+debug</td></tr>
     <tr><td class="cat" rowspan="1">广告拦截</td><td>广告跳过 AdSkip</td><td><code>com.xu.adskip</code></td><td>1.4.24</td></tr>
@@ -190,6 +191,23 @@
   </section>
 
   <h3 class="cat-head">二、系统增强<small>限制锁定 / 充电管理 / 启动器</small></h3>
+
+  <section class="pkg">
+    <h3>DolbyGlobal <span class="ver">—</span></h3>
+    <p class="tagline">系统增强 · 全局音效增强：低频 + 立体声展宽</p>
+    <ul>
+      <li>作用于系统音频链路，音乐、视频、游戏、系统提示音统一生效，无需逐个 App 设置</li>
+      <li>低频搁架提升：110Hz 以下最多 +3.8dB，鼓点、爆炸声更扎实有力</li>
+      <li>立体声展宽：M/S 处理把声场拉开，耳机下包围感与定位更明显</li>
+      <li>自适应增益：小音量段自动补足响度，大音量段自动回收，安静片段也听得清</li>
+      <li>内置限幅器把输出峰值钉在 -0.45dBFS 以内，全程不削波、不破音</li>
+      <li>运行时开关：设备上创建 /var/mobile/Media/dg_on 即启用，删除即停用，无需重启</li>
+    </ul>
+    <dl>
+      <dt>包名</dt><dd><code>com.xu.dolbyglobal</code></dd>
+      <dt>兼容</dt><dd>iOS 16.x · RootHide 无根 · arm64e</dd>
+    </dl>
+  </section>
 
   <section class="pkg">
     <h3>ScreenTimeLocker16 <span class="ver">5.2.1</span></h3>

@@ -20,16 +20,17 @@ https://g459416925.github.io/ios-tweaks/
 
 | 分类 | 插件 | 包名 | 版本 | 定位 |
 |---|---|---|---|---|
-| 界面视觉 | BounceIt16 | `com.xu.bounceit16` | 1.1.10 | SpringBoard 系统动画果冻弹性回弹 |
+| 界面视觉 | BounceIt16 | `com.xu.bounceit16` | 1.1.21 | SpringBoard 系统动画果冻弹性回弹 |
 | 界面视觉 | CompactorFix | `com.xu.compactorfix` | 1.0.0 | 系统 UI 字体整体切换为 SF Compact |
 | 界面视觉 | KeyboardCorner16 | `com.xu.keyboardcorner16` | 1.0.93 | 键盘圆角 / OLED / UnderDock 整合 |
 | 界面视觉 | NoHomeIcons | `com.xu.nohomeicons` | 0.7.5 | 主屏零图标净空，App 仅进资源库 |
-| 界面视觉 | Re:Scale Fixed 440 | `com.xu.rescalefixed` | 3.1.1 | 固定 440×956 画布，装完即生效 |
-| 界面视觉 | StatusBarScale | `com.xu.statusbarscale` | 2.7.12 | 状态栏图标缩放对齐 + 资源库透明 |
+| 界面视觉 | Re:Scale Fixed 440 | `com.xu.rescalefixed` | 3.2.3 | 固定 440×956 画布，装完即生效 |
+| 界面视觉 | StatusBarScale | `com.xu.statusbarscale` | 2.8.7 | 状态栏图标缩放对齐 + 资源库透明 |
+| 系统增强 | DolbyGlobal | `com.xu.dolbyglobal` | 0.4.0 | 全局音效增强：低频 + 立体声展宽 |
 | 系统增强 | ScreenTimeLocker16 | `com.xu.screentimelocker16` | 5.2.1 | 屏幕使用时间 App 限额真正锁得住 |
 | 系统增强 | ChargeLimiter | `chaoge.chargelimiter` | 1.7.2 | 电池充电上限锁定（独立应用） |
-| 系统增强 | ChevronV3 | `com.xu.chevronv3` | 1.0.18-227 | 侧滑启动器 + 分屏浮窗 |
-| 广告拦截 | 广告跳过 AdSkip | `com.xu.adskip` | 1.4.23 | 开屏/激励/插屏自动跳过且保留奖励 |
+| 系统增强 | ChevronV3 | `com.xu.chevronv3` | 1.0.18-234 | 侧滑启动器 + 分屏浮窗 |
+| 广告拦截 | 广告跳过 AdSkip | `com.xu.adskip` | 1.4.25 | 开屏/激励/插屏自动跳过且保留奖励 |
 | 会员解锁 | LeafCrack | `com.xu.leafcrack` | 1.2.1 | Leaf VPN 高级会员状态直写 |
 | 会员解锁 | HGVip | `com.xu.hgvip` | 1.0.0 | 黄果短剧 PWA 会员解锁 |
 | 会员解锁 | 黄果短剧 | `com.xu.hgweb` | 1.0.0 | 黄果短剧独立宿主（内置解锁） |
@@ -87,6 +88,25 @@ hook `SpringBoardFoundation` 的两个动画参数容器（两者都继承 `PTSe
 - 注入到**全部 UIKit App + SpringBoard**（`Filter.Classes = ["UIApplication"]`）
 - ⚠️ **SF Compact 是拉丁系字体**：含拉丁/希腊/西里尔 1358 个码位，
   **不含中日韩** → 中文仍回退**苹方 PingFang**，中文外观不变属**预期行为**
+
+### DolbyGlobal
+
+全局音效增强。**注入 mediaserverd**（系统音频守护进程），在渲染链路末端统一处理，
+所以音乐、视频、游戏、系统提示音全部生效，不用逐个 App 配置。
+
+处理链三步：
+
+1. **低频搁架** — 110Hz 以下按余量提升（小音量最多 +3.8dB）
+2. **立体声展宽** — M/S 处理把声场拉开
+3. **自适应限幅** — 按每个 buffer 的输入峰值反算可用提升量，再叠加 output 限幅器把峰值钉在 -0.45dBFS
+
+关键设计：**按实例隔离状态**。系统里有 7 个独立的混音器实例，状态若共用会让滤波器输出跳变（听感就是「嚓/爆」）；同时消除固定增益的死结——增益高则大音量内容削波，增益低则小音量没效果。
+
+> 这不是 Dolby Atmos 解码。iOS 的 Atmos 是内容格式 + 系统侧 E-AC3 解码，插件层无法介入；
+> 本插件做的是听感等价的音效增强。真机 `maximumOutputNumberOfChannels = 2`，硬件本身就是立体声。
+
+运行时开关：设备上 `touch /var/mobile/Media/dg_on` 启用，`rm` 停用，无需重启。
+宿主进程 `mediaserverd`；依赖 `mobilesubstrate`。
 
 ### ScreenTimeLocker16
 
