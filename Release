@@ -3,7 +3,7 @@ Label: g459416925's iOS Tweaks
 Suite: stable
 Version: 1.0
 Codename: ios
-Date: Tue, 03 Nov 2026 12:13:01 GMT
+Date: Sun, 22 Nov 2026 09:24:18 GMT
 Architectures: iphoneos-arm64e iphoneos-arm64 iphoneos-arm
 Components: main
 Description: Personal iOS tweak repository (RootHide / arm64e)
