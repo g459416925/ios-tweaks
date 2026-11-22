@@ -24,7 +24,7 @@ https://g459416925.github.io/ios-tweaks/
 | 界面视觉 | CompactorFix | `com.xu.compactorfix` | 1.0.0 | 系统 UI 字体整体切换为 SF Compact |
 | 界面视觉 | KeyboardCorner16 | `com.xu.keyboardcorner16` | 1.0.93 | 键盘圆角 / OLED / UnderDock 整合 |
 | 界面视觉 | NoHomeIcons | `com.xu.nohomeicons` | 0.7.5 | 主屏零图标净空，App 仅进资源库 |
-| 界面视觉 | Re:Scale Fixed 440 | `com.xu.rescalefixed` | 3.2.3 | 固定 440×956 画布，装完即生效 |
+| 界面视觉 | Re:Scale Fixed 440 | `com.xu.rescalefixed` | 3.3.9 | 固定 440×956 画布 + 竖屏/横屏键盘适配 |
 | 界面视觉 | StatusBarScale | `com.xu.statusbarscale` | 2.8.7 | 状态栏图标缩放对齐 + 资源库透明 |
 | 系统增强 | DolbyGlobal | `com.xu.dolbyglobal` | 0.4.0 | 全局音效增强：低频 + 立体声展宽 |
 | 系统增强 | ScreenTimeLocker16 | `com.xu.screentimelocker16` | 5.2.1 | 屏幕使用时间 App 限额真正锁得住 |

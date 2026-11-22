@@ -76,7 +76,7 @@
     <tr><td>CompactorFix</td><td><code>com.xu.compactorfix</code></td><td>1.0.0</td></tr>
     <tr><td>KeyboardCorner16</td><td><code>com.xu.keyboardcorner16</code></td><td>1.0.93</td></tr>
     <tr><td>NoHomeIcons</td><td><code>com.xu.nohomeicons</code></td><td>0.7.5</td></tr>
-    <tr><td>Re:Scale Fixed 440</td><td><code>com.xu.rescalefixed</code></td><td>3.1.1</td></tr>
+    <tr><td>Re:Scale Fixed 440</td><td><code>com.xu.rescalefixed</code></td><td>3.3.9</td></tr>
     <tr><td>StatusBarScale</td><td><code>com.xu.statusbarscale</code></td><td>2.8.7</td></tr>
     <tr><td class="cat" rowspan="4">系统增强</td><td>DolbyGlobal</td><td><code>com.xu.dolbyglobal</code></td><td>—</td></tr>
     <tr><td>ScreenTimeLocker16</td><td><code>com.xu.screentimelocker16</code></td><td>5.2.1</td></tr>
@@ -156,12 +156,14 @@
   </section>
 
   <section class="pkg">
-    <h3>Re:Scale Fixed 440 <span class="ver">3.1.1</span></h3>
-    <p class="tagline">界面视觉 · 固定 440×956 分辨率，装完即生效</p>
+    <h3>Re:Scale Fixed 440 <span class="ver">3.3.9</span></h3>
+    <p class="tagline">界面视觉 · 固定 440×956 分辨率 + 键盘适配，装完即生效</p>
     <ul>
       <li>固定 440×956 显示画布（iPhone 18 Pro Max 6.9&quot; @3x 档），respring 一次全局生效</li>
+      <li>竖屏键盘满宽（414 → 440），不再两侧留白</li>
+      <li>横屏键盘按系统拇指留白正确补宽（956 − 2×117 = 722），修复信息 App / 横屏游戏键盘右侧按键被裁、显示不全</li>
       <li>无设置面板、无需任何确认，装完即用</li>
-      <li>自带自检工具 <code>/usr/bin/rf_check</code>，<code>--fix</code> 一键修复</li>
+      <li>自带自检工具 <code>/usr/bin/rf_check</code>，<code>--fix</code> 一键修复；异常时 <code>--disarm</code> 保整机</li>
       <li>自愈守护：开机 / 重启自动补齐丢失文件，无需手动干预</li>
       <li>与原版 Re:Scale 2 及带面板重打包版互斥，安装时自动替换旧版</li>
     </ul>
